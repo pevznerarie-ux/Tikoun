@@ -1,0 +1,8 @@
+{
+  "name": "tikoun",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Tikoun · contrôles, copies et rattrapage (Beth Mena'hem)",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" }
+}
