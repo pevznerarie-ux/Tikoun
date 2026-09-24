@@ -891,7 +891,7 @@ function copyView(c, e, cp){
   return `<article class="copy">
     <div class="copy-h"><div><div class="label">Copie${c.differencie ? ` · <span class="lvl ${versionFor(c, e)}">${LVL[versionFor(c, e)]}</span>` : ""}</div><h3 style="font-size:20px">${esc(e.prenom)} ${esc(e.nom)}</h3></div>
       <div class="row">${done ? `<div><div class="total num">${fmt(final20(c, cp))}<small>/20</small></div>${bonusMax(c) ? `<div class="small muted num">brute ${fmt(on20(copyTotal(c, cp), max))} + bonus ${fmt(bonusOf(c, cp).proprete + bonusOf(c, cp).orthographe)}</div>` : ""}</div>` : ""}
-      <button class="btn ${cp?.validee ? "" : "pen"}" id="validate" ${done ? "" : "disabled"}>${cp?.validee ? "Validée ✓" : "Valider la copie"}</button>
+      <button class="btn ${cp?.validee ? "" : "pen"}" id="validate" ${has || done ? "" : "disabled"}>${cp?.validee ? "Validée ✓" : "Valider la copie"}</button>
       <button class="btn sm" id="mkRatt">Rattrapage</button>${done ? `<button class="btn sm" id="rendu1">Copie rendue (PDF)</button>` : ""}</div><div class="status" id="rd-st" style="width:100%"></div></div>
     ${scans.length ? `<div class="scans">${scans.map(([p, s]) => `<img alt="Page ${p}" src="${esc(s.asset ? blobSrc(s.asset) : s.url)}" data-zoom="${esc(s.asset ? blobSrc(s.asset) : s.url)}">`).join("")}</div>` : ""}
     ${has && bonusMax(c) ? `<div class="row" style="padding:10px 16px;border-bottom:1px solid var(--line);gap:14px">${["proprete","orthographe"].filter(k => +c.bonus?.[k]).map(k => `<label class="row small" style="gap:6px">Bonus ${k === "proprete" ? "propreté" : "orthographe"} <input type="number" min="0" max="${c.bonus[k]}" step="0.5" id="bo-${k}" data-bonus="${k}" value="${bonusOf(c, cp)[k]}" style="width:70px"> / ${fmt(+c.bonus[k])}</label>`).join("")}</div>` : ""}
@@ -1203,7 +1203,11 @@ document.addEventListener("click", async ev => {
       }catch(e){ st.textContent = aiErr(e?.code); t.disabled = false; }
       return;
     }
-    if (t.id === "validate"){ const cp = feuille(C.id).copies[S.corrEleve]; const answers = {}; C.questions.forEach(q => { answers[q.id] = {valide:true}; });
+    if (t.id === "validate"){ const cp = feuille(C.id).copies[S.corrEleve];
+      const miss = C.questions.map((q, k) => ({q, k})).filter(x => noteOf(cp?.answers?.[x.q.id]) == null);
+      if (miss.length && d.sure !== "1"){ d.sure = "1"; t.textContent = `Valider (${miss.map(x => "Q" + (x.k + 1)).join(", ")} à 0)`;
+        toast(`Pas de note pour ${miss.map(x => "Q" + (x.k + 1)).join(", ")} : page non scannée ? Scanne-la, saisis la note, ou reclique pour mettre 0.`, 7000); return; }
+      const answers = {}; C.questions.forEach(q => { answers[q.id] = noteOf(cp?.answers?.[q.id]) == null ? {valide:true, note:0, transcription:"", annot:"", commentaire:"Question non scannée ou sans réponse.", lisible:true} : {valide:true}; });
       await write("feuilles/" + C.id, {copies:{[S.corrEleve]:{validee:true, answers}}}, "update");
       const f = feuille(C.id), studs = studentsOf(C); const next = studs.find(e => e.id !== S.corrEleve && f.copies[e.id] && !f.copies[e.id].validee && copyDone(C, f.copies[e.id]));
       if (studs.every(e => e.id === S.corrEleve || f.copies[e.id]?.validee) && C.statut !== "corrige"){ C.statut = "corrige"; await saveCtrl(C); toast("Toutes les copies sont validées."); }
