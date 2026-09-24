@@ -215,7 +215,7 @@ td.c,th.c{text-align:center}
       <button class="tab" role="tab" data-v="suivi">Suivi élèves</button>
       <button class="tab" role="tab" data-v="banque">Banque</button>
       <button class="tab" role="tab" data-v="direction">Direction</button>
-      <button class="tab" role="tab" data-v="reglages" id="tabReglages" hidden>Réglages</button>
+      <button class="tab" role="tab" data-v="reglages" id="tabReglages" hidden>Sauvegarde</button>
     </nav>
   </div>
 </div>
@@ -250,8 +250,8 @@ const aiErr = c => ({
   rate_limited:"Trop de demandes d'un coup : attends une minute puis relance.", session_expired:"Session expirée : reconnecte-toi à Claude.",
   image_rejected:"Image refusée : essaie une photo JPG ou PNG plus nette.", invalid_json:"Réponse de l'IA illisible : relance.",
   refused:"Demande refusée par l'IA : reformule.", prompt_too_large:"Document trop long : raccourcis le cours.",
-  images_unavailable:"Cette vue ne peut pas envoyer d'images à l'IA.", no_ai:"IA indisponible dans cette vue.",
-  no_key:"Ajoute la clé API dans l'onglet Réglages.", bad_key:"Clé API refusée : vérifie-la dans Réglages.", api_400:"Requête refusée par l'API (document trop long ou modèle inconnu : vérifie les Réglages).", no_blob:"Image introuvable.", cloud_write:"Enregistrement en ligne impossible (connexion ?)."
+  images_unavailable:"Cette vue ne peut pas envoyer d'images à l'IA.", no_ai:"IA indisponible pour le moment (serveur non configuré ?).",
+  no_key:"IA non configurée sur le serveur.", bad_key:"Clé IA refusée par le serveur.", need_code:"Code d'accès requis : recharge la page.", api_400:"Requête refusée par l'API (document trop long ou modèle inconnu : vérifie les Réglages).", no_blob:"Image introuvable.", cloud_write:"Enregistrement en ligne impossible (connexion ?)."
 }[c] || "Échec temporaire de l'IA : relance.");
 
 /* ================= Capabilities ================= */
@@ -277,7 +277,7 @@ function memDB(init = {}, persist = null){
 /* ================= Store ================= */
 const store = {classes:[], cours:[], controles:[], feuilles:{}, ecritures:{}, bilans:{}};
 const S = {
-  view:"home", wizStep:1, coursId:null, coursDraft:null, params:{classeId:"", titre:"", duree:55, nbq:5, difficulte:"moyen", types:["cours","application"], consignes:"", differencie:true, matiere:"", niveau:""},
+  view:"home", wizStep:1, coursId:null, coursDraft:null, params:{classeId:"", titre:"", duree:55, nbq:5, difficulte:"moyen", types:["cours","application"], consignes:"", differencie:false, matiere:"", niveau:""},
   editId:null, vtab:{}, previewEleve:null, classeSel:null, levelMat:"Mathématiques", suggestions:null,
   su:null, bk:null, bankOpen:false, bkq:"", corrCtrl:null, corrEleve:null, editTr:{}, editCom:{}, anCtrl:null, queue:[], queueRunning:false, busy:{}
 };
@@ -336,8 +336,8 @@ function render(){
   if (keep?.typing && a.dataset.live !== undefined){ skipped = true; return; } // don't clobber a field being typed
   skipped = false;
   $$(".tab").forEach(t => t.setAttribute("aria-selected", t.dataset.v === (S.view === "edit" ? "new" : S.view)));
-  const V = (typeof SB !== "undefined" && SB && !SB_USER) ? vLogin : {home:vHome, classes:vClasses, new:vNew, edit:vEdit, scan:vScan, correct:vCorrect, analyse:vAnalyse, suivi:vSuivi, banque:vBanque, direction:vDirection, reglages:vReglages}[S.view] || vHome;
-  $("#tabs").hidden = V === vLogin;
+  const V = (typeof SB !== "undefined" && SB && !SB_USER) ? vLogin : (typeof NEED_CODE !== "undefined" && NEED_CODE) ? vCode : {home:vHome, classes:vClasses, new:vNew, edit:vEdit, scan:vScan, correct:vCorrect, analyse:vAnalyse, suivi:vSuivi, banque:vBanque, direction:vDirection, reglages:vReglages}[S.view] || vHome;
+  $("#tabs").hidden = V === vLogin || V === vCode;
   $("#view").innerHTML = `<div class="view">${LOCAL ? `<p class="banner">Base de données indisponible dans cette vue : rien n'est sauvegardé. Ouvre l'application depuis claude.ai.</p>` : ""}${V()}</div>`;
   if (keep){ const el = document.getElementById(keep.id); if (el){ el.focus(); try { el.setSelectionRange(keep.s, keep.e); } catch(e){} } }
   if (S.view === "edit") drawPreview();
@@ -716,7 +716,7 @@ function sheetToPhoto(found){
 function warpBox(cv, H, bx, pad = 8){
   const x0 = bx.x - pad, y0 = bx.y - pad, w = bx.w + 2 * pad, h = bx.h + 2 * pad;
   const [ax, ay] = applyH(H, x0, y0), [bx2, by2] = applyH(H, x0 + w, y0);
-  const srcScale = Math.hypot(bx2 - ax, by2 - ay) / w; const k = clamp(srcScale, 1, 1400 / w);
+  const srcScale = Math.hypot(bx2 - ax, by2 - ay) / w; const k = clamp(srcScale, 1, 1100 / w);
   const W = Math.round(w * k), Hh = Math.round(h * k);
   const src = pix(cv), SW = cv.width, SH = cv.height;
   const out = document.createElement("canvas"); out.width = W; out.height = Hh; const oc = out.getContext("2d"), od = oc.createImageData(W, Hh);
@@ -797,7 +797,7 @@ async function processPage(it){
         const res = await ai(gradePrompt(c, cp, aiQ, "crops"), {images: await Promise.all(aiB.map(b => toBlob(crops[b.q], .9)))});
         arr = Array.isArray(res?.reponses) ? res.reponses : []; bon = res;
       } else {
-        const big = scaled(it.cv, 2000), W = big.width, H = big.height;
+        const big = scaled(it.cv, 1600), W = big.width, H = big.height;
         const many = maxImg >= 2;
         const imgs = many ? [await toBlob(crop(big, 0, 0, W, H * 0.56)), await toBlob(crop(big, 0, H * 0.44, W, H * 0.56))] : [await toBlob(big)];
         const res = await ai(gradePrompt(c, cp, aiQ, many ? "halves" : "page"), {images:imgs});
@@ -1327,10 +1327,12 @@ async function localAssets(){
 const localDownloads = { save: async ({filename, data}) => { const b = data instanceof Blob ? data : new Blob([data]); const a = document.createElement("a");
   a.href = URL.createObjectURL(b); a.download = String(filename).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9 ._-]+/g, "-").replace(/-+/g, "-"); document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000); } };
 
-/* AI through the Anthropic Messages API, called from the browser */
-const CFG_DEF = {key:"", quick:"claude-haiku-4-5-20251001", default:"claude-sonnet-5", complex:"claude-opus-5-5"};
-function cfg(){ try { return {...CFG_DEF, ...JSON.parse(localStorage.getItem("tikoun.cfg") || "{}")}; } catch(e){ return {...CFG_DEF}; } }
-function setCfg(c){ try { localStorage.setItem("tikoun.cfg", JSON.stringify(c)); } catch(e){ toast("Réglages non enregistrés (stockage bloqué)."); } }
+/* AI: always through the school's server (/api/ai) — the API key never reaches the browser */
+const CFG_DEF = {};
+function cfg(){ try { return JSON.parse(localStorage.getItem("tikoun.cfg") || "{}"); } catch(e){ return {}; } }
+function setCfg(c){ try { localStorage.setItem("tikoun.cfg", JSON.stringify(c)); } catch(e){} }
+const accessCode = () => { try { return localStorage.getItem("tikoun.code") || ""; } catch(e){ return ""; } };
+let NEED_CODE = false;
 const b64 = blob => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = rej; r.readAsDataURL(blob); });
 function parseJSONloose(t){
   try { return JSON.parse(t); } catch(e){}
@@ -1341,20 +1343,19 @@ function parseJSONloose(t){
 }
 function apiSample(){
   async function call(input, opts = {}, asJson){
-    const c = cfg(), cc = cloudCfg(), viaProxy = !!(SB && SB_USER && (cc.proxy || cc.endpoint));
-    if (!viaProxy && !c.key) throw {code:"no_key"};
+    const cc = cloudCfg(); if (!cc.endpoint) throw {code:"no_ai"};
     const imgs = opts.images ? (opts.images instanceof Blob ? [opts.images] : Array.from(opts.images)) : [];
     const content = [];
     for (const im of imgs) content.push({type:"image", source:{type:"base64", media_type:im.type && im.type.startsWith("image/") ? im.type : "image/jpeg", data:await b64(im)}});
-    content.push({type:"text", text:String(input) + (asJson ? "\n\n(Ta réponse sera lue par un programme : réponds uniquement avec le JSON demandé, sans texte autour.)" : "")});
+    content.push({type:"text", text:String(input) + (asJson ? "\n\n(Réponds uniquement avec le JSON demandé, sans texte autour.)" : "")});
+    const headers = {"content-type":"application/json", "x-tikoun-code":accessCode()};
+    if (SB && SB_USER){ const {data} = await SB.auth.getSession(); headers.authorization = "Bearer " + data.session.access_token; }
     let r;
-    try {
-      const body = JSON.stringify({model:c[opts.modelTier || "default"] || c.default, max_tokens:16000, messages:[{role:"user", content}]});
-      if (viaProxy){ const {data} = await SB.auth.getSession();
-        r = await fetch(cc.endpoint || cc.url + "/functions/v1/ai", {method:"POST", signal:opts.signal, headers:{"content-type":"application/json", "authorization":"Bearer " + data.session.access_token, "apikey":cc.anon}, body}); }
-      else r = await fetch("https://api.anthropic.com/v1/messages", {method:"POST", signal:opts.signal, headers:{"content-type":"application/json", "x-api-key":c.key, "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true"}, body});
-    } catch(e){ throw {code:e?.name === "AbortError" ? "cancelled" : "upstream_error"}; }
-    if (!r.ok){ const code = r.status === 401 || r.status === 403 ? "bad_key" : r.status === 429 ? "rate_limited" : r.status === 400 || r.status === 413 ? "api_400" : "upstream_error";
+    try { r = await fetch(cc.endpoint, {method:"POST", signal:opts.signal, headers, body:JSON.stringify({tier:opts.modelTier || "default", messages:[{role:"user", content}]})}); }
+    catch(e){ throw {code:e?.name === "AbortError" ? "cancelled" : "upstream_error"}; }
+    if (!r.ok){
+      if (r.status === 401 && !SB){ NEED_CODE = true; try { localStorage.removeItem("tikoun.code"); } catch(e){} scheduleRender(); }
+      const code = r.status === 401 ? "need_code" : r.status === 429 ? "rate_limited" : r.status === 400 || r.status === 413 ? "api_400" : r.status === 503 ? "no_ai" : "upstream_error";
       let msg = ""; try { msg = (await r.json())?.error?.message || ""; } catch(e){} throw {code, message:msg}; }
     const j = await r.json(); const text = (j.content || []).filter(b => b.type === "text").map(b => b.text).join("");
     if (!text.trim()) throw {code:"empty_completion"};
@@ -1365,42 +1366,25 @@ function apiSample(){
   f.limits = async () => ({maxPromptBytes:400000, images:{maxCount:20, maxInputBytes:5e6, mediaTypes:["image/jpeg","image/png","image/webp"]}});
   return f;
 }
+function vCode(){
+  return `<div class="head"><div><h2>Code d'accès</h2><p>Entre le code de l'établissement pour utiliser Tikoun.</p></div></div>
+  <section class="panel grid" style="max-width:420px">
+    <div class="field"><label for="cd-in">Code</label><input id="cd-in" type="password" autocomplete="current-password"></div>
+    <div class="row"><button class="btn primary" id="cd-go">Entrer</button></div><div class="status" id="cd-st"></div>
+  </section>`;
+}
 
-/* Settings page (standalone only) */
+/* Sauvegarde page (standalone, local mode) */
 function vReglages(){
-  const c = cfg();
-  return `<div class="head"><div><h2>Réglages</h2><p>Version autonome : les données restent dans ce navigateur, l'IA est appelée avec la clé API de l'école.</p></div></div>
+  return `<div class="head"><div><h2>Sauvegarde</h2><p>${SB ? "Les données sont stockées en ligne." : "Les données sont stockées dans ce navigateur. Exporte régulièrement une sauvegarde : tu peux l'importer sur un autre ordinateur ou chez un collègue."}</p></div></div>
+  ${SB ? `<section class="panel grid"><p class="small">Connecté : <b>${esc(SB_USER?.email || "—")}</b> · <button class="btn sm" id="sb-out">Se déconnecter</button></p>
+    ${SB_USER ? `<div class="row"><button class="btn" id="sb-migrate">Transférer les données de cet appareil en ligne</button></div><div class="status" id="sb-st"></div>` : ""}</section>` : `
   <section class="panel grid">
-    <h3>Clé API Anthropic</h3>
-    <p class="small muted">Crée une clé sur console.anthropic.com (compte de l'école), fixe une limite de dépense mensuelle, puis colle-la ici. Elle est gardée uniquement sur cet appareil.</p>
-    <div class="field"><label for="cf-key">Clé API</label><input id="cf-key" type="password" autocomplete="off" value="${esc(c.key)}" placeholder="sk-ant-…"></div>
-    <div class="form-row">
-      <div class="field"><label for="cf-quick">Modèle rapide</label><input id="cf-quick" value="${esc(c.quick)}"></div>
-      <div class="field"><label for="cf-default">Modèle standard</label><input id="cf-default" value="${esc(c.default)}"></div>
-      <div class="field"><label for="cf-complex">Modèle précis</label><input id="cf-complex" value="${esc(c.complex)}"></div>
-    </div>
-    <div class="row"><button class="btn primary" id="cf-save">Enregistrer</button><button class="btn" id="cf-test">Tester la clé</button><span class="status" id="cf-st"></span></div>
-  </section>
-  <section class="panel grid">
-    <h3>Stockage en ligne (Supabase)</h3>
-    <p class="small muted">Avec un projet Supabase (hébergé en Europe), tous les professeurs partagent les mêmes classes, contrôles, notes et photos, depuis n'importe quel appareil. Voir le guide SUPABASE.md du dépôt.</p>
-    ${SB ? `<p class="small">Connecté : <b>${esc(SB_USER?.email || "—")}</b> · <button class="btn sm" id="sb-out">Se déconnecter</button></p>` : ""}
-    <div class="form-row">
-      <div class="field"><label for="sb-url">URL du projet</label><input id="sb-url" value="${esc(cloudCfg().url)}" placeholder="https://xxxx.supabase.co"></div>
-      <div class="field"><label for="sb-anon">Clé publique (anon / publishable)</label><input id="sb-anon" value="${esc(cloudCfg().anon)}"></div>
-    </div>
-    <label class="row small" style="gap:6px"><input type="checkbox" id="sb-proxy"${cloudCfg().proxy ? " checked" : ""}> IA via le serveur de l'école (fonction « ai ») : aucune clé API dans les navigateurs</label>
-    <div class="row"><button class="btn primary" id="sb-save">Enregistrer et recharger</button>${SB && SB_USER ? `<button class="btn" id="sb-migrate">Transférer les données de cet appareil en ligne</button>` : ""}</div>
-    <div class="status" id="sb-st"></div>
-  </section>
-  <section class="panel grid">
-    <h3>Sauvegarde des données</h3>
-    <p class="small muted">Tout est stocké dans ce navigateur. Exporte régulièrement une sauvegarde ; tu peux l'importer sur un autre ordinateur (ou chez un collègue).</p>
     <label class="row small" style="gap:6px"><input type="checkbox" id="ex-img"> Inclure les photos des copies (fichier plus lourd)</label>
     <div class="row"><button class="btn" id="ex-go">Exporter une sauvegarde</button>
       <label class="btn" for="im-file">Importer une sauvegarde</label><input id="im-file" type="file" accept="application/json,.json" hidden></div>
     <div class="status" id="ex-st"></div>
-  </section>`;
+  </section>`}`;
 }
 async function exportAll(withImg){
   const docs = await idbAll("docs"); const out = {tikoun:1, at:new Date().toISOString(), docs, blobs:{}};
@@ -1415,16 +1399,11 @@ async function importAll(file){
 }
 document.addEventListener("click", async ev => {
   const t = ev.target.closest("button"); if (!t || !STANDALONE) return;
-  if (t.id === "cf-save" || t.id === "cf-test"){
-    const c = {key:$("#cf-key").value.trim(), quick:$("#cf-quick").value.trim() || CFG_DEF.quick, default:$("#cf-default").value.trim() || CFG_DEF.default, complex:$("#cf-complex").value.trim() || CFG_DEF.complex};
-    setCfg(c); refreshCaps();
-    const st = $("#cf-st");
-    if (t.id === "cf-save"){ st.textContent = "Enregistré."; return; }
-    st.innerHTML = `<span class="thinking">Test…</span>`;
-    try { const r = await AI.json(`Réponds {"ok":true}`, {modelTier:"quick"}); st.textContent = r?.ok ? "La clé fonctionne ✓" : "Réponse inattendue."; } catch(e){ st.textContent = aiErr(e?.code) + (e?.message ? " (" + e.message + ")" : ""); }
-    return;
-  }
-  if (t.id === "sb-save"){ const c = cfg(); c.sbUrl = $("#sb-url").value.trim(); c.sbAnon = $("#sb-anon").value.trim(); c.aiProxy = $("#sb-proxy").checked; setCfg(c); location.reload(); return; }
+  if (t.id === "cd-go"){ const st = $("#cd-st"), code = $("#cd-in").value.trim(); if (!code) return;
+    st.innerHTML = `<span class="thinking">Vérification…</span>`;
+    const r = await fetch("/api/check", {headers:{"x-tikoun-code":code}}).catch(() => null);
+    if (r?.ok){ try { localStorage.setItem("tikoun.code", code); } catch(e){} NEED_CODE = false; refreshCaps(); render(); } else st.textContent = "Code incorrect.";
+    return; }
   if (t.id === "ex-go"){ try { await exportAll($("#ex-img").checked); $("#ex-st").textContent = "Sauvegarde téléchargée."; } catch(e){ $("#ex-st").textContent = "Export impossible."; } }
 });
 document.addEventListener("change", async ev => {
@@ -1433,8 +1412,8 @@ document.addEventListener("change", async ev => {
 });
 function refreshCaps(){
   if (!STANDALONE) return;
-  const cc = cloudCfg(), aiOk = cfg().key || (SB && (cc.proxy || cc.endpoint));
-  $("#caps").innerHTML = `IA ${aiOk ? "✓" : "✗ (Réglages)"} · Données : ${SB ? (SB_USER ? "en ligne ✓" : "connexion requise") : "cet appareil"}`;
+  const aiOk = !!cloudCfg().endpoint;
+  $("#caps").innerHTML = `IA ${aiOk ? "✓" : "✗ (serveur)"} · Données : ${SB ? (SB_USER ? "en ligne ✓" : "connexion requise") : "cet appareil"}`;
 }
 
 
@@ -1443,7 +1422,7 @@ function refreshCaps(){
    Every teacher logs in; all devices share the same classes, contrôles, copies and photos. */
 let SB = null, SB_USER = null;
 function cloudCfg(){ const c = cfg(), w = window.TIKOUN_CONFIG || {};
-  return {url:(c.sbUrl || w.supabaseUrl || "").trim().replace(/\/+$/, ""), anon:(c.sbAnon || w.supabaseAnonKey || "").trim(), proxy:c.aiProxy != null ? !!c.aiProxy : !!w.aiProxy, endpoint:(w.aiEndpoint || "").trim()}; }
+  return {url:(w.supabaseUrl || "").trim().replace(/\/+$/, ""), anon:(w.supabaseAnonKey || "").trim(), proxy:!!w.aiProxy, endpoint:(w.aiEndpoint || "").trim()}; }
 const cloudOn = () => { const c = cloudCfg(); return !!(c.url && c.anon && window.supabase?.createClient); };
 
 async function cloudDB(){
@@ -1497,7 +1476,7 @@ async function startCloud(){
     for (const col of ["classes","cours","controles"]) DB.collection(col).onSnapshot(s => { store[col] = s.docs.map(x => ({id:x.id, ...structuredClone(x.data())})); scheduleRender(); });
     for (const col of ["ecritures","bilans"]) DB.collection(col).onSnapshot(s => { const m = {}; s.docs.forEach(x => m[x.id] = structuredClone(x.data())); store[col] = m; scheduleRender(); });
     DB.collection("feuilles").onSnapshot(s => { const m = {}; s.docs.forEach(x => m[x.id] = structuredClone(x.data())); store.feuilles = m; scheduleRender(); });
-  } catch(e){ console.error(e); toast("Stockage en ligne inaccessible : vérifie les Réglages (" + (e?.message || e?.code || "erreur") + ")", 8000); }
+  } catch(e){ console.error(e); toast("Stockage en ligne inaccessible : vérifie les variables du serveur (" + (e?.message || e?.code || "erreur") + ")", 8000); }
   refreshCaps(); if (S.view === "login") S.view = "home"; render();
 }
 document.addEventListener("click", async ev => {
@@ -1811,7 +1790,8 @@ render();
       return;
     }
     try { DB = await localDB(); ASSETS = await localAssets(); } catch(e){ console.warn(e); DB = memDB(); LOCAL = true; }
-    refreshCaps(); if (!cfg().key && S.view === "home") toast("Ajoute la clé API dans Réglages pour activer l'IA.", 6000);
+    NEED_CODE = !!(window.TIKOUN_CONFIG?.codeRequired && !accessCode());
+    refreshCaps(); render();
   } else {
     const use = n => window.claude.use(n).catch(() => null);
     [DB, AI, ASSETS, DL] = await Promise.all([use("db"), use("sample"), use("assets"), use("downloads")]);
