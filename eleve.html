@@ -9,9 +9,9 @@
 <meta name="theme-color" content="#15233F">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,500;9..144,600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&display=swap">
 <style>
-:root{--paper:#FAF8F3;--surface:#fff;--surface-2:#F3EFE6;--ink:#15233F;--muted:#6B6758;--line:#E7E1D4;--gold:#B7862B;--gold-soft:#F7EDD8;--ok:#1E7A4C;--ok-soft:#E3F3EA;--bad:#B42318;--bad-soft:#FCE8E6;--display:"Fraunces",Georgia,serif;--body:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif}
+:root{--paper:#FAF8F3;--surface:#fff;--surface-2:#F3EFE6;--ink:#15233F;--muted:#6B6758;--line:#E7E1D4;--gold:#B7862B;--gold-soft:#F7EDD8;--ok:#1E7A4C;--ok-soft:#E3F3EA;--bad:#B42318;--bad-soft:#FCE8E6;--display:"Cormorant Garamond",Georgia,serif;--body:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif}
 @media (prefers-color-scheme:dark){:root{--paper:#10141D;--surface:#171C27;--surface-2:#1F2532;--ink:#EFEADF;--muted:#A7A192;--line:#2C3342;--gold:#D9AE58;--gold-soft:#3A3120;--ok:#4FC98D;--ok-soft:#15301F;--bad:#FF7A6E;--bad-soft:#3A1C1A}.wm{filter:brightness(0) invert(.92)}}
 *{box-sizing:border-box}html,body{margin:0}
 body{background:var(--paper);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased;padding-bottom:env(safe-area-inset-bottom)}
@@ -52,6 +52,8 @@ textarea{min-height:160px;resize:vertical}
 .big{font-family:var(--display);font-size:44px;font-weight:500}
 .err{color:var(--bad);font-size:14px;min-height:1.2em}
 .hello{display:grid;gap:4px}
+h1{font-size:1.15em}.big{font-size:54px}h2{font-size:26px!important}
+h1,h2,h3,.big,.price{font-variant-numeric:lining-nums;font-feature-settings:"lnum" 1}
 </style>
 </head>
 <body>
