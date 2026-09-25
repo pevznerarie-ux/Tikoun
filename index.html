@@ -65,6 +65,18 @@ button,select,input,textarea{font:inherit;color:inherit}
 .tabs::-webkit-scrollbar{display:none}
 .tab{border:0;background:none;padding:10px 11px;white-space:nowrap;cursor:pointer;color:var(--muted);font-weight:600;border-bottom:3px solid transparent}
 .tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--pen)}
+a.tab{text-decoration:none;display:inline-block}
+.crumbs a{color:var(--muted);text-decoration:none} .crumbs a:hover{color:var(--blue)}
+.stepper{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+.stepper::-webkit-scrollbar{display:none}
+.st{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:10px;text-decoration:none;color:var(--muted);background:var(--surface-2);white-space:nowrap;font-weight:600;font-size:14px;flex:none}
+.st b{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--surface);font-size:12px}
+.st.done{color:var(--ok);background:var(--ok-soft)} .st.done b{background:var(--ok);color:var(--surface)}
+.st.on{color:var(--paper);background:var(--ink)} .st.on b{background:var(--pen);color:#fff}
+.stepnav{display:flex;justify-content:space-between;gap:10px;padding-top:6px;border-top:1px solid var(--line);margin-top:4px}
+.fchip{border:1px solid var(--line);background:var(--surface);border-radius:99px;padding:5px 12px;font-weight:600;font-size:13px;cursor:pointer;color:var(--muted)}
+.fchip.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+a.item.link{text-decoration:none;color:inherit} a.item.link:hover .t{color:var(--blue)}
 .view{padding-top:18px;display:grid;gap:16px}
 .view>*,.grid>*,.split>*{min-width:0}
 .head{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:end;gap:10px}
@@ -205,17 +217,15 @@ td.c,th.c{text-align:center}
       <div class="logo"><b>Tik<span>o</span>un</b><small>Contrôles, copies &amp; rattrapage · Beth Mena'hem</small></div>
       <div class="who" id="caps">Connexion…</div>
     </div>
-    <nav class="tabs" role="tablist" id="tabs">
-      <button class="tab" role="tab" data-v="home">Accueil</button>
-      <button class="tab" role="tab" data-v="classes">Classes</button>
-      <button class="tab" role="tab" data-v="new">Nouveau contrôle</button>
-      <button class="tab" role="tab" data-v="scan">Scanner</button>
-      <button class="tab" role="tab" data-v="correct">Correction</button>
-      <button class="tab" role="tab" data-v="analyse">Classe &amp; rattrapage</button>
-      <button class="tab" role="tab" data-v="suivi">Suivi élèves</button>
-      <button class="tab" role="tab" data-v="banque">Banque</button>
-      <button class="tab" role="tab" data-v="direction">Direction</button>
-      <button class="tab" role="tab" data-v="reglages" id="tabReglages" hidden>Sauvegarde</button>
+    <nav class="tabs" id="tabs">
+      <a class="tab" data-r="accueil" href="#/accueil">Accueil</a>
+      <a class="tab" data-r="controles" href="#/controles">Contrôles</a>
+      <a class="tab" data-r="scanner" href="#/scanner">Scanner</a>
+      <a class="tab" data-r="classes" href="#/classes">Classes</a>
+      <a class="tab" data-r="suivi" href="#/suivi">Suivi élèves</a>
+      <a class="tab" data-r="banque" href="#/banque">Banque</a>
+      <a class="tab" data-r="direction" href="#/direction">Direction</a>
+      <a class="tab" data-r="sauvegarde" href="#/sauvegarde" id="tabReglages" hidden>Sauvegarde</a>
     </nav>
   </div>
 </div>
@@ -270,7 +280,7 @@ function memDB(init = {}, persist = null){
     set: async d => { data[p] = JSON.parse(JSON.stringify(d)); notify(colOf(p)); if (persist) await persist(p, data[p], "set"); },
     update: async d => { if (!data[p]) throw {code:"invalid_argument"}; const patch = JSON.parse(JSON.stringify(d)); merge(data[p], JSON.parse(JSON.stringify(d))); data[p] = {...data[p]}; notify(colOf(p)); if (persist) await persist(p, data[p], "update", patch); },
     delete: async () => { delete data[p]; notify(colOf(p)); if (persist) await persist(p, null, "delete"); } });
-  return { doc, _remote:(p, val) => { if (val == null) delete data[p]; else data[p] = val; notify(colOf(p)); }, collection: col => ({ path:col, doc: id => doc(col + "/" + (id || uid(16))),
+  return { doc, _all:() => data, _remote:(p, val) => { if (val == null) delete data[p]; else data[p] = val; notify(colOf(p)); }, collection: col => ({ path:col, doc: id => doc(col + "/" + (id || uid(16))),
     onSnapshot: (fn) => { const s = {col, fn}; subs.push(s); setTimeout(() => fn(snapOf(col))); return () => subs.splice(subs.indexOf(s), 1); } }) };
 }
 
@@ -281,7 +291,7 @@ const S = {
   editId:null, vtab:{}, previewEleve:null, classeSel:null, levelMat:"Mathématiques", suggestions:null,
   su:null, bk:null, bankOpen:false, bkq:"", corrCtrl:null, corrEleve:null, editTr:{}, editCom:{}, anCtrl:null, queue:[], queueRunning:false, busy:{}
 };
-try { const v = localStorage.getItem("tikoun2.view"); if (v && v !== "edit") S.view = v; } catch(e){}
+
 
 const classe = id => store.classes.find(c => c.id === id);
 const ctrl = id => store.controles.find(c => c.id === id);
@@ -335,16 +345,22 @@ function render(){
   const a = document.activeElement, keep = a && a.id && $("#view").contains(a) ? {id:a.id, s:a.selectionStart, e:a.selectionEnd, v:a.value, typing: ["INPUT","TEXTAREA"].includes(a.tagName) && a.type !== "file"} : null;
   if (keep?.typing && a.dataset.live !== undefined){ skipped = true; return; } // don't clobber a field being typed
   skipped = false;
-  $$(".tab").forEach(t => t.setAttribute("aria-selected", t.dataset.v === (S.view === "edit" ? "new" : S.view)));
-  const V = (typeof SB !== "undefined" && SB && !SB_USER) ? vLogin : (typeof NEED_CODE !== "undefined" && NEED_CODE) ? vCode : {home:vHome, classes:vClasses, new:vNew, edit:vEdit, scan:vScan, correct:vCorrect, analyse:vAnalyse, suivi:vSuivi, banque:vBanque, direction:vDirection, reglages:vReglages}[S.view] || vHome;
+  $$(".tab").forEach(t => t.setAttribute("aria-selected", t.dataset.r === navKey()));
+  const V = (typeof SB !== "undefined" && SB && !SB_USER) ? vLogin : (typeof NEED_CODE !== "undefined" && NEED_CODE) ? vCode : {home:vHome, classes:vClasses, new:vNew, edit:vEdit, scan:vScan, correct:vCorrect, analyse:vAnalyse, suivi:vSuivi, banque:vBanque, direction:vDirection, reglages:vReglages, controles:vControles}[S.view] || vHome;
   $("#tabs").hidden = V === vLogin || V === vCode;
-  $("#view").innerHTML = `<div class="view">${LOCAL ? `<p class="banner">Base de données indisponible dans cette vue : rien n'est sauvegardé. Ouvre l'application depuis claude.ai.</p>` : ""}${V()}</div>`;
+  let html = V();
+  const fc = S.inCtrl && ["edit","scan","correct","analyse"].includes(S.view) && V !== vLogin && ctrl(S.inCtrl);
+  if (fc){
+    if (S.view === "correct" && fc.statut === "brouillon") html = `<section class="panel empty">Les feuilles ne sont pas encore imprimées. Passe par l'étape « Imprimer ».</section>`;
+    html = ctrlFrame(fc, html.replace(/<select id="(corrSel|anSel)"[\s\S]*?<\/select>/, "").replace(/<h2>(Correction|Classe & rattrapage|Scanner les copies)<\/h2>/, "<h3>$1</h3>"));
+  }
+  $("#view").innerHTML = `<div class="view">${LOCAL ? `<p class="banner">Base de données indisponible dans cette vue : rien n'est sauvegardé. Ouvre l'application depuis claude.ai.</p>` : ""}${html}</div>`;
   if (keep){ const el = document.getElementById(keep.id); if (el){ el.focus(); try { el.setSelectionRange(keep.s, keep.e); } catch(e){} } }
-  if (S.view === "edit") drawPreview();
+  if (S.view === "edit" && S.step === "mise-en-page") drawPreview();
+  { const sp = $(".stepper"), on = $(".st.on"); if (sp && on) sp.scrollLeft = on.offsetLeft - sp.clientWidth / 2 + on.clientWidth / 2; }
   if (S.view === "correct" && window.MathJax?.typesetPromise){ const v = $("#view"); MathJax.typesetClear?.([v]); MathJax.typesetPromise([v]).catch(() => {}); }
-  try { localStorage.setItem("tikoun2.view", S.view); } catch(e){}
 }
-function go(v){ S.view = v; render(); window.scrollTo({top:0}); }
+
 const chipStatut = c => { const [l, t] = STATUT[c.statut] || STATUT.brouillon; return `<span class="chip ${t}">${l}</span>`; };
 const selOpts = (arr, cur, lab = x => x, val = x => x) => arr.map(x => `<option value="${esc(val(x))}"${val(x) === cur ? " selected" : ""}>${esc(lab(x))}</option>`).join("");
 
@@ -474,11 +490,7 @@ function vEdit(){
   if (!S.previewEleve || !studs.find(e => e.id === S.previewEleve)) S.previewEleve = studs[0]?.id || null;
   const printed = !!f && Object.keys(f.copies || {}).length;
   const scanned = printed && Object.values(f.copies).some(cp => Object.keys(cp.scans || {}).length);
-  return `
-  <div class="head"><div><div class="label">${c.type === "rattrapage" ? "Rattrapage" : "Contrôle"} · ${esc(c.matiere)} · ${esc(cl?.nom || "?")}</div><h2>${esc(c.titre)}</h2></div>
-    <div class="row">${chipStatut(c)}<button class="btn sm" data-go="home">Tableau de bord</button></div></div>
-  <div class="steps"><span class="step done">1. Cours</span><span class="step done">2. Paramètres</span><span class="step on">3. Édition & impression</span></div>
-  <section class="panel grid">
+  const partPrep = `  <section class="panel grid">
     <div class="form-row">
       <div class="field"><label for="e-titre">Titre</label><input id="e-titre" data-c="titre" data-live value="${esc(c.titre)}"></div>
       <div class="field"><label for="e-date">Date</label><input id="e-date" type="date" data-c="date" value="${esc(c.date || "")}"></div>
@@ -489,8 +501,8 @@ function vEdit(){
   <div class="head"><h3>Questions <span class="muted num" style="font-weight:500">· total ${fmt(tot)} pts${tot !== 20 ? " (ramené sur 20)" : ""}</span></h3>
     <div class="row"><button class="btn sm" id="addQ">+ Question vide</button><button class="btn sm" id="addQcm">+ QCM</button><button class="btn sm" id="addQai">+ Question (IA)</button><button class="btn sm" id="bankOpen">${S.bankOpen ? "Fermer la banque" : "+ Depuis la banque"}</button></div></div>
   ${S.bankOpen ? bankPanel(c) : ""}
-  ${(c.questions || []).map((q, i) => qEditor(c, q, i)).join("") || `<div class="panel empty">Aucune question.</div>`}
-  <section class="panel grid">
+  ${(c.questions || []).map((q, i) => qEditor(c, q, i)).join("") || `<div class="panel empty">Aucune question.</div>`}`;
+  const partLayout = `  <section class="panel grid">
     <h3>Mise en page</h3>
     <div class="form-row">
       <div class="field"><label for="m-ent">En-tête</label><input id="m-ent" data-m="entete" data-live value="${esc(m.entete ?? ECOLE)}"></div>
@@ -505,8 +517,8 @@ function vEdit(){
     </div>
     <div class="row between"><div class="label">Aperçu</div><select id="prevEl" style="width:auto" aria-label="Élève">${selOpts(studs, S.previewEleve, e => e.prenom + " " + e.nom + (c.differencie ? " · " + LVL[versionFor(c, e)] : ""), e => e.id)}</select></div>
     <div class="preview-wrap" id="preview"></div>
-  </section>
-  <section class="panel grid">
+  </section>`;
+  const partPrint = `  <section class="panel grid">
     <h3>Impression</h3>
     <p class="muted small">Un PDF pour toute la classe : une feuille par élève, avec son nom et son QR code sur chaque page. Le niveau n'est pas écrit sur la feuille, il est seulement contenu dans le QR code.</p>
     ${scanned ? `<p class="banner">Des copies ont déjà été scannées. Réimprimer garde les scans et les notes existants, mais une mise en page différente peut décaler les questions par page.</p>` : ""}
@@ -514,6 +526,7 @@ function vEdit(){
       <button class="btn" id="print1">Feuille de l'élève affiché</button><button class="btn ghost sm" id="delCtrl">Supprimer</button></div>
     <div class="status" id="pr-st"></div>
   </section>`;
+  return S.step === "mise-en-page" ? partLayout : S.step === "imprimer" ? partPrint + `<section class="panel grid"><h3>Et ensuite</h3><p class="small muted">Fais passer le contrôle, puis scanne les copies à l'étape suivante. L'ordre des copies n'a pas d'importance.</p></section>` : partPrep;
 }
 function qEditor(c, q, i){
   const vt = c.differencie ? (S.vtab[q.id] || "standard") : "standard";
@@ -716,7 +729,7 @@ function sheetToPhoto(found){
 function warpBox(cv, H, bx, pad = 8){
   const x0 = bx.x - pad, y0 = bx.y - pad, w = bx.w + 2 * pad, h = bx.h + 2 * pad;
   const [ax, ay] = applyH(H, x0, y0), [bx2, by2] = applyH(H, x0 + w, y0);
-  const srcScale = Math.hypot(bx2 - ax, by2 - ay) / w; const k = clamp(srcScale, 1, 1100 / w);
+  const srcScale = Math.hypot(bx2 - ax, by2 - ay) / w; const k = clamp(srcScale, 1, 900 / w);
   const W = Math.round(w * k), Hh = Math.round(h * k);
   const src = pix(cv), SW = cv.width, SH = cv.height;
   const out = document.createElement("canvas"); out.width = W; out.height = Hh; const oc = out.getContext("2d"), od = oc.createImageData(W, Hh);
@@ -726,6 +739,17 @@ function warpBox(cv, H, bx, pad = 8){
     const q = (Y * SW + X) * 4; od.data[o] = src[q]; od.data[o + 1] = src[q + 1]; od.data[o + 2] = src[q + 2]; od.data[o + 3] = 255; }
   oc.putImageData(od, 0, 0); return out;
 }
+function inkRatio(cv, H, b){ /* part de pixels foncés dans le cadre (lignes grises et bordure exclues) */
+  const d = pix(cv), SW = cv.width, SH = cv.height; let dark = 0, n = 0;
+  for (let j = 0; j < 24; j++) for (let i = 0; i < 80; i++){
+    const [x, y] = applyH(H, b.x + b.w * (0.04 + 0.92 * i / 79), b.y + b.h * (0.06 + 0.88 * j / 23)); const X = x | 0, Y = y | 0;
+    if (X < 0 || Y < 0 || X >= SW || Y >= SH) continue; const o = (Y * SW + X) * 4; n++; if (0.3 * d[o] + 0.59 * d[o + 1] + 0.11 * d[o + 2] < 110) dark++; }
+  return n ? dark / n : 1;
+}
+/* Garde-fou : une réponse sans contenu vaut 0, quoi qu'en dise l'IA */
+const NO_ANSWER = /^\s*(je\s*(ne)?\s*sais\s*pas|j'?\s*sais\s*pas|jsp|aucune\s*id[ée]e|pas\s*d'?\s*id[ée]e|je\s*n'?\s*ai\s*pas\s*compris|rien|néant|\?+|-+|\.+|x)\s*[.!?]*\s*$/i;
+const isNoAnswer = t => !String(t || "").replace(/\[illisible\]/g, "").replace(/\$/g, "").trim() || NO_ANSWER.test(String(t).replace(/\$/g, ""));
+function markFautes(t, fautes){ let out = t; for (const f of (Array.isArray(fautes) ? fautes : []).map(String).filter(x => x.trim()).slice(0, 8)){ const i = out.indexOf(f); if (i >= 0 && !out.slice(0, i).endsWith("⟦")) out = out.slice(0, i) + "⟦" + f + "⟧" + out.slice(i + f.length); } return out; }
 function pix(cv){ if (!cv._d) cv._d = cv.getContext("2d").getImageData(0, 0, cv.width, cv.height).data; return cv._d; }
 /* QCM: dark-pixel ratio inside each printed box */
 function readMarks(cv, H, b){
@@ -783,7 +807,10 @@ async function processPage(it){
     const Hm = boxes.length ? sheetToPhoto(it.found || detectAll(it.cv)) : null;
     const maxImg = LIM?.images?.maxCount || 1;
     const qcmB = Hm ? boxes.filter(b => b.type === "qcm") : [];
-    const aiQ = qids.filter(id => !qcmB.some(b => b.q === id));
+    let aiQ = qids.filter(id => !qcmB.some(b => b.q === id));
+    /* Économie : un cadre vide n'est pas envoyé à l'IA */
+    const blank = new Set(Hm ? boxes.filter(b => b.type !== "qcm" && aiQ.includes(b.q) && inkRatio(it.cv, Hm, b) < 0.003).map(b => b.q) : []);
+    aiQ = aiQ.filter(id => !blank.has(id));
     let arr = [], crops = {}, bon = null, marks = {};
     for (const b of qcmB){ marks[b.q] = readMarks(it.cv, Hm, b); crops[b.q] = warpBox(it.cv, Hm, b); }
     const aiB = boxes.filter(b => aiQ.includes(b.q));
@@ -792,9 +819,10 @@ async function processPage(it){
     if (ASSETS){ for (const k in crops){ try { const a = await ASSETS.upload(await toBlob(crops[k], .82)); crops[k].asset = a.id; } catch(e){} } }
     if (aiQ.length){
       if (!AI){ it.status = "erreur"; it.msg = "QR lu, mais l'IA n'est pas disponible pour lire les réponses rédigées."; await write("feuilles/" + c.id, upd, "update"); return scheduleRender(); }
-      it.msg = cropMode ? "Lecture des " + aiB.length + " cadre(s) découpés et correction…" : "Lecture de la page et correction (30 s à 1 min)…"; scheduleRender();
+      it.msg = cropMode ? "Lecture des " + aiQ.length + " cadre(s) découpés et correction…" : "Lecture de la page et correction (30 s à 1 min)…"; scheduleRender();
       if (cropMode){
-        const res = await ai(gradePrompt(c, cp, aiQ, "crops"), {images: await Promise.all(aiB.map(b => toBlob(crops[b.q], .9)))});
+        const aiB2 = aiB.filter(b => aiQ.includes(b.q));
+        const res = await ai(gradePrompt(c, cp, aiQ, "crops"), {images: await Promise.all(aiB2.map(b => toBlob(crops[b.q], .8)))});
         arr = Array.isArray(res?.reponses) ? res.reponses : []; bon = res;
       } else {
         const big = scaled(it.cv, 1600), W = big.width, H = big.height;
@@ -810,10 +838,12 @@ async function processPage(it){
       const ver = cp.version?.[qid] || "standard";
       const r = arr.find(x => x.id === qid) || {};
       let ans;
-      if (marks[qid]) ans = qcmAnswer(q, ver, marks[qid].coches, marks[qid].ambigu);
+      if (blank.has(qid)) ans = {transcription:"", annot:"", lisible:true, noteIA:0, note:null, commentaire:"Pas de réponse.", erreurs:["pas de réponse"], acquis:[], valide:false, auto:true};
+      else if (marks[qid]) ans = qcmAnswer(q, ver, marks[qid].coches, marks[qid].ambigu);
       else if (q.type === "qcm") ans = qcmAnswer(q, ver, (r.coches || []).map(Number), r.lisible === false);
-      else ans = {transcription:String(r.transcription ?? ""), annot:String(r.annotee ?? r.transcription ?? ""), lisible:r.lisible !== false,
+      else ans = {transcription:String(r.transcription ?? ""), annot:r.annotee != null ? String(r.annotee) : markFautes(String(r.transcription ?? ""), r.fautes), lisible:r.lisible !== false,
         noteIA:clamp(half(Number(r.note) || 0), 0, +q.points), note:null, commentaire:String(r.commentaire ?? ""), erreurs:(r.erreurs || []).map(String).slice(0, 4), acquis:(r.acquis || []).map(String).slice(0, 4), valide:false};
+      if (!ans.auto && isNoAnswer(ans.transcription)){ ans.noteIA = 0; ans.commentaire = "Pas de réponse : revois cette notion."; ans.erreurs = ["pas de réponse"]; ans.acquis = []; }
       ans.crop = crops[qid]?.asset || null;
       upd.copies[it.eleveId].answers[qid] = ans;
     }
@@ -849,13 +879,13 @@ ${blocks}
 
 Consignes :
 1. Transcris fidèlement ce que l'élève a écrit dans chaque cadre, sans corriger l'orthographe, ligne par ligne. ${MATH_RULE} Hébreu en caractères hébreux. Passage illisible : [illisible]. Cadre vide : "". Ignore ce qui est barré.
-2. "annotee" : la même transcription, avec chaque passage erroné entouré de ⟦ et ⟧ (toujours à l'extérieur des $…$).
-3. Note par pas de 0,5 selon les critères. Réponse vide = 0.
-4. "commentaire" : 2 à 3 phrases, tutoiement, bienveillant : d'abord ce qui est réussi, puis l'erreur précise et comment la corriger.
+2. "fautes" : liste des passages erronés, recopiés exactement tels qu'ils figurent dans la transcription (courts : quelques mots). Liste vide si tout est juste.
+3. Note par pas de 0,5, strictement selon les critères : chaque demi-point doit correspondre à un élément juste réellement écrit par l'élève. Jamais de point « d'encouragement ». Réponse vide, « je ne sais pas », « ? », énoncé recopié, hors sujet ou sans aucun élément juste = 0.
+4. "commentaire" : 1 ou 2 phrases courtes (40 mots maximum), tutoiement, bienveillant : ce qui est réussi, puis l'erreur précise et comment la corriger.
 5. "erreurs" : choisis dans les erreurs types (texte exact) ; sinon une étiquette de 2 à 5 mots. "acquis" : 1 à 3 étiquettes courtes.
 6. "lisible" : false si tu as dû deviner une partie importante de la réponse.
 7. ${NOSRC}
-${bm ? `8. Donne aussi pour la page "proprete" (0 à 1 : lisibilité, soin, ratures) et "orthographe" (0 à 1 : 1 = aucune faute).\n` : ""}Réponds uniquement en JSON : {"reponses":[{"id":"…","transcription":"…","annotee":"…","lisible":true,"note":0,"commentaire":"…","erreurs":["…"],"acquis":["…"],"coches":[]}]${bm ? ',"proprete":1,"orthographe":1' : ""}}`;
+${bm ? `8. Donne aussi pour la page "proprete" (0 à 1 : lisibilité, soin, ratures) et "orthographe" (0 à 1 : 1 = aucune faute).\n` : ""}Réponds uniquement en JSON : {"reponses":[{"id":"…","transcription":"…","fautes":["…"],"lisible":true,"note":0,"commentaire":"…","erreurs":["…"],"acquis":["…"],"coches":[]}]${bm ? ',"proprete":1,"orthographe":1' : ""}}`;
 }
 
 /* ================= CORRECTION ================= */
@@ -1092,9 +1122,9 @@ document.addEventListener("click", async ev => {
   if (d.zoom){ const z = document.createElement("div"); z.className = "zoom"; z.innerHTML = `<img alt="" src="${esc(d.zoom)}">`; z.onclick = () => z.remove(); document.body.append(z); return; }
   if (t.classList.contains("tab")){ if (d.v === "new"){ S.wizStep = S.coursId ? S.wizStep : 1; if (S.view === "edit") S.wizStep = 1; } return go(d.v); }
   if (d.go) return go(d.go);
-  if (d.edit){ S.editId = d.edit; return go("edit"); }
-  if (d.corr){ S.corrCtrl = d.corr; S.corrEleve = d.el || null; return go("correct"); }
-  if (d.an){ S.anCtrl = d.an; return go("analyse"); }
+  if (d.edit){ return openCtrl(d.edit); }
+  if (d.corr){ S.corrCtrl = d.corr; S.corrEleve = d.el || null; return openCtrl(d.corr, "corriger"); }
+  if (d.an){ S.anCtrl = d.an; return openCtrl(d.an, "classe"); }
   if (t.id === "demo"){ t.disabled = true; await loadDemo(); return; }
 
   /* classes */
@@ -1124,13 +1154,13 @@ document.addEventListener("click", async ev => {
     const p = S.params, co = store.cours.find(c => c.id === S.coursId), st = $("#gen-st");
     const id = uid(12); const base = {type:"controle", titre:p.titre || co?.titre || "Contrôle", matiere:p.matiere, niveau:p.niveau, classeId:p.classeId, coursId:S.coursId, duree:+p.duree || 55,
       differencie:!!p.differencie, statut:"brouillon", date:"", mise:{entete:ECOLE, police:15, lh:30, bareme:true, consignes:"Écris uniquement dans les cadres."}, questions:[], createdAt:new Date().toISOString()};
-    if (t.id === "genBlank"){ base.questions = [mapQ({points:4, lignes:6})]; await write("controles/" + id, base); S.editId = id; S.wizStep = 1; return go("edit"); }
+    if (t.id === "genBlank"){ base.questions = [mapQ({points:4, lignes:6})]; await write("controles/" + id, base); S.editId = id; S.wizStep = 1; S.step = "preparer"; return go("edit"); }
     t.disabled = true; st.innerHTML = `<span class="thinking">L'IA rédige le contrôle en 3 niveaux (1 à 2 minutes)…</span>`;
     try{
       const r = await ai(genPrompt(co, p, clamp(+p.nbq || 5, 1, 10)));
       const qs = (r?.questions || []).map(mapQ); if (!qs.length) throw {code:"invalid_json"};
       base.titre = p.titre || r.titre || base.titre; base.questions = qs;
-      await write("controles/" + id, base); S.editId = id; S.wizStep = 1; S.params.titre = ""; return go("edit");
+      await write("controles/" + id, base); S.editId = id; S.wizStep = 1; S.params.titre = ""; S.step = "preparer"; return go("edit");
     }catch(e){ st.textContent = aiErr(e?.code); t.disabled = false; }
     return;
   }
@@ -1160,7 +1190,7 @@ document.addEventListener("click", async ev => {
     if (t.id === "print") return printSheets(c, studentsOf(c));
     if (t.id === "print1") return printSheets(c, studentsOf(c).filter(e => e.id === S.previewEleve));
     if (t.id === "delCtrl"){ if (d.sure !== "1"){ d.sure = "1"; t.textContent = "Confirmer : supprimer contrôle et copies"; t.classList.add("pen"); return; }
-      await write("controles/" + c.id, null, "delete"); await write("feuilles/" + c.id, null, "delete"); return go("home"); }
+      await write("controles/" + c.id, null, "delete"); await write("feuilles/" + c.id, null, "delete"); return go("controles"); }
   }
 
   /* scan */
@@ -1222,7 +1252,7 @@ document.addEventListener("click", async ev => {
       if (!DL) return toast("Téléchargement indisponible dans cette vue.");
       try { await DL.save({filename:`Notes - ${C.titre}.csv`.replace(/[\\/:*?"<>|]/g, "-"), data:csv}); } catch(e){ if (e?.code !== "declined") toast("Téléchargement impossible."); } return; }
     if (t.id === "mkRatt"){ t.disabled = true; t.textContent = "Création…";
-      try { const id = await createRattrapage(C, eleveOf(C, S.corrEleve)); S.editId = id; return go("edit"); } catch(e){ toast(aiErr(e?.code)); t.disabled = false; t.textContent = "Rattrapage"; } return; }
+      try { const id = await createRattrapage(C, eleveOf(C, S.corrEleve)); S.editId = id; S.step = "preparer"; return go("edit"); } catch(e){ toast(aiErr(e?.code)); t.disabled = false; t.textContent = "Rattrapage"; } return; }
   }
 
   /* analyse */
@@ -1301,8 +1331,8 @@ document.addEventListener("change", async ev => {
    the AI is called directly with the school's Anthropic API key, files download normally. */
 let STANDALONE = false;
 const BLOBURL = {};
-const blobSrc = id => STANDALONE ? (BLOBURL[id] || (SB ? (wantUrl(id), "") : "")) : "/_blob/" + id;
-async function getBlob(id){ if (STANDALONE && SB) return cloudBlob(id); if (STANDALONE){ const b = await idbGet("blobs", id); if (!b) throw {code:"no_blob"}; return b; } return (await fetch("/_blob/" + id)).blob(); }
+const blobSrc = id => (typeof SERVERSTORE !== "undefined" && SERVERSTORE) ? "/api/files/" + id : STANDALONE ? (BLOBURL[id] || (SB ? (wantUrl(id), "") : "")) : "/_blob/" + id;
+async function getBlob(id){ if (SERVERSTORE){ const r = await fetch("/api/files/" + id, {credentials:"same-origin"}); if (!r.ok) throw {code:"no_blob"}; return r.blob(); } if (STANDALONE && SB) return cloudBlob(id); if (STANDALONE){ const b = await idbGet("blobs", id); if (!b) throw {code:"no_blob"}; return b; } return (await fetch("/_blob/" + id)).blob(); }
 
 function idbOpen(){ return new Promise((res, rej) => { const r = indexedDB.open("tikoun", 1);
   r.onupgradeneeded = () => { r.result.createObjectStore("docs"); r.result.createObjectStore("blobs"); }; r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
@@ -1376,6 +1406,11 @@ function vCode(){
 
 /* Sauvegarde page (standalone, local mode) */
 function vReglages(){
+  if (SERVERSTORE) return `<div class="head"><div><h2>Sauvegarde</h2><p>Les données de l'école (classes, contrôles, notes, photos des copies) sont stockées sur le serveur, partagées par tous les appareils connectés avec le code.</p></div></div>
+  ${SRV_PERSIST ? "" : `<p class="banner">⚠ Le serveur n'a pas de Volume : les données seront effacées au prochain déploiement. Railway → service → Volume, monté sur /data.</p>`}
+  <section class="panel grid"><div class="row"><button class="btn" id="srv-export">Télécharger une sauvegarde (données)</button><button class="btn ghost sm" id="srv-out">Se déconnecter de cet appareil</button></div>
+    <div class="grid" style="gap:6px;border-top:1px solid var(--line);padding-top:12px"><b>Données saisies avant sur cet appareil ?</b><div class="small muted">Si tu avais utilisé Tikoun en mode local sur ce navigateur, transfère-les sur le serveur (une seule fois).</div>
+    <div class="row"><button class="btn" id="srv-migrate">Transférer vers le serveur</button></div><div class="status" id="srv-st"></div></div></section>`;
   return `<div class="head"><div><h2>Sauvegarde</h2><p>${SB ? "Les données sont stockées en ligne." : "Les données sont stockées dans ce navigateur. Exporte régulièrement une sauvegarde : tu peux l'importer sur un autre ordinateur ou chez un collègue."}</p></div></div>
   ${SB ? `<section class="panel grid"><p class="small">Connecté : <b>${esc(SB_USER?.email || "—")}</b> · <button class="btn sm" id="sb-out">Se déconnecter</button></p>
     ${SB_USER ? `<div class="row"><button class="btn" id="sb-migrate">Transférer les données de cet appareil en ligne</button></div><div class="status" id="sb-st"></div>` : ""}</section>` : `
@@ -1401,8 +1436,10 @@ document.addEventListener("click", async ev => {
   const t = ev.target.closest("button"); if (!t || !STANDALONE) return;
   if (t.id === "cd-go"){ const st = $("#cd-st"), code = $("#cd-in").value.trim(); if (!code) return;
     st.innerHTML = `<span class="thinking">Vérification…</span>`;
-    const r = await fetch("/api/check", {headers:{"x-tikoun-code":code}}).catch(() => null);
-    if (r?.ok){ try { localStorage.setItem("tikoun.code", code); } catch(e){} NEED_CODE = false; refreshCaps(); render(); } else st.textContent = "Code incorrect.";
+    const r = await fetch("/api/login", {method:"POST", credentials:"same-origin", headers:{"content-type":"application/json"}, body:JSON.stringify({code})}).catch(() => null);
+    if (r?.ok){ try { localStorage.setItem("tikoun.code", code); } catch(e){} NEED_CODE = false;
+      if (window.TIKOUN_CONFIG?.storage === "server" && !SERVERSTORE) await startServer(); else { refreshCaps(); render(); } }
+    else st.textContent = "Code incorrect.";
     return; }
   if (t.id === "ex-go"){ try { await exportAll($("#ex-img").checked); $("#ex-st").textContent = "Sauvegarde téléchargée."; } catch(e){ $("#ex-st").textContent = "Export impossible."; } }
 });
@@ -1413,7 +1450,7 @@ document.addEventListener("change", async ev => {
 function refreshCaps(){
   if (!STANDALONE) return;
   const aiOk = !!cloudCfg().endpoint;
-  $("#caps").innerHTML = `IA ${aiOk ? "✓" : "✗ (serveur)"} · Données : ${SB ? (SB_USER ? "en ligne ✓" : "connexion requise") : "cet appareil"}`;
+  $("#caps").innerHTML = `IA ${aiOk ? "✓" : "✗ (serveur)"} · Données : ${SB ? (SB_USER ? "en ligne ✓" : "connexion requise") : SERVERSTORE ? (SRV_PERSIST ? "serveur ✓" : "serveur ⚠ temporaire") : (window.TIKOUN_CONFIG?.storage === "server" ? "code requis" : "cet appareil")}`;
 }
 
 
@@ -1495,6 +1532,144 @@ document.addEventListener("click", async ev => {
       st.textContent = `${Object.keys(docs).length} élément(s) et ${n} photo(s) transférés.`; } catch(e){ console.error(e); st.textContent = "Transfert impossible."; }
     return; }
 });
+
+/* ================= Stockage sur le serveur de l'école (Railway + Volume) ================= */
+let SERVERSTORE = false, SRV_PERSIST = true;
+async function serverDB(){
+  const r = await fetch("/api/db", {credentials:"same-origin"});
+  if (r.status === 401){ NEED_CODE = true; throw {code:"need_code"}; }
+  if (!r.ok) throw {code:"cloud_write", message:"serveur " + r.status};
+  const j = await r.json(); let epoch = j.epoch, seq = j.seq; SRV_PERSIST = j.persistent !== false;
+  const db = memDB(j.docs || {}, async (p, val, op, patch) => {
+    const u = "/api/db/doc?path=" + encodeURIComponent(p);
+    const res = op === "delete" ? await fetch(u, {method:"DELETE", credentials:"same-origin"})
+      : await fetch(u, {method:op === "update" ? "PATCH" : "PUT", credentials:"same-origin", headers:{"content-type":"application/json"}, body:JSON.stringify(op === "update" ? patch : val)});
+    if (!res.ok) throw {code:res.status === 401 ? "need_code" : "cloud_write", message:"serveur " + res.status};
+  });
+  let busy = false;
+  const pull = async () => {
+    if (busy || document.visibilityState === "hidden") return; busy = true;
+    try {
+      const r2 = await fetch(`/api/db/changes?since=${seq}&epoch=${encodeURIComponent(epoch)}`, {credentials:"same-origin"}); if (!r2.ok) return;
+      const k = await r2.json(); epoch = k.epoch; seq = k.seq;
+      if (k.reset){ const cur = db._all(); for (const p of Object.keys(cur)) if (!(p in k.docs)) db._remote(p, null); for (const [p, v] of Object.entries(k.docs)) if (JSON.stringify(cur[p]) !== JSON.stringify(v)) db._remote(p, v); }
+      else for (const c of k.changes || []){ if (JSON.stringify(db._all()[c.path]) !== JSON.stringify(c.data)) db._remote(c.path, c.data); }
+    } catch(e){} finally { busy = false; }
+  };
+  setInterval(pull, 8000); document.addEventListener("visibilitychange", pull);
+  return db;
+}
+const serverAssets = { upload: async (blob, want) => {
+  const r = await fetch("/api/files" + (want ? "?id=" + want : ""), {method:"POST", credentials:"same-origin", headers:{"content-type":blob.type || "image/jpeg"}, body:blob});
+  if (!r.ok) throw {code:"cloud_write"}; const {id} = await r.json(); return {id, url:"/api/files/" + id}; } };
+function subscribeStore(){
+  for (const col of ["classes","cours","controles"]) DB.collection(col).onSnapshot(s => { store[col] = s.docs.map(x => ({id:x.id, ...structuredClone(x.data())})); scheduleRender(); });
+  for (const col of ["ecritures","bilans"]) DB.collection(col).onSnapshot(s => { const m = {}; s.docs.forEach(x => m[x.id] = structuredClone(x.data())); store[col] = m; scheduleRender(); });
+  DB.collection("feuilles").onSnapshot(s => { const m = {}; s.docs.forEach(x => m[x.id] = structuredClone(x.data())); store.feuilles = m; scheduleRender(); });
+}
+async function startServer(){
+  $("#caps").textContent = "Connexion au serveur…";
+  try { DB = await serverDB(); ASSETS = serverAssets; SERVERSTORE = true; LOCAL = false; subscribeStore(); }
+  catch(e){ if (e?.code !== "need_code"){ console.error(e); toast("Serveur injoignable : réessaie dans un instant.", 6000); } }
+  refreshCaps(); render();
+}
+document.addEventListener("click", async ev => {
+  const t = ev.target.closest("button"); if (!t) return;
+  if (t.id === "srv-export"){ location.href = "/api/export"; return; }
+  if (t.id === "srv-out"){ await fetch("/api/logout", {method:"POST"}); location.reload(); return; }
+  if (t.id === "srv-migrate"){ const st = $("#srv-st"); st.innerHTML = `<span class="thinking">Transfert…</span>`;
+    try { IDB = IDB || await idbOpen(); const docs = await idbAll("docs"), blobs = await idbAll("blobs"); let n = 0;
+      for (const [k, b] of Object.entries(blobs)){ try { await serverAssets.upload(b, k); n++; } catch(e){} }
+      for (const [p, v] of Object.entries(docs)) await DB.doc(p).set(v);
+      st.textContent = `${Object.keys(docs).length} élément(s) et ${n} photo(s) transférés sur le serveur.`; } catch(e){ console.error(e); st.textContent = "Transfert impossible (rien à transférer sur cet appareil ?)."; }
+  }
+});
+
+
+/* ================= Navigation : de vraies pages, avec adresse, Précédent / Suivant ================= */
+const STEPS = [["preparer","Préparer"],["mise-en-page","Mise en page"],["imprimer","Imprimer"],["scanner","Scanner"],["corriger","Corriger"],["classe","Classe & rattrapage"]];
+const stepIdx = s => STEPS.findIndex(x => x[0] === s);
+function defaultStep(c){ return {brouillon:"preparer", imprime:"scanner", correction:"corriger", corrige:"classe"}[c?.statut] || "preparer"; }
+function routeOf(){
+  switch (S.view){
+    case "home": return "accueil";
+    case "new": return "nouveau";
+    case "edit": return `controle/${S.editId}/${S.step || "preparer"}`;
+    case "scan": return S.scanCtrl ? `controle/${S.scanCtrl}/scanner` : "scanner";
+    case "correct": return S.corrCtrl && S.inCtrl ? `controle/${S.corrCtrl}/corriger` : "correction";
+    case "analyse": return S.anCtrl && S.inCtrl ? `controle/${S.anCtrl}/classe` : "resultats";
+    case "reglages": return "sauvegarde";
+    default: return S.view;
+  }
+}
+function applyRoute(){
+  const [a, b, c] = location.hash.replace(/^#\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
+  S.inCtrl = null; S.scanCtrl = null;
+  if (a === "controle" && b){
+    const step = STEPS.some(x => x[0] === c) ? c : "preparer"; S.inCtrl = b; S.step = step;
+    if (stepIdx(step) <= 2){ S.view = "edit"; S.editId = b; }
+    else if (step === "scanner"){ S.view = "scan"; S.scanCtrl = b; }
+    else if (step === "corriger"){ S.view = "correct"; if (S.corrCtrl !== b){ S.corrCtrl = b; S.corrEleve = null; S.editTr = {}; S.editCom = {}; } }
+    else { S.view = "analyse"; S.anCtrl = b; }
+  }
+  else S.view = {accueil:"home", nouveau:"new", scanner:"scan", sauvegarde:"reglages", correction:"correct", resultats:"analyse"}[a] || (["controles","classes","suivi","banque","direction"].includes(a) ? a : "home");
+}
+function go(v){
+  S.view = v;
+  if (v === "edit"){ S.inCtrl = S.editId; if (stepIdx(S.step) < 0 || stepIdx(S.step) > 2) S.step = "preparer"; }
+  else if (v === "correct" && S.corrCtrl){ S.inCtrl = S.corrCtrl; S.step = "corriger"; }
+  else if (v === "analyse" && S.anCtrl){ S.inCtrl = S.anCtrl; S.step = "classe"; }
+  else if (v !== "scan") S.inCtrl = null;
+  const h = "#/" + routeOf();
+  if (location.hash !== h) location.hash = h; else { render(); window.scrollTo({top:0}); }
+}
+function openCtrl(id, step){ const c = ctrl(id); location.hash = `#/controle/${id}/${step || defaultStep(c)}`; }
+window.addEventListener("hashchange", () => { applyRoute(); render(); window.scrollTo({top:0}); });
+
+function navKey(){ if (S.inCtrl || S.view === "edit" || S.view === "new") return "controles"; return {home:"accueil", scan:"scanner", reglages:"sauvegarde", correct:"controles", analyse:"controles"}[S.view] || S.view; }
+
+/* Cadre commun d'un contrôle : en-tête, étapes, Précédent / Suivant */
+function ctrlProgress(c){
+  const f = feuille(c.id), studs = studentsOf(c), n = studs.length;
+  const sc = studs.filter(e => Object.keys(f?.copies?.[e.id]?.answers || {}).length).length, va = studs.filter(e => f?.copies?.[e.id]?.validee).length;
+  return {n, sc, va, printed:!!f && Object.keys(f.copies || {}).length > 0};
+}
+function ctrlFrame(c, inner){
+  const i = stepIdx(S.step), pr = ctrlProgress(c), cl = classe(c.classeId);
+  const doneUpTo = {brouillon:-1, imprime:2, correction:3, corrige:4}[c.statut] ?? -1;
+  const prev = STEPS[i - 1], next = STEPS[i + 1];
+  return `<div class="crumbs small"><a href="#/controles">← Tous les contrôles</a></div>
+  <div class="head"><div><div class="label">${c.type === "rattrapage" ? "Rattrapage" : "Contrôle"} · ${esc(c.matiere)} · ${esc(cl?.nom || "?")}${c.date ? " · " + esc(frDate(c.date)) : ""}</div><h2>${esc(c.titre)}</h2></div>
+    <div class="row">${chipStatut(c)}${pr.printed ? `<span class="chip">${pr.sc}/${pr.n} scannées · ${pr.va}/${pr.n} validées</span>` : ""}</div></div>
+  <nav class="stepper" aria-label="Étapes">${STEPS.map(([k, l], j) => `<a href="#/controle/${c.id}/${k}" class="st ${j === i ? "on" : j <= doneUpTo ? "done" : ""}" ${j === i ? 'aria-current="step"' : ""}><b>${j + 1}</b><span>${l}</span></a>`).join("")}</nav>
+  ${i <= 2 && c.statut === "brouillon" ? `<p class="small muted">Brouillon · chaque modification est enregistrée automatiquement.</p>` : ""}
+  ${inner}
+  <div class="stepnav">${prev ? `<a class="btn" href="#/controle/${c.id}/${prev[0]}">← ${prev[1]}</a>` : "<span></span>"}${next ? `<a class="btn primary" href="#/controle/${c.id}/${next[0]}">${next[1]} →</a>` : `<a class="btn" href="#/controles">Terminer</a>`}</div>`;
+}
+
+/* Liste des contrôles, rangés */
+function vControles(){
+  const f = S.cf = S.cf || {st:"tous", cl:"", mat:""};
+  const all = store.controles;
+  const cnt = k => all.filter(c => k === "tous" ? true : k === "rattrapage" ? c.type === "rattrapage" : c.type !== "rattrapage" && c.statut === k).length;
+  const list = all.filter(c => (f.st === "tous" || (f.st === "rattrapage" ? c.type === "rattrapage" : c.type !== "rattrapage" && c.statut === f.st)) && (!f.cl || c.classeId === f.cl) && (!f.mat || c.matiere === f.mat))
+    .sort((a, b) => (b.date || b.createdAt || "").localeCompare(a.date || a.createdAt || ""));
+  const groups = {}; list.forEach(c => { const k = (classe(c.classeId)?.nom || "Sans classe"); (groups[k] = groups[k] || []).push(c); });
+  const F = [["tous","Tous"],["brouillon","Brouillons"],["imprime","Imprimés"],["correction","En correction"],["corrige","Corrigés"],["rattrapage","Rattrapages"]];
+  const mats = [...new Set(all.map(c => c.matiere))];
+  return `<div class="head"><div><h2>Contrôles</h2><p>Tous les contrôles, rangés par classe. Un clic ouvre l'étape où tu en étais.</p></div>
+    <a class="btn primary" href="#/nouveau">+ Nouveau contrôle</a></div>
+  <div class="row">${F.map(([k, l]) => `<button class="fchip ${f.st === k ? "on" : ""}" data-cf="${k}">${l} <span class="num">${cnt(k)}</span></button>`).join("")}</div>
+  <div class="row"><select id="cf-cl" style="width:auto" aria-label="Classe"><option value="">Toutes les classes</option>${selOpts(store.classes, f.cl, x => x.nom, x => x.id)}</select>
+    <select id="cf-mat" style="width:auto" aria-label="Matière"><option value="">Toutes les matières</option>${selOpts(mats, f.mat)}</select></div>
+  ${Object.keys(groups).length ? Object.entries(groups).map(([g, cs]) => `<section class="panel"><h3>${esc(g)}</h3><div style="margin-top:4px">${cs.map(c => { const pr = ctrlProgress(c);
+    return `<a class="item link" href="#/controle/${c.id}/${defaultStep(c)}"><div><div class="t">${c.type === "rattrapage" ? '<span class="chip blue">Rattrapage</span> ' : ""}${esc(c.titre)}</div>
+      <div class="s">${esc(c.matiere)}${c.date ? " · " + esc(frDate(c.date)) : ""}${c.type === "rattrapage" ? " · " + esc(studentsOf(c).map(e => e.prenom + " " + e.nom).join(", ")) : ""}${pr.printed ? ` · ${pr.sc}/${pr.n} scannées · ${pr.va}/${pr.n} validées` : ""}</div></div>
+      <div class="row">${chipStatut(c)}<span class="muted">›</span></div></a>`; }).join("")}</div></section>`).join("")
+    : `<section class="panel empty">Aucun contrôle ${f.st !== "tous" ? "dans cette catégorie" : "pour l'instant"}.</section>`}`;
+}
+document.addEventListener("click", ev => { const t = ev.target.closest("[data-cf]"); if (!t) return; S.cf.st = t.dataset.cf; render(); });
+document.addEventListener("change", ev => { if (ev.target.id === "cf-cl"){ S.cf.cl = ev.target.value; render(); } if (ev.target.id === "cf-mat"){ S.cf.mat = ev.target.value; render(); } });
 
 
 /* ================= Shared: document pages → PDF ================= */
@@ -1739,7 +1914,7 @@ document.addEventListener("click", async ev => {
   if (d.dup){ const src = ctrl(d.dup); const cl = $("#dup-" + src.id).value; const id = uid(12);
     const {id:_, analyse, ...rest} = structuredClone(src);
     await write("controles/" + id, {...rest, classeId:cl, niveau:classe(cl)?.niveau || rest.niveau, statut:"brouillon", date:"", createdAt:new Date().toISOString(), sourceId:src.id});
-    S.editId = id; toast("Copie créée : modifie-la puis imprime."); return go("edit"); }
+    S.editId = id; S.step = "preparer"; toast("Copie créée : modifie-la puis imprime."); return go("edit"); }
   if (t.id === "rendu1"){ const C = ctrl(S.corrCtrl), e = eleveOf(C, S.corrEleve), st = $("#rd-st");
     await buildPdf([() => ({pages:renduPages(C, e), label:e.prenom})], `Copie corrigée - ${C.titre} - ${e.prenom} ${e.nom}.pdf`, st); return; }
   if (t.id === "renduAll"){ const C = ctrl(S.corrCtrl), f = feuille(C.id), st = $("#rd-st");
@@ -1777,7 +1952,7 @@ document.addEventListener("change", ev => {
 });
 
 /* ================= Boot ================= */
-render();
+applyRoute(); render();
 (async () => {
   if (!window.claude?.use){
     STANDALONE = true; $("#tabReglages").hidden = false;
@@ -1787,6 +1962,11 @@ render();
       const {data} = await SB.auth.getSession(); SB_USER = data?.session?.user || null;
       SB.auth.onAuthStateChange((ev, sess) => { if (!SB_USER && sess?.user){ SB_USER = sess.user; startCloud(); } });
       if (SB_USER) await startCloud(); else { refreshCaps(); render(); }
+      return;
+    }
+    if (window.TIKOUN_CONFIG?.storage === "server"){
+      const ok = await fetch("/api/check", {credentials:"same-origin", headers:{"x-tikoun-code":accessCode()}}).then(r => r.ok).catch(() => false);
+      if (ok) await startServer(); else { NEED_CODE = true; refreshCaps(); render(); }
       return;
     }
     try { DB = await localDB(); ASSETS = await localAssets(); } catch(e){ console.warn(e); DB = memDB(); LOCAL = true; }

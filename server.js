@@ -5,6 +5,8 @@
 //   SUPABASE_URL, SUPABASE_ANON_KEY : stockage en ligne partagé + comptes profs (facultatif, voir SUPABASE.md)
 //   MODEL_QUICK, MODEL_DEFAULT, MODEL_COMPLEX : modèles (défauts économiques ci-dessous)
 //   AI_MAX_PER_DAY     : plafond d'appels IA par jour (défaut 400)
+// Stockage : les données (classes, contrôles, notes) et les photos des copies sont gardées sur le serveur,
+// dans un Volume Railway (Railway → service → Volume, monté sur /data). Exige TIKOUN_CODE.
 const http = require("http"), fs = require("fs"), path = require("path"), crypto = require("crypto");
 const ROOT = __dirname, PORT = process.env.PORT || 3000;
 const TYPES = {".html":"text/html; charset=utf-8", ".js":"text/javascript; charset=utf-8", ".css":"text/css; charset=utf-8", ".json":"application/json",
@@ -19,6 +21,60 @@ function send(res, status, body, type = "text/plain; charset=utf-8", extra = {})
 }
 const sendJ = (res, status, obj) => send(res, status, JSON.stringify(obj), TYPES[".json"]);
 const same = (a, b) => { const x = Buffer.from(String(a)), y = Buffer.from(String(b)); return x.length === y.length && crypto.timingSafeEqual(x, y); };
+
+/* ---------- Stockage sur le serveur (Volume Railway) ---------- */
+const DATA = env("DATA_DIR") || env("RAILWAY_VOLUME_MOUNT_PATH") || path.join(ROOT, "data");
+const PERSISTENT = !!(env("DATA_DIR") || env("RAILWAY_VOLUME_MOUNT_PATH"));
+const DOCDIR = path.join(DATA, "docs"), FILEDIR = path.join(DATA, "files");
+fs.mkdirSync(DOCDIR, {recursive:true}); fs.mkdirSync(FILEDIR, {recursive:true});
+const DOCS = new Map();
+for (const f of fs.readdirSync(DOCDIR)) if (f.endsWith(".json")){ try { DOCS.set(decodeURIComponent(f.slice(0, -5)), JSON.parse(fs.readFileSync(path.join(DOCDIR, f), "utf8"))); } catch(e){ console.warn("Document illisible", f); } }
+const EPOCH = Date.now().toString(36) + crypto.randomBytes(3).toString("hex"); let SEQ = 0; const LOG = [];
+const PATH_OK = p => /^[A-Za-z0-9_\-.~:@+]{1,200}(\/[A-Za-z0-9_\-.~:@+]{1,200}){1,15}$/.test(p) && !p.split("/").some(x => x === "." || x === "..");
+const docFile = p => path.join(DOCDIR, encodeURIComponent(p) + ".json");
+function persist(p, data){
+  if (data == null){ DOCS.delete(p); fs.rmSync(docFile(p), {force:true}); }
+  else { DOCS.set(p, data); const tmp = docFile(p) + ".tmp"; fs.writeFileSync(tmp, JSON.stringify(data)); fs.renameSync(tmp, docFile(p)); }
+  LOG.push({seq:++SEQ, path:p}); if (LOG.length > 20000) LOG.splice(0, LOG.length - 20000);
+}
+const isObj = x => x && typeof x === "object" && !Array.isArray(x);
+const merge = (a, b) => { if (!isObj(a) || !isObj(b)) return b; const r = {...a}; for (const k of Object.keys(b)) r[k] = merge(a[k], b[k]); return r; };
+async function readBody(req, max){ const chunks = []; let size = 0; for await (const c of req){ size += c.length; if (size > max) throw new Error("too_large"); chunks.push(c); } return Buffer.concat(chunks); }
+const storageOn = () => !!env("TIKOUN_CODE") && !cloud();
+const TOKEN = () => crypto.createHash("sha256").update("tikoun:" + env("TIKOUN_CODE")).digest("hex");
+const cookieTok = req => ((req.headers.cookie || "").match(/(?:^|;\s*)tk=([a-f0-9]{64})/) || [])[1] || "";
+
+async function storage(req, res, url, p){
+  if (!storageOn()) return sendJ(res, 403, {error:{message:"Stockage serveur désactivé (définis TIKOUN_CODE)"}});
+  if (!(await authorized(req))) return sendJ(res, 401, {error:{message:"Code d'accès requis"}});
+  try {
+    if (p === "/api/db" && req.method === "GET") return sendJ(res, 200, {epoch:EPOCH, seq:SEQ, persistent:PERSISTENT, docs:Object.fromEntries(DOCS)});
+    if (p === "/api/db/changes" && req.method === "GET"){
+      const since = Number(url.searchParams.get("since")) || 0, ep = url.searchParams.get("epoch");
+      if (ep !== EPOCH || (LOG.length && since < LOG[0].seq - 1)) return sendJ(res, 200, {reset:true, epoch:EPOCH, seq:SEQ, docs:Object.fromEntries(DOCS)});
+      const changed = [...new Set(LOG.filter(l => l.seq > since).map(l => l.path))];
+      return sendJ(res, 200, {epoch:EPOCH, seq:SEQ, changes:changed.map(k => ({path:k, data:DOCS.has(k) ? DOCS.get(k) : null}))});
+    }
+    if (p === "/api/db/doc"){
+      const dp = url.searchParams.get("path") || ""; if (!PATH_OK(dp)) return sendJ(res, 400, {error:{message:"Chemin invalide"}});
+      if (req.method === "DELETE"){ persist(dp, null); return sendJ(res, 200, {seq:SEQ}); }
+      const body = JSON.parse((await readBody(req, 8e6)).toString("utf8") || "null");
+      if (!isObj(body)) return sendJ(res, 400, {error:{message:"Objet JSON attendu"}});
+      if (req.method === "PUT"){ persist(dp, body); return sendJ(res, 200, {seq:SEQ}); }
+      if (req.method === "PATCH"){ if (!DOCS.has(dp)) return sendJ(res, 404, {error:{message:"Document introuvable"}}); persist(dp, merge(DOCS.get(dp), body)); return sendJ(res, 200, {seq:SEQ}); }
+    }
+    if (p === "/api/files" && req.method === "POST"){
+      const want = url.searchParams.get("id") || "", id = /^[a-z0-9]{8,40}$/.test(want) ? want : crypto.randomBytes(10).toString("hex");
+      const buf = await readBody(req, 15e6); fs.writeFileSync(path.join(FILEDIR, id + ".jpg"), buf); return sendJ(res, 200, {id});
+    }
+    const m = p.match(/^\/api\/files\/([a-z0-9]{8,40})$/);
+    if (m && req.method === "GET"){ const f = path.join(FILEDIR, m[1] + ".jpg"); if (!fs.existsSync(f)) return send(res, 404, "Introuvable");
+      res.writeHead(200, {"Content-Type":"image/jpeg", "Cache-Control":"private, max-age=86400"}); return fs.createReadStream(f).pipe(res); }
+    if (p === "/api/export" && req.method === "GET") return send(res, 200, JSON.stringify({tikoun:1, at:new Date().toISOString(), docs:Object.fromEntries(DOCS), blobs:{}}), TYPES[".json"],
+      {"Content-Disposition":`attachment; filename="tikoun-sauvegarde-${new Date().toISOString().slice(0, 10)}.json"`});
+    return sendJ(res, 404, {error:{message:"Route inconnue"}});
+  } catch(e){ return sendJ(res, e.message === "too_large" ? 413 : 400, {error:{message:e.message === "too_large" ? "Trop lourd" : "Requête invalide"}}); }
+}
 
 // Garde-fous de dépense
 const day = () => new Date().toISOString().slice(0, 10);
@@ -35,7 +91,7 @@ async function authorized(req){
     const u = await fetch(env("SUPABASE_URL").replace(/\/+$/, "") + "/auth/v1/user", {headers:{authorization:req.headers.authorization || "", apikey:env("SUPABASE_ANON_KEY")}}).catch(() => null);
     if (u && u.ok) return true;
   }
-  if (env("TIKOUN_CODE")) return same(req.headers["x-tikoun-code"] || "", env("TIKOUN_CODE"));
+  if (env("TIKOUN_CODE")) return same(req.headers["x-tikoun-code"] || "", env("TIKOUN_CODE")) || same(cookieTok(req), TOKEN());
   return !cloud();   // ni comptes ni code : ouvert (déconseillé)
 }
 
@@ -62,17 +118,25 @@ http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, "http://x"); let p = decodeURIComponent(url.pathname);
     if (req.method === "POST" && p === "/api/ai") return await aiProxy(req, res);
+    if (req.method === "POST" && p === "/api/login"){
+      let code = ""; try { code = String(JSON.parse((await readBody(req, 1e4)).toString("utf8")).code || ""); } catch(e){}
+      if (!env("TIKOUN_CODE") || !same(code, env("TIKOUN_CODE"))) return sendJ(res, 401, {error:{message:"Code incorrect"}});
+      const secure = String(req.headers["x-forwarded-proto"] || "").includes("https") ? "; Secure" : "";
+      return send(res, 200, "{}", TYPES[".json"], {"Set-Cookie":`tk=${TOKEN()}; Path=/; HttpOnly; SameSite=Lax; Max-Age=31536000${secure}`});
+    }
+    if (req.method === "POST" && p === "/api/logout") return send(res, 200, "{}", TYPES[".json"], {"Set-Cookie":"tk=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0"});
+    if (p.startsWith("/api/db") || p.startsWith("/api/files") || p === "/api/export") return await storage(req, res, url, p);
     if (req.method !== "GET" && req.method !== "HEAD") return send(res, 405, "Méthode non autorisée");
     if (p === "/health") return send(res, 200, "ok");
     if (p === "/api/check") return sendJ(res, (await authorized(req)) ? 200 : 401, {});
     if (p === "/config.js"){
-      const cfg = {aiEndpoint:env("ANTHROPIC_API_KEY") ? "/api/ai" : "", codeRequired:!!env("TIKOUN_CODE") && !cloud(),
+      const cfg = {aiEndpoint:env("ANTHROPIC_API_KEY") ? "/api/ai" : "", codeRequired:!!env("TIKOUN_CODE") && !cloud(), storage:storageOn() ? "server" : "", persistent:PERSISTENT,
         ...(cloud() ? {supabaseUrl:env("SUPABASE_URL"), supabaseAnonKey:env("SUPABASE_ANON_KEY"), aiProxy:true} : {})};
       return send(res, 200, "window.TIKOUN_CONFIG = " + JSON.stringify(cfg) + ";\n", TYPES[".js"], {"Cache-Control":"no-store"});
     }
     if (p === "/" || p === "") p = "/index.html";
     const file = path.normalize(path.join(ROOT, p));
-    if (!file.startsWith(ROOT + path.sep) || p.split("/").some(s => s.startsWith(".")) || /server\.js$|package(-lock)?\.json$|railway\.json$/.test(file)) return send(res, 404, "Introuvable");
+    if (!file.startsWith(ROOT + path.sep) || file.startsWith(path.resolve(DATA)) || /^\/(data|src)(\/|$)/.test(p) || p.split("/").some(s => s.startsWith(".")) || /server\.js$|package(-lock)?\.json$|railway\.json$/.test(file)) return send(res, 404, "Introuvable");
     fs.stat(file, (err, st) => {
       if (err || !st.isFile()) return send(res, 404, "Introuvable");
       res.writeHead(200, {"Content-Type":TYPES[path.extname(file)] || "application/octet-stream", "X-Content-Type-Options":"nosniff", "Cache-Control":p === "/index.html" ? "no-cache" : "public, max-age=300"});
@@ -80,4 +144,4 @@ http.createServer(async (req, res) => {
       fs.createReadStream(file).pipe(res);
     });
   } catch(e){ send(res, 500, "Erreur serveur"); }
-}).listen(PORT, "0.0.0.0", () => console.log("Tikoun en ligne sur le port " + PORT + (cloud() ? " · stockage en ligne" : " · données dans les navigateurs") + (env("ANTHROPIC_API_KEY") ? " · IA serveur" : " · IA non configurée") + (env("TIKOUN_CODE") ? " · code d'accès" : "")));
+}).listen(PORT, "0.0.0.0", () => console.log("Tikoun en ligne sur le port " + PORT + (cloud() ? " · stockage en ligne" : " · données dans les navigateurs") + (env("ANTHROPIC_API_KEY") ? " · IA serveur" : " · IA non configurée") + (env("TIKOUN_CODE") ? " · code d'accès" : "") + (storageOn() ? " · stockage serveur " + (PERSISTENT ? "(volume " + DATA + ")" : "TEMPORAIRE : ajoute un Volume Railway monté sur /data") : "")));
