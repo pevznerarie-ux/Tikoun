@@ -1,16 +1,19 @@
-// Tikoun · serveur de l'établissement (Railway ou tout hébergeur Node) — aucune dépendance.
+// Mastery · serveur de la plateforme (Railway ou tout hébergeur Node) — aucune dépendance.
 // Il sert le site, garde les données (Volume Railway monté sur /data), gère les comptes des professeurs
 // et relaie l'IA avec la clé de l'école (jamais envoyée aux navigateurs).
 //
 // Variables d'environnement (Railway → Variables) :
 //   ANTHROPIC_API_KEY : clé IA de l'école
-//   TIKOUN_CODE       : code de l'établissement, demandé UNE fois pour créer le premier compte administrateur
-//   AI_MAX_PER_DAY    : plafond d'appels IA par jour (défaut 400)
+//   MASTERY_CODE      : code de l'établissement, demandé UNE fois pour créer le premier compte administrateur
+//                       (l'ancienne variable TIKOUN_CODE reste acceptée)
+//   AI_MAX_PER_DAY    : plafond d'appels IA par jour, tous comptes confondus (défaut 400)
+//   AI_MAX_PER_USER_DAY : plafond d'appels IA par jour et par professeur (défaut 80)
+//   SIGNUP            : "off" pour fermer l'inscription libre des professeurs (ouverte par défaut)
 //   MODEL_QUICK, MODEL_DEFAULT, MODEL_COMPLEX : modèles (défaut économique)
 const http = require("http"), fs = require("fs"), path = require("path"), crypto = require("crypto");
 const ROOT = __dirname, PORT = process.env.PORT || 3000;
 const TYPES = {".html":"text/html; charset=utf-8", ".js":"text/javascript; charset=utf-8", ".css":"text/css; charset=utf-8", ".json":"application/json",
-  ".md":"text/markdown; charset=utf-8", ".png":"image/png", ".jpg":"image/jpeg", ".svg":"image/svg+xml", ".ico":"image/x-icon", ".txt":"text/plain; charset=utf-8"};
+  ".md":"text/markdown; charset=utf-8", ".png":"image/png", ".jpg":"image/jpeg", ".svg":"image/svg+xml", ".ico":"image/x-icon", ".webmanifest":"application/manifest+json", ".txt":"text/plain; charset=utf-8"};
 const env = k => (process.env[k] || "").trim();
 const MODELS = () => ({quick:env("MODEL_QUICK") || "claude-haiku-4-5-20251001", default:env("MODEL_DEFAULT") || "claude-haiku-4-5-20251001", complex:env("MODEL_COMPLEX") || "claude-sonnet-5"});
 
@@ -37,8 +40,9 @@ const EPOCH = Date.now().toString(36) + crypto.randomBytes(3).toString("hex"); l
 const PATH_OK = p => /^[A-Za-z0-9_\-.~:@+]{1,200}(\/[A-Za-z0-9_\-.~:@+]{1,200}){1,15}$/.test(p) && !p.split("/").some(x => x === "." || x === "..");
 const docFile = p => path.join(DOCDIR, encodeURIComponent(p) + ".json");
 function persist(p, data){
+  const esp = (data || DOCS.get(p))?.espace || null, own = (data || DOCS.get(p))?.owner || null;
   if (data == null){ DOCS.delete(p); fs.rmSync(docFile(p), {force:true}); } else { DOCS.set(p, data); writeAtomic(docFile(p), data); }
-  LOG.push({seq:++SEQ, path:p}); if (LOG.length > 20000) LOG.splice(0, LOG.length - 20000);
+  LOG.push({seq:++SEQ, path:p, esp, own}); if (LOG.length > 20000) LOG.splice(0, LOG.length - 20000);
 }
 const isObj = x => x && typeof x === "object" && !Array.isArray(x);
 const merge = (a, b) => { if (!isObj(a) || !isObj(b)) return b; const r = {...a}; for (const k of Object.keys(b)) r[k] = merge(a[k], b[k]); return r; };
@@ -48,17 +52,30 @@ const USERS_F = path.join(DATA, "users.json"), SESS_F = path.join(DATA, "session
 let USERS = readJ(USERS_F, []); let SESS = readJ(SESS_F, {});
 for (const u of USERS) if (!u.plan){ u.plan = u.role === "admin" ? "pro" : "essentiel"; u.options = {exercices:u.role === "admin"}; }
 const saveUsers = () => writeAtomic(USERS_F, USERS);
+/* Espaces : chaque professeur inscrit seul a son espace privé (ses classes, ses élèves, ses contrôles).
+   Les comptes créés par un administrateur rejoignent l'espace de cet administrateur (classes partagées). */
+const firstAdmin = () => USERS.find(u => u.role === "admin");
+function migrateEspaces(){
+  let ch = false;
+  for (const u of USERS) if (!u.espace){ u.espace = u.role === "admin" ? u.id : (firstAdmin()?.espace || firstAdmin()?.id || u.id); ch = true; }
+  if (ch) saveUsers();
+  const def = firstAdmin()?.espace; if (!def) return;
+  for (const [k, v] of DOCS) if (isObj(v) && !v.espace){
+    const who = USERS.find(u => u.id === (v.owner || v.createdBy)); persist(k, {...v, espace:who?.espace || def});
+  }
+}
 let sessTimer = null; const saveSess = () => { clearTimeout(sessTimer); sessTimer = setTimeout(() => writeAtomic(SESS_F, SESS), 500); };
 const hashPw = (pw, salt = crypto.randomBytes(16).toString("hex")) => salt + ":" + crypto.scryptSync(String(pw), salt, 64).toString("hex");
 const checkPw = (pw, stored) => { const [salt, h] = String(stored || "").split(":"); if (!salt || !h) return false; return same(crypto.scryptSync(String(pw), salt, 64).toString("hex"), h); };
 /* Abonnements : « essentiel » (contrôles, correction, suivi) · « pro » (+ option Exercices, activée par la direction) */
 const PLANS = ["essentiel", "pro"];
 const entitled = u => !!u && u.plan === "pro" && !!u.options?.exercices;
-const pub = u => ({id:u.id, email:u.email, nom:u.nom, role:u.role, plan:u.plan || "essentiel", options:{exercices:!!u.options?.exercices}, can:{exercices:entitled(u)}, actif:u.actif !== false, createdAt:u.createdAt});
+const AFF = ["ecole", "nom", "les2"];
+const pub = u => ({id:u.id, email:u.email, nom:u.nom, role:u.role, ecole:u.ecole || null, affichage:AFF.includes(u.affichage) ? u.affichage : "les2", plan:u.plan || "essentiel", options:{exercices:!!u.options?.exercices}, can:{exercices:entitled(u)}, actif:u.actif !== false, statut:u.statut || "valide", planDemande:u.planDemande || null, createdAt:u.createdAt});
 const sidOf = req => ((req.headers.cookie || "").match(/(?:^|;\s*)sid=([a-f0-9]{64})/) || [])[1] || "";
 function userOf(req){
   const s = SESS[sidOf(req)]; if (!s || s.exp < Date.now()) return null;
-  const u = USERS.find(x => x.id === s.uid); return u && u.actif !== false ? u : null;
+  const u = USERS.find(x => x.id === s.uid); return u && u.actif !== false && (u.statut || "valide") === "valide" ? u : null;
 }
 function openSession(req, res, u, body = {}){
   const sid = crypto.randomBytes(32).toString("hex"); SESS[sid] = {uid:u.id, exp:Date.now() + 180 * 864e5}; saveSess();
@@ -73,26 +90,85 @@ const validEmail = e => /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/.test(e);
 /* Propriété : un prof modifie ses contrôles, cours, copies et bilans ; les classes sont communes ; l'admin peut tout. */
 const OWNED = ["controles","cours","feuilles","bilans"];
 function ownerOf(p){ const [col, id] = p.split("/"); if (col === "feuilles") return DOCS.get("controles/" + id)?.owner || DOCS.get(p)?.owner || null; return DOCS.get(p)?.owner || null; }
-const canWrite = (u, p) => { if (u.role === "admin") return true; const o = ownerOf(p); return !o || o === u.id; };
+function espaceFor(p, u){ const [col, id] = p.split("/"); const cur = DOCS.get(p); if (cur?.espace) return cur.espace; if (col === "feuilles") return DOCS.get("controles/" + id)?.espace || u.espace; return u.espace; }
+const visible = (u, v) => u.role === "admin" || (isObj(v) && (v.espace === u.espace || v.owner === u.id));
+const canWrite = (u, p) => { if (u.role === "admin") return true; const cur = DOCS.get(p); if (cur && cur.espace && cur.espace !== u.espace) return false; const o = ownerOf(p); return !o || o === u.id || !OWNED.includes(p.split("/")[0]); };
+const docsFor = u => Object.fromEntries([...DOCS].filter(([k, v]) => visible(u, v)));
+
+/* ---------- Annuaire officiel des établissements (data.education.gouv.fr, données ouvertes) ---------- */
+const ANNU = env("ANNUAIRE_URL") || "https://data.education.gouv.fr/api/explore/v2.1/catalog/datasets/fr-en-annuaire-education/records";
+const odsq = x => String(x || "").replace(/["\\]/g, " ").trim().slice(0, 80);
+const mapEt = r => ({uai:String(r.identifiant_de_l_etablissement || ""), nom:String(r.nom_etablissement || ""), adresse:[r.adresse_1, r.adresse_2].filter(Boolean).join(", "),
+  cp:String(r.code_postal || ""), ville:String(r.nom_commune || ""), type:String(r.type_etablissement || ""), statut:String(r.statut_public_prive || "")});
+const annuCache = new Map();
+async function annuaire(where){
+  if (annuCache.has(where)) return annuCache.get(where);
+  const r = await fetch(ANNU + "?limit=12&where=" + encodeURIComponent(where), {signal:AbortSignal.timeout(9000)});
+  if (!r.ok) throw new Error("annuaire_" + r.status);
+  const j = await r.json(); const list = (j.results || (j.records || []).map(x => x.record?.fields || x.fields || {})).map(mapEt).filter(x => x.nom && x.uai);
+  annuCache.set(where, list); if (annuCache.size > 500) annuCache.delete(annuCache.keys().next().value); return list;
+}
+async function searchEcoles(q, cp){
+  const parts = []; if (odsq(q)) parts.push(`"${odsq(q)}"`);
+  cp = String(cp || "").replace(/\s/g, ""); if (/^\d{5}$/.test(cp)) parts.push(`code_postal="${cp}"`); else if (/^\d{2,4}$/.test(cp)) parts.push(`startswith(code_postal, "${cp}")`);
+  return parts.length ? annuaire(parts.join(" AND ")) : [];
+}
+/* Établissement déclaré par un prof : vérifié si l'identifiant officiel (UAI) est retrouvé dans l'annuaire, sinon enregistré « non vérifié ». */
+async function checkEcole(e){
+  if (!isObj(e)) return null;
+  const uai = String(e.uai || "").toUpperCase().replace(/[^0-9A-Z]/g, "").slice(0, 10);
+  if (uai){
+    try { const hit = (await annuaire(`identifiant_de_l_etablissement="${uai}"`))[0]; if (hit) return {...hit, verifiee:true, source:"annuaire", at:new Date().toISOString()}; }
+    catch(err){ console.warn("Annuaire injoignable :", err.message); }
+  }
+  const nom = String(e.nom || "").trim().slice(0, 120), cp = String(e.cp || "").replace(/\s/g, "").slice(0, 5), ville = String(e.ville || "").trim().slice(0, 80);
+  if (!nom || !/^\d{5}$/.test(cp) || !ville) return {error:"Indique le nom de l'école, son code postal (5 chiffres) et sa ville"};
+  return {uai:"", nom, adresse:String(e.adresse || "").trim().slice(0, 160), cp, ville, type:"", statut:"", verifiee:false, source:uai ? "a_verifier" : "manuel", at:new Date().toISOString()};
+}
+const signupOpen = () => env("SIGNUP").toLowerCase() !== "off";
 
 async function accounts(req, res, url, p, u){
+  if (p === "/api/ecoles" && req.method === "GET"){
+    if (tooMany("ec:" + ipOf(req))) return sendJ(res, 429, {error:{message:"Trop de recherches, réessaie dans quelques minutes"}});
+    try { return sendJ(res, 200, {ecoles:await searchEcoles(url.searchParams.get("q"), url.searchParams.get("cp"))}); }
+    catch(e){ console.warn("Annuaire :", e.message); return sendJ(res, 502, {error:{message:"Annuaire officiel injoignable pour le moment : tu peux enregistrer ton école manuellement."}}); }
+  }
+  if (p === "/api/register" && req.method === "POST"){
+    if (!signupOpen()) return sendJ(res, 403, {error:{message:"Les inscriptions sont fermées"}});
+    if (tooMany(ipOf(req))) return sendJ(res, 429, {error:{message:"Trop d'essais, réessaie dans 15 minutes"}});
+    const b = await readJSON(req, 2e4) || {}; const email = String(b.email || "").trim().toLowerCase();
+    if (!validEmail(email)) return sendJ(res, 400, {error:{message:"E-mail invalide"}});
+    if (USERS.some(v => v.email === email)) return sendJ(res, 409, {error:{message:"Un compte existe déjà avec cet e-mail"}});
+    if (String(b.password || "").length < 8) return sendJ(res, 400, {error:{message:"Mot de passe : 8 caractères minimum"}});
+    if (!String(b.nom || "").trim()) return sendJ(res, 400, {error:{message:"Indique ton nom"}});
+    const ecole = await checkEcole(b.ecole); if (!ecole || ecole.error) return sendJ(res, 400, {error:{message:ecole?.error || "Indique ton école"}});
+    const id = crypto.randomBytes(8).toString("hex");
+    const planDemande = PLANS.includes(b.plan) ? b.plan : "essentiel";
+    const n = {id, email, nom:String(b.nom).trim().slice(0, 80), role:"prof", plan:"essentiel", planDemande, statut:"en_attente", options:{exercices:false}, espace:id, ecole, affichage:AFF.includes(b.affichage) ? b.affichage : "les2", pw:hashPw(b.password), createdAt:new Date().toISOString(), inscription:"libre"};
+    USERS.push(n); saveUsers(); console.log(`Inscription à valider · ${email} · ${planDemande} · ${ecole.nom} (${ecole.verifiee ? "vérifiée " + ecole.uai : "non vérifiée"})`);
+    return sendJ(res, 200, {pending:true, user:{nom:n.nom, email:n.email, ecole:n.ecole, planDemande}});
+  }
   if (p === "/api/me" && req.method === "GET") return u ? sendJ(res, 200, {user:pub(u)}) : sendJ(res, 401, {setup:USERS.length === 0});
   if (p === "/api/setup" && req.method === "POST"){
     if (USERS.length) return sendJ(res, 409, {error:{message:"Le compte administrateur existe déjà"}});
-    if (!env("TIKOUN_CODE")) return sendJ(res, 503, {error:{message:"Définis la variable TIKOUN_CODE sur le serveur"}});
+    if (!(env("MASTERY_CODE") || env("TIKOUN_CODE"))) return sendJ(res, 503, {error:{message:"Définis la variable MASTERY_CODE sur le serveur"}});
     if (tooMany(ipOf(req))) return sendJ(res, 429, {error:{message:"Trop d'essais, réessaie dans 15 minutes"}});
     const b = await readJSON(req, 1e4) || {};
-    if (!same(String(b.code || ""), env("TIKOUN_CODE"))) return sendJ(res, 401, {error:{message:"Code de l'établissement incorrect"}});
+    if (!same(String(b.code || ""), (env("MASTERY_CODE") || env("TIKOUN_CODE")))) return sendJ(res, 401, {error:{message:"Code de l'établissement incorrect"}});
     const email = String(b.email || "").trim().toLowerCase(); if (!validEmail(email) || String(b.password || "").length < 8) return sendJ(res, 400, {error:{message:"E-mail valide et mot de passe de 8 caractères minimum"}});
-    const a = {id:crypto.randomBytes(8).toString("hex"), email, nom:String(b.nom || "Direction").slice(0, 80), role:"admin", plan:"pro", options:{exercices:true}, pw:hashPw(b.password), createdAt:new Date().toISOString()};
-    USERS.push(a); saveUsers();
+    const aid = crypto.randomBytes(8).toString("hex");
+    const a = {id:aid, espace:aid, email, nom:String(b.nom || "Direction").slice(0, 80), role:"admin", plan:"pro", options:{exercices:true}, affichage:"les2", pw:hashPw(b.password), createdAt:new Date().toISOString()};
+    USERS.push(a); saveUsers(); migrateEspaces();
     for (const [k, v] of DOCS) if (OWNED.includes(k.split("/")[0]) && isObj(v) && !v.owner) persist(k, {...v, owner:a.id});   // données déjà saisies → à l'admin
     return openSession(req, res, a);
   }
   if (p === "/api/login" && req.method === "POST"){
     if (tooMany(ipOf(req))) return sendJ(res, 429, {error:{message:"Trop d'essais, réessaie dans 15 minutes"}});
     const b = await readJSON(req, 1e4) || {}; const x = USERS.find(v => v.email === String(b.email || "").trim().toLowerCase());
-    if (!x || x.actif === false || !checkPw(b.password, x.pw)) return sendJ(res, 401, {error:{message:"E-mail ou mot de passe incorrect"}});
+    if (!x || !checkPw(b.password, x.pw)) return sendJ(res, 401, {error:{message:"E-mail ou mot de passe incorrect"}});
+    if (x.statut === "en_attente") return sendJ(res, 403, {pending:true, error:{message:"Ton inscription est en attente de validation par l'équipe Mastery. Tu pourras te connecter dès qu'elle sera acceptée."}});
+    if (x.statut === "refuse") return sendJ(res, 403, {error:{message:"Ton inscription n'a pas été acceptée. Contacte l'équipe Mastery."}});
+    if (x.actif === false) return sendJ(res, 401, {error:{message:"Compte désactivé"}});
     return openSession(req, res, x, {mustChange:!!x.mustChange});
   }
   if (p === "/api/logout" && req.method === "POST"){ delete SESS[sidOf(req)]; saveSess(); return sendJ(res, 200, {}, {"Set-Cookie":"sid=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0"}); }
@@ -103,6 +179,13 @@ async function accounts(req, res, url, p, u){
     if (String(b.password || "").length < 8) return sendJ(res, 400, {error:{message:"8 caractères minimum"}});
     u.pw = hashPw(b.password); delete u.mustChange; saveUsers(); return sendJ(res, 200, {user:pub(u)});
   }
+  if (p === "/api/me" && req.method === "PATCH"){
+    const b = await readJSON(req, 2e4) || {};
+    if (b.nom && String(b.nom).trim()) u.nom = String(b.nom).trim().slice(0, 80);
+    if (AFF.includes(b.affichage)) u.affichage = b.affichage;
+    if (b.ecole){ const e = await checkEcole(b.ecole); if (!e || e.error) return sendJ(res, 400, {error:{message:e?.error || "École invalide"}}); u.ecole = e; }
+    saveUsers(); return sendJ(res, 200, {user:pub(u)});
+  }
   if (u.role !== "admin") return sendJ(res, 403, {error:{message:"Réservé à l'administrateur"}});
   if (p === "/api/users" && req.method === "GET") return sendJ(res, 200, {users:USERS.map(pub)});
   if (p === "/api/users" && req.method === "POST"){
@@ -110,7 +193,7 @@ async function accounts(req, res, url, p, u){
     if (!validEmail(email)) return sendJ(res, 400, {error:{message:"E-mail invalide"}});
     if (USERS.some(v => v.email === email)) return sendJ(res, 409, {error:{message:"Ce compte existe déjà"}});
     if (String(b.password || "").length < 8) return sendJ(res, 400, {error:{message:"Mot de passe provisoire : 8 caractères minimum"}});
-    const n = {id:crypto.randomBytes(8).toString("hex"), email, nom:String(b.nom || email).slice(0, 80), role:b.role === "admin" ? "admin" : "prof", plan:PLANS.includes(b.plan) ? b.plan : "essentiel", pw:hashPw(b.password), mustChange:true, createdAt:new Date().toISOString()};
+    const n = {id:crypto.randomBytes(8).toString("hex"), email, nom:String(b.nom || email).slice(0, 80), role:b.role === "admin" ? "admin" : "prof", plan:PLANS.includes(b.plan) ? b.plan : "essentiel", pw:hashPw(b.password), mustChange:true, createdAt:new Date().toISOString(), espace:u.espace, ecole:u.ecole || null, affichage:"les2"};
     n.options = {exercices:n.plan === "pro" && !!b.exercices};
     USERS.push(n); saveUsers(); return sendJ(res, 200, {user:pub(n)});
   }
@@ -123,6 +206,9 @@ async function accounts(req, res, url, p, u){
       if (b.nom) x.nom = String(b.nom).slice(0, 80);
       if (b.role === "admin" || b.role === "prof") x.role = b.role;
       if (typeof b.actif === "boolean") x.actif = b.actif;
+      if (b.statut === "valide" && x.statut !== "valide"){ x.statut = "valide"; x.valideAt = new Date().toISOString(); x.validePar = u.id;
+        if (!b.plan){ x.plan = x.planDemande || x.plan || "essentiel"; x.options = {...(x.options || {}), exercices:x.plan === "pro"}; } }
+      if (b.statut === "refuse"){ if (x.id === u.id) return sendJ(res, 400, {error:{message:"Impossible sur ton propre compte"}}); x.statut = "refuse"; for (const [k, v] of Object.entries(SESS)) if (v.uid === x.id) delete SESS[k]; }
       if (PLANS.includes(b.plan)){ x.plan = b.plan; if (b.plan !== "pro") x.options = {...(x.options || {}), exercices:false}; }
       if (typeof b.exercices === "boolean") x.options = {...(x.options || {}), exercices:b.exercices && (x.plan || "essentiel") === "pro"};
       if (b.password){ if (String(b.password).length < 8) return sendJ(res, 400, {error:{message:"8 caractères minimum"}}); x.pw = hashPw(b.password); x.mustChange = true; }
@@ -136,11 +222,11 @@ async function accounts(req, res, url, p, u){
 async function storage(req, res, url, p, u){
   if (!u) return sendJ(res, 401, {error:{message:"Connexion requise"}});
   try {
-    if (p === "/api/db" && req.method === "GET") return sendJ(res, 200, {epoch:EPOCH, seq:SEQ, persistent:PERSISTENT, docs:Object.fromEntries(DOCS)});
+    if (p === "/api/db" && req.method === "GET") return sendJ(res, 200, {epoch:EPOCH, seq:SEQ, persistent:PERSISTENT, docs:docsFor(u)});
     if (p === "/api/db/changes" && req.method === "GET"){
       const since = Number(url.searchParams.get("since")) || 0, ep = url.searchParams.get("epoch");
-      if (ep !== EPOCH || (LOG.length && since < LOG[0].seq - 1)) return sendJ(res, 200, {reset:true, epoch:EPOCH, seq:SEQ, docs:Object.fromEntries(DOCS)});
-      const changed = [...new Set(LOG.filter(l => l.seq > since).map(l => l.path))];
+      if (ep !== EPOCH || (LOG.length && since < LOG[0].seq - 1)) return sendJ(res, 200, {reset:true, epoch:EPOCH, seq:SEQ, docs:docsFor(u)});
+      const changed = [...new Set(LOG.filter(l => l.seq > since && (u.role === "admin" || l.esp === u.espace || l.own === u.id)).map(l => l.path))];
       return sendJ(res, 200, {epoch:EPOCH, seq:SEQ, changes:changed.map(k => ({path:k, data:DOCS.has(k) ? DOCS.get(k) : null}))});
     }
     if (p === "/api/db/doc"){
@@ -153,10 +239,11 @@ async function storage(req, res, url, p, u){
         return sendJ(res, 403, {error:{message:"Option Exercices non activée pour ce compte (abonnement Pro)"}});
       if (req.method === "PUT"){
         const own = cur?.owner || (col === "feuilles" ? ownerOf(dp) : null) || u.id;
-        persist(dp, OWNED.includes(col) ? {...body, owner:own} : {...body, ...(cur?.createdBy || !cur ? {createdBy:cur?.createdBy || u.id} : {})});
+        const esp = espaceFor(dp, u);
+        persist(dp, OWNED.includes(col) ? {...body, owner:own, espace:esp} : {...body, espace:esp, ...(cur?.createdBy || !cur ? {createdBy:cur?.createdBy || u.id} : {})});
         return sendJ(res, 200, {seq:SEQ});
       }
-      if (req.method === "PATCH"){ if (!cur) return sendJ(res, 404, {error:{message:"Document introuvable"}}); const {owner, ...rest} = body; persist(dp, merge(cur, rest)); return sendJ(res, 200, {seq:SEQ}); }
+      if (req.method === "PATCH"){ if (!cur) return sendJ(res, 404, {error:{message:"Document introuvable"}}); const {owner, espace, ...rest} = body; persist(dp, merge(cur, rest)); return sendJ(res, 200, {seq:SEQ}); }
     }
     if (p === "/api/files" && req.method === "POST"){
       const want = url.searchParams.get("id") || "", id = /^[a-z0-9]{8,40}$/.test(want) ? want : crypto.randomBytes(10).toString("hex");
@@ -166,8 +253,8 @@ async function storage(req, res, url, p, u){
     if (m && req.method === "GET"){ const f = path.join(FILEDIR, m[1] + ".jpg"); if (!fs.existsSync(f)) return send(res, 404, "Introuvable");
       res.writeHead(200, {"Content-Type":"image/jpeg", "Cache-Control":"private, max-age=86400"}); return fs.createReadStream(f).pipe(res); }
     if (p === "/api/export" && req.method === "GET"){
-      const docs = Object.fromEntries([...DOCS].filter(([k, v]) => u.role === "admin" || !OWNED.includes(k.split("/")[0]) || ownerOf(k) === u.id));
-      return send(res, 200, JSON.stringify({tikoun:1, at:new Date().toISOString(), docs, blobs:{}}), TYPES[".json"], {"Content-Disposition":`attachment; filename="tikoun-sauvegarde-${new Date().toISOString().slice(0, 10)}.json"`});
+      const docs = Object.fromEntries([...DOCS].filter(([k, v]) => visible(u, v) && (u.role === "admin" || !OWNED.includes(k.split("/")[0]) || ownerOf(k) === u.id)));
+      return send(res, 200, JSON.stringify({tikoun:1, at:new Date().toISOString(), docs, blobs:{}}), TYPES[".json"], {"Content-Disposition":`attachment; filename="mastery-sauvegarde-${new Date().toISOString().slice(0, 10)}.json"`});
     }
     return sendJ(res, 404, {error:{message:"Route inconnue"}});
   } catch(e){ return sendJ(res, e.message === "too_large" ? 413 : 400, {error:{message:e.message === "too_large" ? "Trop lourd" : "Requête invalide"}}); }
@@ -175,20 +262,23 @@ async function storage(req, res, url, p, u){
 
 /* ---------- IA ---------- */
 const day = () => new Date().toISOString().slice(0, 10);
-let counter = {day:day(), n:0}; const perIp = new Map();
-function allowCall(ip){
+let counter = {day:day(), n:0}; const perIp = new Map(), perUser = new Map();
+function allowCall(ip, uid){
+  const k = day() + ":" + uid, nu = perUser.get(k) || 0;
+  if (nu >= (Number(env("AI_MAX_PER_USER_DAY")) || 80)) return "Plafond quotidien d'appels IA atteint pour ton compte : réessaie demain.";
+  if (perUser.size > 5000) perUser.clear();
   if (counter.day !== day()) counter = {day:day(), n:0};
   if (counter.n >= (Number(env("AI_MAX_PER_DAY")) || 400)) return "Plafond quotidien d'appels IA atteint.";
   const now = Date.now(), list = (perIp.get(ip) || []).filter(t => now - t < 3600e3);
   if (list.length >= 120) return "Trop d'appels IA depuis cet appareil : réessaie dans une heure.";
-  list.push(now); perIp.set(ip, list); counter.n++; return null;
+  list.push(now); perIp.set(ip, list); counter.n++; perUser.set(k, nu + 1); return null;
 }
 async function aiProxy(req, res, u){
   if (!env("ANTHROPIC_API_KEY")) return sendJ(res, 503, {error:{message:"ANTHROPIC_API_KEY manquante sur le serveur"}});
   if (!u) return sendJ(res, 401, {error:{message:"Connexion requise"}});
   let body; try { body = await readJSON(req, 40e6); } catch(e){ return sendJ(res, e.message === "too_large" ? 413 : 400, {error:{message:"Requête invalide"}}); }
   if (body?.feature === "exercices" && !entitled(u)) return sendJ(res, 403, {error:{message:"Option Exercices non activée pour ce compte (abonnement Pro)"}});
-  const stop = allowCall(ipOf(req)); if (stop) return sendJ(res, 429, {error:{message:stop}});
+  const stop = allowCall(ipOf(req), u.id); if (stop) return sendJ(res, 429, {error:{message:stop}});
   const M = MODELS(), model = M[body?.tier] || M.default;
   const r = await fetch((env("ANTHROPIC_BASE_URL") || "https://api.anthropic.com") + "/v1/messages", {method:"POST",
     headers:{"content-type":"application/json", "x-api-key":env("ANTHROPIC_API_KEY"), "anthropic-version":"2023-06-01"},
@@ -201,6 +291,7 @@ async function aiProxy(req, res, u){
 }
 
 /* ---------- Routes ---------- */
+migrateEspaces();
 http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, "http://x"); let p = decodeURIComponent(url.pathname);
@@ -213,15 +304,16 @@ http.createServer(async (req, res) => {
     }
     if (req.method !== "GET" && req.method !== "HEAD") return send(res, 405, "Méthode non autorisée");
     if (p === "/config.js")
-      return send(res, 200, "window.TIKOUN_CONFIG = " + JSON.stringify({aiEndpoint:env("ANTHROPIC_API_KEY") ? "/api/ai" : "", storage:"server", accounts:true, persistent:PERSISTENT}) + ";\n", TYPES[".js"], {"Cache-Control":"no-store"});
-    if (p === "/" || p === "") p = "/index.html";
+      return send(res, 200, "window.TIKOUN_CONFIG = " + JSON.stringify({aiEndpoint:env("ANTHROPIC_API_KEY") ? "/api/ai" : "", storage:"server", accounts:true, signup:signupOpen(), persistent:PERSISTENT}) + ";\n", TYPES[".js"], {"Cache-Control":"no-store"});
+    if (p === "/" || p === "") p = u ? "/index.html" : "/landing.html";
+    if (p === "/app" || p === "/app/") p = "/index.html";
     const file = path.normalize(path.join(ROOT, p));
     if (!file.startsWith(ROOT + path.sep) || file.startsWith(path.resolve(DATA)) || /^\/(data|src)(\/|$)/.test(p) || p.split("/").some(s => s.startsWith(".")) || /server\.js$|package(-lock)?\.json$|railway\.json$/.test(file)) return send(res, 404, "Introuvable");
     fs.stat(file, (err, st) => {
       if (err || !st.isFile()) return send(res, 404, "Introuvable");
-      res.writeHead(200, {"Content-Type":TYPES[path.extname(file)] || "application/octet-stream", "X-Content-Type-Options":"nosniff", "Cache-Control":p === "/index.html" ? "no-cache" : "public, max-age=300"});
+      res.writeHead(200, {"Content-Type":TYPES[path.extname(file)] || "application/octet-stream", "X-Content-Type-Options":"nosniff", "Cache-Control":/\.html$/.test(p) ? "no-cache" : "public, max-age=300"});
       if (req.method === "HEAD") return res.end();
       fs.createReadStream(file).pipe(res);
     });
   } catch(e){ console.error(e); send(res, 500, "Erreur serveur"); }
-}).listen(PORT, "0.0.0.0", () => console.log(`Tikoun en ligne sur le port ${PORT} · ${USERS.length} compte(s) · ${env("ANTHROPIC_API_KEY") ? "IA serveur" : "IA non configurée"} · données ${PERSISTENT ? "sur le volume " + DATA : "TEMPORAIRES : ajoute un Volume Railway monté sur /data"}`));
+}).listen(PORT, "0.0.0.0", () => console.log(`Mastery en ligne sur le port ${PORT} · ${USERS.length} compte(s) · ${env("ANTHROPIC_API_KEY") ? "IA serveur" : "IA non configurée"} · données ${PERSISTENT ? "sur le volume " + DATA : "TEMPORAIRES : ajoute un Volume Railway monté sur /data"}`));

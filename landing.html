@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mastery · Contrôles, copies et rattrapage avec l'IA</title>
+<meta name="description" content="Mastery prépare vos contrôles à partir de votre cours, imprime une feuille par élève avec QR code, lit les copies scannées et propose une correction que vous validez.">
+<link rel="icon" type="image/png" href="/favicon-64.png">
+<link rel="apple-touch-icon" href="/icon-180.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#3D46E6">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lexend:wght@500;600;700&family=Source+Sans+3:wght@400;600;700&family=Caveat:wght@600&display=swap">
+<style>
+:root{
+  --paper:#F6F7FC; --surface:#FFFFFF; --surface-2:#EEF0FA; --ink:#1A1D3A; --muted:#5B6180; --line:#DFE2F0;
+  --blue:#3D46E6; --blue-soft:#ECEBFD; --pen:#D2372F; --pen-soft:#FDECEA; --ok:#1E7A4C; --ok-soft:#E3F3EA;
+  --grad:linear-gradient(120deg,#7B5CF5 0%,#3D46E6 45%,#2A8CFF 100%);
+  --display:"Lexend",ui-sans-serif,system-ui,sans-serif; --body:"Source Sans 3",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --shadow:0 1px 2px rgba(26,29,58,.06),0 12px 32px -12px rgba(61,70,230,.25);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#0E1120; --surface:#151931; --surface-2:#1C2140; --ink:#E9EBF7; --muted:#A0A6C3; --line:#2A3056;
+    --blue:#8E97FF; --blue-soft:#23224A; --pen:#FF7A6E; --pen-soft:#3A1C1A; --ok:#4FC98D; --ok-soft:#15301F;
+    --shadow:0 1px 2px rgba(0,0,0,.3),0 16px 40px -16px rgba(0,0,0,.6);
+  }
+  :root:not([data-theme="light"]) .wm{filter:brightness(0) invert(.93)}
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--body);font-size:17px;line-height:1.55;-webkit-font-smoothing:antialiased}
+h1,h2,h3{font-family:var(--display);margin:0;line-height:1.12;letter-spacing:-.015em;text-wrap:balance}
+p{margin:0}
+a{color:inherit}
+.wrap{max-width:1120px;margin:0 auto;padding:0 20px}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:12px 20px;border-radius:12px;font-weight:700;font-size:16px;text-decoration:none;border:1px solid var(--line);background:var(--surface);color:var(--ink);white-space:nowrap;transition:transform .15s,box-shadow .15s}
+.btn:hover{transform:translateY(-1px)}
+.btn.primary{background:var(--grad);color:#fff;border-color:transparent;box-shadow:0 8px 20px -8px rgba(61,70,230,.6)}
+.btn.sm{padding:9px 14px;font-size:15px;border-radius:10px}
+.btn:focus-visible{outline:3px solid var(--blue);outline-offset:2px}
+/* nav */
+.nav{position:sticky;top:0;z-index:10;background:color-mix(in srgb,var(--paper) 86%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.nav .wrap{display:flex;align-items:center;justify-content:space-between;gap:16px;height:64px}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none}
+.brand .mk{height:32px}.brand .wm{height:21px}
+.links{display:flex;align-items:center;gap:22px}
+.links a.l{text-decoration:none;color:var(--muted);font-weight:600;font-size:15px}
+.links a.l:hover{color:var(--ink)}
+/* hero */
+.hero{padding:72px 0 56px;position:relative;overflow:hidden}
+.hero::before{content:"";position:absolute;inset:-40% -10% auto auto;width:720px;height:720px;background:radial-gradient(closest-side,rgba(123,92,245,.18),transparent);pointer-events:none}
+.hero .wrap{display:grid;grid-template-columns:1.05fr .95fr;gap:48px;align-items:center;position:relative}
+.badge{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:999px;background:var(--blue-soft);color:var(--blue);font-weight:700;font-size:14px}
+.badge i{width:8px;height:8px;border-radius:50%;background:var(--grad)}
+.hero h1{font-size:clamp(34px,5vw,56px);margin:18px 0 18px}
+.hero h1 em{font-style:normal;background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero .lead{font-size:19px;color:var(--muted);max-width:34em}
+.cta{display:flex;flex-wrap:wrap;gap:12px;margin-top:28px}
+.note{margin-top:14px;font-size:14px;color:var(--muted)}
+/* sheet mock */
+.mock{position:relative;justify-self:center;width:min(420px,100%)}
+.sheet{background:#fff;color:#1A1D3A;border-radius:14px;box-shadow:var(--shadow);padding:26px 26px 22px;position:relative;aspect-ratio:1/1.22;border:1px solid #E4E6F2}
+.qr{position:absolute;width:30px;height:30px;background:
+  linear-gradient(#1A1D3A,#1A1D3A) 0 0/10px 10px no-repeat,linear-gradient(#1A1D3A,#1A1D3A) 20px 0/10px 10px no-repeat,linear-gradient(#1A1D3A,#1A1D3A) 0 20px/10px 10px no-repeat,
+  linear-gradient(#1A1D3A,#1A1D3A) 12px 12px/6px 6px no-repeat;border:2px solid #1A1D3A;border-radius:3px}
+.qr.tl{top:12px;left:12px}.qr.tr{top:12px;right:12px}.qr.bl{bottom:12px;left:12px}.qr.br{bottom:12px;right:12px}
+.sh-h{margin:18px 0 14px 34px}
+.sh-h small{display:block;font-size:11px;color:#6B7090;letter-spacing:.04em;text-transform:uppercase}
+.sh-h b{font-family:var(--display);font-size:17px}
+.qz{border:1.5px solid #D6D9EA;border-radius:8px;padding:10px 12px;margin-top:12px;font-size:13px}
+.qz .t{font-weight:700;font-size:12.5px;margin-bottom:6px;display:flex;justify-content:space-between}
+.hand{font-family:"Caveat",cursive;font-size:21px;line-height:1.1;color:#27306B}
+.err{background:#FDECEA;border-bottom:2px solid #D2372F;border-radius:2px;padding:0 2px}
+.fix{font-family:"Caveat",cursive;color:#D2372F;font-size:18px;margin-left:6px}
+.grade{position:absolute;top:30px;right:64px;font-family:"Caveat",cursive;font-size:34px;color:#D2372F;transform:rotate(-8deg);border:2px solid #D2372F;border-radius:50%;width:64px;height:64px;display:grid;place-items:center;line-height:1}
+.grade small{font-size:17px}
+.float{position:absolute;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:12px;padding:10px 14px;box-shadow:var(--shadow);font-size:14px;font-weight:600;display:flex;align-items:center;gap:8px}
+.float .dot{width:10px;height:10px;border-radius:50%}
+.f1{left:-34px;bottom:70px}.f2{right:-26px;top:-18px}
+/* sections */
+section{padding:72px 0}
+.sec-h{max-width:640px;margin-bottom:36px}
+.kicker{font-family:var(--display);font-weight:600;font-size:14px;letter-spacing:.08em;text-transform:uppercase;color:var(--blue)}
+.sec-h h2{font-size:clamp(28px,3.4vw,40px);margin:10px 0 12px}
+.sec-h p{color:var(--muted);font-size:18px}
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;counter-reset:s}
+.step{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:22px;position:relative}
+.step::before{counter-increment:s;content:counter(s);display:grid;place-items:center;width:34px;height:34px;border-radius:10px;background:var(--grad);color:#fff;font-family:var(--display);font-weight:700;margin-bottom:14px}
+.step h3{font-size:18px;margin-bottom:8px}
+.step p{color:var(--muted);font-size:15.5px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:22px}
+.card .ic{width:40px;height:40px;border-radius:12px;background:var(--blue-soft);color:var(--blue);display:grid;place-items:center;margin-bottom:14px}
+.card h3{font-size:17px;margin-bottom:6px}
+.card p{color:var(--muted);font-size:15.5px}
+.card .tag{display:inline-block;margin-left:6px;font-size:12px;font-weight:700;padding:2px 8px;border-radius:999px;background:var(--blue-soft);color:var(--blue);vertical-align:middle;font-family:var(--body)}
+.band{background:var(--surface);border-block:1px solid var(--line)}
+.split{display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:center}
+.checks{list-style:none;padding:0;margin:0;display:grid;gap:14px}
+.checks li{display:grid;grid-template-columns:28px 1fr;gap:10px}
+.checks li::before{content:"✓";display:grid;place-items:center;width:24px;height:24px;border-radius:8px;background:var(--grad);color:#fff;font-weight:700;font-size:14px;margin-top:2px}
+.checks li b{display:block}
+.checks li span{color:var(--muted);font-size:15.5px}
+.flow{background:var(--surface-2);border-radius:18px;padding:22px;display:grid;gap:10px}
+.flow .row{display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:15px}
+.flow .row b{font-family:var(--display);font-weight:600}
+.flow .pill{margin-left:auto;font-size:12.5px;font-weight:700;padding:3px 9px;border-radius:999px}
+.p-ok{background:var(--ok-soft);color:var(--ok)}.p-ai{background:var(--blue-soft);color:var(--blue)}.p-pen{background:var(--pen-soft);color:var(--pen)}
+.plans{display:grid;grid-template-columns:1fr 1fr;gap:18px;max-width:880px}
+.plan{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:28px;display:flex;flex-direction:column;gap:14px}
+.plan.pro{border:2px solid transparent;background:linear-gradient(var(--surface),var(--surface)) padding-box,var(--grad) border-box}
+.plan h3{font-size:22px}
+.price{font-family:var(--display);font-size:30px;font-weight:700}
+.price small{font-family:var(--body);font-size:15px;font-weight:600;color:var(--muted);margin-left:6px}
+.plan ul{margin:0;padding-left:20px;color:var(--muted);display:grid;gap:6px;font-size:15.5px}
+.plan .btn{margin-top:auto;justify-content:center}
+.join{counter-reset:s;display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:8px}
+.faq{max-width:760px;display:grid;gap:10px}
+details{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
+summary{cursor:pointer;font-weight:700;font-family:var(--display);font-size:16.5px;list-style:none;display:flex;justify-content:space-between;gap:12px}
+summary::after{content:"+";color:var(--blue);font-size:22px;line-height:1}
+details[open] summary::after{content:"–"}
+details p{color:var(--muted);margin-top:10px;font-size:15.5px}
+.final{text-align:center;padding:64px 20px;border-radius:24px;background:var(--grad);color:#fff;margin:0 0 72px}
+.final h2{font-size:clamp(26px,3.4vw,38px);margin-bottom:12px}
+.final p{opacity:.9;max-width:34em;margin:0 auto 24px}
+.final .btn{background:#fff;color:#2B2FB8;border-color:#fff}
+footer{border-top:1px solid var(--line);padding:26px 0;color:var(--muted);font-size:14px}
+footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+@media (max-width:900px){
+  .hero .wrap,.split{grid-template-columns:1fr}
+  .mock{margin-top:12px}
+  .steps{grid-template-columns:1fr 1fr}
+  .grid,.join{grid-template-columns:1fr 1fr}
+  .links a.l{display:none}
+  .f1{left:-6px}.f2{right:-6px}
+}
+@media (max-width:600px){
+  body{font-size:16px}
+  .wrap{padding:0 16px}
+  .hero{padding:44px 0 36px}
+  section{padding:52px 0}
+  .steps,.grid,.join,.plans{grid-template-columns:1fr}
+  .brand .wm{display:none}
+  .links{gap:8px}.nav .btn.sm{padding:8px 11px;font-size:14px}
+  .float{font-size:12.5px;padding:8px 10px}
+  .grade{width:56px;height:56px;font-size:26px;top:auto;bottom:70px;right:26px}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="/" aria-label="Mastery, accueil"><img class="mk" src="/logo-mark.png" alt=""><img class="wm" src="/logo-word.png" alt="Mastery"></a>
+    <nav class="links" aria-label="Sections">
+      <a class="l" href="#fonctionnement">Fonctionnement</a>
+      <a class="l" href="#fonctionnalites">Fonctionnalités</a>
+      <a class="l" href="#forfaits">Forfaits</a>
+      <a class="btn sm ghost" href="/app#/connexion">Se connecter</a>
+      <a class="btn sm primary" href="/app#/inscription">Rejoindre la bêta</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+<div class="hero">
+  <div class="wrap">
+    <div>
+      <span class="badge"><i></i>Bêta gratuite · ouverte aux professeurs</span>
+      <h1>Du cours à la copie corrigée, <em>sans y passer vos soirées.</em></h1>
+      <p class="lead">Mastery prépare vos contrôles à partir de votre cours, imprime une feuille personnalisée par élève, lit les copies scannées et vous propose une correction. Vous gardez toujours le dernier mot.</p>
+      <div class="cta">
+        <a class="btn primary" href="/app#/inscription">Créer mon compte professeur</a>
+        <a class="btn" href="#fonctionnement">Voir comment ça marche</a>
+      </div>
+      <p class="note">Gratuit pendant la bêta · inscription validée par l'équipe Mastery</p>
+    </div>
+
+    <div class="mock" aria-hidden="true">
+      <div class="sheet">
+        <span class="qr tl"></span><span class="qr tr"></span><span class="qr bl"></span><span class="qr br"></span>
+        <div class="sh-h"><small>Contrôle · Mathématiques · 4e</small><b>Les fractions</b></div>
+        <div class="grade">14<small>/20</small></div>
+        <div class="qz"><div class="t"><span>1. Calcule 2/3 + 1/6</span><span>/4</span></div>
+          <div class="hand">= 4/6 + 1/6 = 5/6 ✓</div></div>
+        <div class="qz"><div class="t"><span>2. Simplifie 18/24</span><span>/3</span></div>
+          <div class="hand"><span class="err">= 9/13</span><span class="fix">→ 3/4</span></div></div>
+        <div class="qz"><div class="t"><span>3. Coche les fractions égales à 1/2</span><span>/3</span></div>
+          <div class="hand">☑ 2/4 &nbsp; ☐ 3/5 &nbsp; ☑ 5/10</div></div>
+      </div>
+      <div class="float f1"><span class="dot" style="background:#2A8CFF"></span>Copie lue et corrigée · à valider</div>
+      <div class="float f2"><span class="dot" style="background:#1E7A4C"></span>QR : Léa M. · page 1</div>
+    </div>
+  </div>
+</div>
+
+<section id="fonctionnement">
+  <div class="wrap">
+    <div class="sec-h"><div class="kicker">Fonctionnement</div><h2>Quatre étapes, de la préparation à la correction</h2><p>Le même outil vous accompagne du cours jusqu'au bilan de la classe.</p></div>
+    <div class="steps">
+      <div class="step"><h3>Importez votre cours</h3><p>Un PDF, des photos des pages ou du texte collé. Mastery s'appuie uniquement sur votre contenu.</p></div>
+      <div class="step"><h3>Obtenez votre contrôle</h3><p>L'IA propose les questions, le corrigé et le barème, en trois niveaux si vous le souhaitez. Vous modifiez tout.</p></div>
+      <div class="step"><h3>Imprimez une feuille par élève</h3><p>Chaque feuille porte un QR code qui identifie l'élève et la page, avec des cadres de réponse.</p></div>
+      <div class="step"><h3>Scannez et validez</h3><p>Au téléphone ou à la photocopieuse. L'écriture est lue, les erreurs surlignées ; vous validez chaque note.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="fonctionnalites" class="band">
+  <div class="wrap">
+    <div class="sec-h"><div class="kicker">Fonctionnalités</div><h2>Tout ce qu'il faut autour d'un contrôle</h2></div>
+    <div class="grid">
+      <div class="card"><div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></svg></div><h3>Vue de la classe</h3><p>Taux de réussite par question et erreurs les plus fréquentes : vous voyez tout de suite ce qui n'a pas été compris.</p></div>
+      <div class="card"><div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 4v5h-5"/></svg></div><h3>Rattrapage individuel</h3><p>Pour chaque élève sous la moyenne, une feuille ciblée sur ses erreurs, imprimable et scannable.</p></div>
+      <div class="card"><div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4l10-10-4-4L4 16v4z"/><path d="M13 7l4 4"/></svg></div><h3>Feuilles différenciées</h3><p>La même notion en trois niveaux (socle, standard, approfondi), attribués selon le niveau de chaque élève.</p></div>
+      <div class="card"><div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M8 12l3 3 5-6"/></svg></div><h3>QCM corrigés sans IA</h3><p>Les cases cochées sont lues directement sur le scan : rapide, fiable et économique.</p></div>
+      <div class="card"><div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/></svg></div><h3>Suivi de chaque élève</h3><p>Historique des notes par matière et proposition d'appréciation, à relire avant de l'utiliser.</p></div>
+      <div class="card"><div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/><path d="M9 14h6M9 18h4"/></svg></div><h3>Copies rendues en PDF</h3><p>Chaque élève reçoit sa copie corrigée : note, commentaires et corrections, prête à imprimer ou envoyer.</p></div>
+      <div class="card"><div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5"/><path d="M4 12h9"/><path d="M13 5v14"/><path d="M17 9l3 3-3 3"/></svg></div><h3>Toutes les matières</h3><p>Formules mathématiques, rédaction, traduction, langues : l'en-tête et le barème s'adaptent.</p></div>
+      <div class="card"><div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.5 5 5.5.8-4 3.9.9 5.5L12 15.6 7.1 18.2 8 12.7 4 8.8 9.5 8z"/></svg></div><h3>Exercices d'entraînement<span class="tag">Pro</span></h3><p>Des feuilles d'exercices tirées du cours, régénérables à volonté, imprimables et corrigées au scan.</p></div>
+      <div class="card"><div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div><h3>Votre espace privé</h3><p>Vos classes, vos élèves et vos copies ne sont visibles que par vous.</p></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap split">
+    <div>
+      <div class="kicker">Le professeur décide</div>
+      <h2 style="font-size:clamp(28px,3.4vw,40px);margin:10px 0 18px">L'IA propose, vous validez</h2>
+      <ul class="checks">
+        <li><div><b>Chaque question est modifiable</b><span>Énoncé, corrigé, critères, points et mise en page : rien n'est imposé.</span></div></li>
+        <li><div><b>Aucune note sans votre accord</b><span>La correction proposée reste un brouillon jusqu'à ce que vous validiez la copie.</span></div></li>
+        <li><div><b>Transcriptions vérifiables</b><span>Vous voyez le scan de l'élève à côté de ce que l'IA a lu, et vous corrigez si besoin.</span></div></li>
+        <li><div><b>Pas de réponse, pas de points</b><span>Une case vide ou un « je ne sais pas » est détecté et noté zéro.</span></div></li>
+      </ul>
+    </div>
+    <div class="flow" aria-hidden="true">
+      <div class="row"><b>Q1</b> Réponse lue : « 5/6 »<span class="pill p-ok">4 / 4</span></div>
+      <div class="row"><b>Q2</b> Erreur de simplification<span class="pill p-pen">1 / 3</span></div>
+      <div class="row"><b>Q3</b> QCM lu sur le scan<span class="pill p-ok">3 / 3</span></div>
+      <div class="row"><b>Total</b> Correction proposée<span class="pill p-ai">à valider</span></div>
+    </div>
+  </div>
+</section>
+
+<section id="forfaits" class="band">
+  <div class="wrap">
+    <div class="sec-h"><div class="kicker">Forfaits</div><h2>Gratuit pendant la bêta</h2><p>Choisissez votre forfait à l'inscription. Aucun paiement n'est demandé pendant la phase bêta.</p></div>
+    <div class="plans">
+      <div class="plan">
+        <h3>Essentiel</h3>
+        <div class="price">0 €<small>pendant la bêta</small></div>
+        <ul>
+          <li>Contrôles générés à partir de vos cours</li>
+          <li>Feuilles par élève avec QR code</li>
+          <li>Scan, lecture de l'écriture et correction</li>
+          <li>Vue de la classe et suivi des élèves</li>
+          <li>Rattrapages individuels</li>
+        </ul>
+        <a class="btn" href="/app#/inscription/essentiel">Choisir Essentiel</a>
+      </div>
+      <div class="plan pro">
+        <h3>Pro</h3>
+        <div class="price">0 €<small>pendant la bêta</small></div>
+        <ul>
+          <li>Tout le forfait Essentiel</li>
+          <li>Feuilles d'exercices d'entraînement</li>
+          <li>Régénération d'exercices à volonté</li>
+          <li>Exercices imprimables et corrigés au scan</li>
+        </ul>
+        <a class="btn primary" href="/app#/inscription/pro">Choisir Pro</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sec-h"><div class="kicker">Inscription</div><h2>Comment rejoindre la bêta</h2></div>
+    <div class="join">
+      <div class="step"><h3>Créez votre compte</h3><p>Nom, e-mail, mot de passe et le forfait qui vous intéresse.</p></div>
+      <div class="step"><h3>Indiquez votre établissement</h3><p>Recherche dans l'annuaire officiel de l'Éducation nationale. École absente ? Vous la saisissez vous-même.</p></div>
+      <div class="step"><h3>Validation</h3><p>L'équipe Mastery vérifie votre demande. Dès qu'elle est acceptée, vous vous connectez.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="band">
+  <div class="wrap">
+    <div class="sec-h"><div class="kicker">Questions fréquentes</div><h2>Bon à savoir</h2></div>
+    <div class="faq">
+      <details><summary>Faut-il un scanner ?</summary><p>Non. Une photo au téléphone suffit, les quatre QR codes permettent de redresser la feuille. Vous pouvez aussi déposer le PDF d'une photocopieuse avec toutes les copies de la classe.</p></details>
+      <details><summary>L'IA peut-elle se tromper ?</summary><p>Oui, c'est pour cela que chaque transcription et chaque note restent modifiables et qu'une copie n'est comptée qu'après votre validation.</p></details>
+      <details><summary>Qui voit les données de mes élèves ?</summary><p>Votre espace est privé : vos classes, vos élèves et vos copies ne sont pas visibles par les autres professeurs inscrits.</p></details>
+      <details><summary>Que se passe-t-il après la bêta ?</summary><p>Les tarifs des forfaits seront annoncés avant la fin de la bêta. Rien ne vous sera facturé sans votre accord.</p></details>
+      <details><summary>Mon école n'apparaît pas dans l'annuaire</summary><p>Vous pouvez l'enregistrer manuellement avec son adresse postale. Elle apparaîtra comme « non vérifiée », sans limiter l'utilisation de Mastery.</p></details>
+    </div>
+  </div>
+</section>
+
+<div class="wrap" style="padding-top:72px">
+  <div class="final">
+    <h2>Prêt à essayer Mastery avec vos classes ?</h2>
+    <p>Rejoignez la bêta gratuite : préparez votre prochain contrôle à partir de votre cours.</p>
+    <a class="btn" href="/app#/inscription">Créer mon compte professeur</a>
+  </div>
+</div>
+</main>
+
+<footer>
+  <div class="wrap"><span>© 2026 Mastery</span><span><a href="/app#/connexion">Se connecter</a></span></div>
+</footer>
+</body>
+</html>

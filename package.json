@@ -1,8 +1,12 @@
 {
-  "name": "tikoun",
+  "name": "mastery",
   "version": "1.0.0",
   "private": true,
-  "description": "Tikoun · contrôles, copies et rattrapage (Beth Mena'hem)",
-  "scripts": { "start": "node server.js" },
-  "engines": { "node": ">=18" }
+  "description": "Mastery · contrôles, copies et rattrapage",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
 }

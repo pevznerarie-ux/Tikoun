@@ -1,6 +1,6 @@
-# Tikoun — contrôles, copies et rattrapage
+# Mastery — contrôles, copies et rattrapage
 
-Application du collège-lycée Beth Mena'hem (Réseau Sinaï, Levallois-Perret).
+Plateforme pour les professeurs : création de contrôles par l'IA, feuilles avec QR code, scan et correction des copies, rattrapages.
 Du cours au rattrapage : l'IA prépare et corrige, le professeur décide.
 
 ## Ce que fait l'application
@@ -17,7 +17,7 @@ Du cours au rattrapage : l'IA prépare et corrige, le professeur décide.
 
 1. Dans ce dépôt : **Settings → Pages**.
 2. *Source* : **Deploy from a branch** · Branche : **main** · Dossier : **/ (root)** → **Save**.
-3. Après 1 à 2 minutes, l'adresse s'affiche : `https://pevznerarie-ux.github.io/Tikoun/`.
+3. Après 1 à 2 minutes, l'adresse s'affiche : `https://pevznerarie-ux.github.io/Mastery/`.
 
 > Le dépôt doit être **public** pour GitHub Pages gratuit. Le code ne contient aucune donnée ni clé.
 
