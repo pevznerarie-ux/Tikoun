@@ -88,7 +88,7 @@ const tooMany = ip => { const now = Date.now(), l = (tries.get(ip) || []).filter
 const validEmail = e => /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/.test(e);
 
 /* Propriété : un prof modifie ses contrôles, cours, copies et bilans ; les classes sont communes ; l'admin peut tout. */
-const OWNED = ["controles","cours","feuilles","bilans"];
+const OWNED = ["controles","cours","feuilles","bilans","quizzes","quizrep"];
 function ownerOf(p){ const [col, id] = p.split("/"); if (col === "feuilles") return DOCS.get("controles/" + id)?.owner || DOCS.get(p)?.owner || null; return DOCS.get(p)?.owner || null; }
 function espaceFor(p, u){ const [col, id] = p.split("/"); const cur = DOCS.get(p); if (cur?.espace) return cur.espace; if (col === "feuilles") return DOCS.get("controles/" + id)?.espace || u.espace; return u.espace; }
 const visible = (u, v) => u.role === "admin" || (isObj(v) && (v.espace === u.espace || v.owner === u.id));
@@ -235,6 +235,8 @@ async function storage(req, res, url, p, u){
       if (req.method === "DELETE"){ persist(dp, null); return sendJ(res, 200, {seq:SEQ}); }
       const body = await readJSON(req); if (!isObj(body)) return sendJ(res, 400, {error:{message:"Objet JSON attendu"}});
       const col = dp.split("/")[0], cur = DOCS.get(dp);
+      if (req.method === "PUT" && col === "quizzes" && !cur && !entitled(u))
+        return sendJ(res, 403, {error:{message:"Exercices en ligne : forfait Pro avec l'option Exercices"}});
       if (req.method === "PUT" && col === "controles" && body.type === "exercices" && !cur && !entitled(u))
         return sendJ(res, 403, {error:{message:"Option Exercices non activée pour ce compte (abonnement Pro)"}});
       if (req.method === "PUT"){
@@ -258,6 +260,92 @@ async function storage(req, res, url, p, u){
     }
     return sendJ(res, 404, {error:{message:"Route inconnue"}});
   } catch(e){ return sendJ(res, e.message === "too_large" ? 413 : 400, {error:{message:e.message === "too_large" ? "Trop lourd" : "Requête invalide"}}); }
+}
+
+/* ---------- Espace élève : quiz d'exercices en ligne (code personnel, sans e-mail) ---------- */
+const ESESS = new Map();                       // jeton élève → {classeId, eleveId, espace, exp}
+const TIRAGES = new Map();                     // tirage en cours → {quizId, key, qids, used, answered, start, exp}
+const esidOf = req => ((req.headers.cookie || "").match(/(?:^|;\s*)esid=([a-f0-9]{48})/) || [])[1] || "";
+function eleveOf(req){ const s = ESESS.get(esidOf(req)); if (!s || s.exp < Date.now()) return null; const cl = DOCS.get("classes/" + s.classeId); const e = cl?.eleves?.find(x => x.id === s.eleveId && x.code === s.code); return e ? {...s, cl, e} : null; }
+function findCode(code){
+  code = String(code || "").toUpperCase().replace(/[^A-Z0-9]/g, ""); if (code.length < 5) return null;
+  for (const [k, v] of DOCS) if (k.startsWith("classes/") && isObj(v)){ const e = (v.eleves || []).find(x => x.code === code); if (e) return {classeId:k.slice(8), cl:v, e, code}; }
+  return null;
+}
+const quizOpen = q => q && q.statut === "ouvert" && (!q.fermeture || new Date(q.fermeture + "T23:59:59") >= new Date());
+const quizzesFor = el => [...DOCS].filter(([k, q]) => k.startsWith("quizzes/") && isObj(q) && q.classeId === el.classeId && q.statut !== "brouillon").map(([k, q]) => ({id:k.slice(8), q}));
+const norm = t => String(t ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[’']/g, "'").replace(/[.;:!?]+$/g, "").replace(/\s+/g, " ").trim();
+const numOf = t => { const x = String(t ?? "").replace(/\s/g, "").replace(",", ".").match(/-?\d+(\.\d+)?(\/\d+)?/); if (!x) return NaN; const [a, b] = x[0].split("/"); return b ? parseFloat(a) / parseFloat(b) : parseFloat(a); };
+function correct(q, rep){
+  if (q.type === "qcm"){ const want = [...(q.bonnes || [])].map(Number).sort().join(","), got = [...(Array.isArray(rep) ? rep : [rep])].map(Number).filter(n => !isNaN(n)).sort().join(","); return want === got; }
+  if (q.type === "vf") return String(rep) === String(!!q.bonne);
+  if (q.type === "num"){ const v = numOf(rep), w = Number(q.reponse), tol = Math.abs(Number(q.tolerance) || 0) || Math.max(1e-9, Math.abs(w) * 1e-6); return isFinite(v) && Math.abs(v - w) <= tol; }
+  if (q.type === "trou") return (q.reponses || []).some(r => norm(r) === norm(rep));
+  return null;   // rédigée : corrigée ensuite par le professeur (ou l'IA à sa demande)
+}
+const publicQ = q => ({id:q.id, type:q.type, notion:q.notion || "", niveau:q.niveau || 1, enonce:q.enonce, choix:q.type === "qcm" ? q.choix : undefined, multi:q.type === "qcm" && (q.bonnes || []).length > 1, unite:q.unite || ""});
+const shuffle = a => { for (let i = a.length - 1; i > 0; i--){ const j = crypto.randomInt(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+function repDoc(qid, el, q){ const k = "quizrep/" + qid + "_" + el.eleveId; return {k, d:DOCS.get(k) || {quizId:qid, eleveId:el.eleveId, classeId:el.classeId, owner:q.owner, espace:q.espace, tentatives:[], notions:{}, vues:0, ok:0, redigees:[]}}; }
+function pickNext(q, rd, used, notion){
+  const acq = n => rd.notions?.[n]?.acquis;
+  let pool = (q.questions || []).filter(x => !used.has(x.id) && (!notion || x.notion === notion));
+  if (!pool.length) return null;
+  const pri = pool.filter(x => !acq(x.notion)); if (pri.length) pool = pri;
+  return pool[crypto.randomInt(pool.length)];
+}
+async function eleveApi(req, res, url, p){
+  if (p === "/api/eleve/login" && req.method === "POST"){
+    if (tooMany("el:" + ipOf(req))) return sendJ(res, 429, {error:{message:"Trop d'essais : réessaie dans 15 minutes"}});
+    const b = await readJSON(req, 2e3) || {}; const hit = findCode(b.code);
+    if (!hit) return sendJ(res, 401, {error:{message:"Code inconnu : vérifie ta carte"}});
+    const tok = crypto.randomBytes(24).toString("hex"); ESESS.set(tok, {classeId:hit.classeId, eleveId:hit.e.id, code:hit.code, espace:hit.cl.espace, exp:Date.now() + 120 * 864e5});
+    const secure = String(req.headers["x-forwarded-proto"] || "").includes("https") ? "; Secure" : "";
+    return sendJ(res, 200, {ok:true}, {"Set-Cookie":`esid=${tok}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${120 * 86400}${secure}`});
+  }
+  if (p === "/api/eleve/logout" && req.method === "POST"){ ESESS.delete(esidOf(req)); return sendJ(res, 200, {}, {"Set-Cookie":"esid=; Path=/; Max-Age=0"}); }
+  const el = eleveOf(req); if (!el) return sendJ(res, 401, {error:{message:"Connexion requise"}});
+  if (p === "/api/eleve/me" && req.method === "GET"){
+    const list = quizzesFor(el).map(({id, q}) => { const rd = DOCS.get("quizrep/" + id + "_" + el.eleveId) || {}; const notions = [...new Set((q.questions || []).map(x => x.notion).filter(Boolean))];
+      return {id, titre:q.titre, matiere:q.matiere, fermeture:q.fermeture || null, ouvert:quizOpen(q), nbNotions:notions.length, acquises:notions.filter(n => rd.notions?.[n]?.acquis).length, tentatives:(rd.tentatives || []).length, redige:!!q.redige}; });
+    return sendJ(res, 200, {eleve:{prenom:el.e.prenom, nom:(el.e.nom || "").slice(0, 1) + ".", classe:el.cl.nom}, quizzes:list});
+  }
+  const m = p.match(/^\/api\/eleve\/quiz\/([A-Za-z0-9_-]{4,40})\/(tirage|reponse|fin)$/); if (!m || req.method !== "POST") return sendJ(res, 404, {error:{message:"Route inconnue"}});
+  const qid = m[1], q = DOCS.get("quizzes/" + qid);
+  if (!q || q.classeId !== el.classeId) return sendJ(res, 404, {error:{message:"Quiz introuvable"}});
+  if (!quizOpen(q)) return sendJ(res, 403, {error:{message:"Ce quiz est fermé"}});
+  const b = await readJSON(req, 2e5) || {};
+  for (const [k, t] of TIRAGES) if (t.exp < Date.now()) TIRAGES.delete(k);
+  if (m[2] === "tirage"){
+    const {d:rd} = repDoc(qid, el, q), used = new Set(), qs = [];
+    const allowRedige = !!q.redige && !!b.ordinateur;
+    const eligible = {...q, questions:(q.questions || []).filter(x => x.type !== "redige" || allowRedige)};
+    const n = Math.min(Number(q.parTentative) || 10, eligible.questions.length);
+    while (qs.length < n){ const x = pickNext(eligible, rd, used); if (!x) break; used.add(x.id); qs.push(x); }
+    const tid = crypto.randomBytes(12).toString("hex");
+    TIRAGES.set(tid, {quizId:qid, eleveId:el.eleveId, qids:qs.map(x => x.id), used, answered:{}, allowRedige, start:Date.now(), exp:Date.now() + 3 * 3600e3});
+    return sendJ(res, 200, {tirage:tid, titre:q.titre, questions:shuffle(qs).map(publicQ)});
+  }
+  const t = TIRAGES.get(String(b.tirage || "")); if (!t || t.quizId !== qid || t.eleveId !== el.eleveId) return sendJ(res, 410, {error:{message:"Session de quiz expirée : recommence"}});
+  const {k, d:rd} = repDoc(qid, el, q);
+  if (m[2] === "reponse"){
+    const x = (q.questions || []).find(y => y.id === b.qid); if (!x || !t.qids.includes(x.id) || t.answered[x.id]) return sendJ(res, 400, {error:{message:"Question invalide"}});
+    const ok = correct(x, b.rep); t.answered[x.id] = {ok, rep:b.rep, s:Math.round((Number(b.ms) || 0) / 1000)};
+    rd.vues = (rd.vues || 0) + 1; if (ok) rd.ok = (rd.ok || 0) + 1;
+    rd.q = rd.q || {}; const qs = rd.q[x.id] || {v:0, ok:0}; qs.v++; if (ok) qs.ok++; rd.q[x.id] = qs;
+    if (x.notion){ const nn = rd.notions[x.notion] || {vus:0, ok:0, streak:0}; nn.vus++; if (ok === true){ nn.ok++; nn.streak++; } else if (ok === false) nn.streak = 0; if (nn.streak >= 3) nn.acquis = true; rd.notions[x.notion] = nn; }
+    if (ok === null) rd.redigees = [...(rd.redigees || []).slice(-200), {qid:x.id, rep:String(b.rep || "").slice(0, 4000), at:new Date().toISOString(), note:null}];
+    rd.derniere = new Date().toISOString(); persist(k, rd);
+    let next = null;
+    if (ok === false){ const pool = {...q, questions:(q.questions || []).filter(y => y.type !== "redige" || t.allowRedige)}; const y = pickNext(pool, rd, t.used, x.notion); if (y){ t.used.add(y.id); t.qids.push(y.id); next = publicQ(y); } }
+    return sendJ(res, 200, {ok, bonne:x.type === "qcm" ? x.bonnes : x.type === "vf" ? !!x.bonne : x.type === "num" ? x.reponse + (x.unite ? " " + x.unite : "") : x.type === "trou" ? (x.reponses || [])[0] : "", explication:x.explication || "", next, acquis:x.notion ? !!rd.notions[x.notion]?.acquis : false});
+  }
+  if (m[2] === "fin"){
+    const a = Object.entries(t.answered), nOk = a.filter(([, v]) => v.ok === true).length, nAuto = a.filter(([, v]) => v.ok !== null).length;
+    rd.tentatives = [...(rd.tentatives || []).slice(-100), {at:new Date().toISOString(), n:a.length, ok:nOk, auto:nAuto, dureeS:Math.round((Date.now() - t.start) / 1000)}];
+    persist(k, rd); TIRAGES.delete(String(b.tirage));
+    const notions = [...new Set((q.questions || []).map(x => x.notion).filter(Boolean))];
+    return sendJ(res, 200, {ok:nOk, total:nAuto, redigees:a.length - nAuto, acquises:notions.filter(n => rd.notions?.[n]?.acquis).length, nbNotions:notions.length});
+  }
 }
 
 /* ---------- IA ---------- */
@@ -297,6 +385,8 @@ http.createServer(async (req, res) => {
     const url = new URL(req.url, "http://x"); let p = decodeURIComponent(url.pathname);
     if (p === "/health") return send(res, 200, "ok");
     const u = userOf(req);
+    if (p.startsWith("/api/eleve/")) return await eleveApi(req, res, url, p);
+    if (p === "/eleve" || p === "/eleve/") p = "/eleve.html";
     if (p.startsWith("/api/")){
       if (req.method === "POST" && p === "/api/ai") return await aiProxy(req, res, u);
       if (p.startsWith("/api/db") || p.startsWith("/api/files") || p === "/api/export") return await storage(req, res, url, p, u);

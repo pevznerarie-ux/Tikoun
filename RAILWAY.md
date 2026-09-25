@@ -65,3 +65,14 @@ comme un contrôle, mais ne comptent pas dans les moyennes. Sans l'option : cade
 - À l'inscription, le prof choisit **Essentiel** ou **Pro** : pendant la **bêta, c'est gratuit**, aucun paiement.
 - Chaque inscription est **en attente** jusqu'à validation par un administrateur Mastery : onglet **Comptes → Inscriptions à valider**
   (Valider / Refuser). En validant, le forfait demandé est appliqué (Pro = option Exercices activée).
+
+## Exercices en ligne (forfait Pro)
+
+- Onglet **Exercices** : le prof crée un **quiz** à partir d'un cours (banque de 20 à 50 questions générée une seule fois par l'IA).
+- Types : QCM, vrai/faux, réponse numérique, texte à trous (corrigés automatiquement, sans IA) et réponses rédigées
+  (proposées **uniquement sur ordinateur**, corrigées ensuite par le prof ou par l'IA à sa demande).
+- Chaque tentative tire des questions au hasard ; après une erreur, l'élève reçoit une autre question sur la même notion.
+  Une notion est **acquise** après 3 bonnes réponses d'affilée. Le prof choisit la date limite, ou clôt le quiz quand il veut.
+- **Accès élève** : `https://ton-site/eleve` avec un **code personnel** (sans e-mail). Codes et cartes à imprimer (avec QR) :
+  onglet **Classes → Codes élèves**.
+- Résultats : par élève (tentatives, questions vues, réussite, notions acquises, temps) et par question ; aussi dans **Suivi élèves**.
