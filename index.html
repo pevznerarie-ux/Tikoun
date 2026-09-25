@@ -13,7 +13,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Caveat:wght@500;700&family=JetBrains+Mono:wght@500;700&family=Frank+Ruhl+Libre:wght@400;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+Hebrew:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Caveat:wght@500;700&family=JetBrains+Mono:wght@500;700&family=Frank+Ruhl+Libre:wght@400;700&display=swap">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.1/dist/umd/supabase.js"></script>
 <script src="config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
@@ -32,8 +32,8 @@ html,body{margin:0}[hidden]{display:none!important}img{max-width:100%}
   --paper:#FAF8F3; --surface:#FFFFFF; --surface-2:#F3EFE6; --ink:#15233F; --muted:#6B6758; --line:#E7E1D4;
   --pen:#C0392B; --pen-soft:#FBEAE7; --blue:#15233F; --blue-soft:#EBEEF4; --gold:#B7862B; --gold-soft:#F7EDD8; --on-blue:#FFFFFF;
   --ok:#1E7A4C; --ok-soft:#E3F3EA; --warn:#A8690F; --warn-soft:#FBF0DC; --bad:#B42318; --bad-soft:#FCE8E6;
-  --display:"Cormorant Garamond",Georgia,"Times New Roman",serif;
-  --body:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --display:"Cormorant Garamond","Frank Ruhl Libre",Georgia,"Times New Roman",serif;
+  --body:"Inter","Noto Sans Hebrew",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
   --hand:"Caveat","Segoe Print","Bradley Hand",cursive;
   --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
   --r:10px;
@@ -184,7 +184,7 @@ td.c,th.c{text-align:center}
 
 /* Printable sheet — fixed light look, paper is paper */
 #sheetStage{position:absolute;left:-12000px;top:0}
-.sheet{width:794px;height:1123px;background:#fff;color:#111;font-family:"Inter",Arial,sans-serif;padding:108px 60px 84px;position:relative;overflow:hidden}
+.sheet{width:794px;height:1123px;background:#fff;color:#111;font-family:"Inter","Noto Sans Hebrew",Arial,sans-serif;padding:108px 60px 84px;position:relative;overflow:hidden}
 .sheet *{color:#111}
 .sh-head{display:grid;grid-template-columns:1fr;gap:16px;border-bottom:2px solid #111;padding-bottom:10px;margin-bottom:14px}
 .sh-school{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#444}
@@ -290,6 +290,11 @@ h2{font-size:26px} h3{font-size:21px;font-weight:600}
 .acc-b{padding:18px 24px 22px;display:grid;gap:16px}
 .acc-b .panel{box-shadow:none}
 @media (max-width:600px){.acc-h{padding:14px 16px;flex-wrap:wrap;gap:4px 12px}.acc-s{order:3;flex-basis:100%}.acc-b{padding:14px 16px}}
+
+/* Hébreu : chaque paragraphe prend automatiquement le bon sens (droite à gauche si hébreu) */
+p,li,td,label,textarea,input,.t,.s,.answer,.sh-qt,.sh-opt,.sh-cons,.sh-title,.item .t,.q-text,.bank-q,h1,h2,h3{unicode-bidi:plaintext}
+textarea,input{text-align:start}
+:lang(he),[dir=rtl]{font-family:"Noto Sans Hebrew","Frank Ruhl Libre",var(--body)}
 </style>
 
 </head>
@@ -441,7 +446,35 @@ async function aiText(prompt, opts = {}){
   if (!AI) throw {code:"no_ai"};
   return (await AI(prompt, {cache:false, ...opts})).text;
 }
-const NOSRC = "N'invente aucune source, référence ni citation : appuie-toi uniquement sur le cours et le corrigé-type fournis. Recopie tout texte en hébreu exactement comme dans le cours.";
+const NOSRC = "N'invente aucune source, référence ni citation : appuie-toi uniquement sur le cours et le corrigé-type fournis. Recopie tout texte en hébreu exactement comme dans le cours.\nHébreu : écris-le en caractères hébreux, dans l'ordre logique de lecture (de droite à gauche), sans le translittérer, l'inverser ni le traduire ; garde le nikoud (voyelles) et les te'amim seulement s'ils sont dans la source ; respecte les lettres finales (ך ם ן ף ץ).";
+const LANGUES = ["Français","Hébreu","Hébreu et français","Anglais"];
+const langueDef = texte => hebRatio(texte || "") > .3 ? "Hébreu" : document.documentElement.lang === "en" ? "Anglais" : "Français";
+const langueRule = l => !l ? "" : l === "Hébreu" ? "Langue : rédige tout (titre, énoncés, choix, corrigés, critères, explications) en hébreu." : l === "Hébreu et français" ? "Langue : consignes et explications en français, citations et textes étudiés en hébreu (réponses attendues en hébreu quand la question porte sur le texte)." : `Langue : rédige tout en ${l.toLowerCase()}.`;
+/* Hébreu : détection et remise à l'endroit des lignes extraites de PDF en ordre visuel */
+const hebRatio = t => { const h = (t.match(/[\u05D0-\u05EA]/g) || []).length, l = (t.match(/[A-Za-zÀ-ÿ]/g) || []).length; return h / Math.max(1, h + l); };
+function reverseVisual(line){
+  const cl = line.match(/[^\u0591-\u05C7][\u0591-\u05C7]*/gu) || [];
+  let r = cl.reverse().join("").replace(/[()[\]{}<>]/g, c => ({"(":")", ")":"(", "[":"]", "]":"[", "{":"}", "}":"{", "<":">", ">":"<"}[c]));
+  return r.replace(/[A-Za-z0-9À-ÿ](?:[A-Za-z0-9À-ÿ.,:%\/+=\- ]*[A-Za-z0-9À-ÿ])?/g, m => [...m].reverse().join(""));
+}
+/* html2canvas ne « miroite » pas les parenthèses en contexte hébreu : on les inverse dans la copie rendue */
+const MIRROR = {"(":")", ")":"(", "[":"]", "]":"[", "{":"}", "}":"{", "<":">", ">":"<", "«":"»", "»":"«"};
+function fixBidiForCanvas(root){
+  const heb = /[\u0590-\u05FF]/, strong = /[\u0590-\u05FFA-Za-zÀ-ÿ]/;
+  const w = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT); const nodes = []; while (w.nextNode()) nodes.push(w.currentNode);
+  for (const n of nodes){ const t = n.nodeValue; if (!heb.test(t) || !/[()[\]{}<>«»]/.test(t)) continue;
+    const blk = n.parentElement?.closest("p,div,td,li,span,label") || n.parentElement; const first = (blk?.textContent || "").match(strong)?.[0] || ""; const rtlPara = heb.test(first);
+    const chars = [...t]; const side = (i, dir) => { for (let j = i + dir; j >= 0 && j < chars.length; j += dir){ if (strong.test(chars[j])) return heb.test(chars[j]) ? "r" : "l"; } return rtlPara ? "r" : "l"; };
+    n.nodeValue = chars.map((c, i) => { if (!MIRROR[c]) return c; const a = side(i, -1), b = side(i, 1); const rtl = a === "r" && b === "r" || ((a === "r" || b === "r") && rtlPara); return rtl ? MIRROR[c] : c; }).join(""); }
+}
+function fixHebrewText(t){
+  return t.normalize("NFC").split("\n").map(line => {
+    if (!/[\u05D0-\u05EA]/.test(line)) return line;
+    let start = 0, end = 0;
+    for (const w of line.match(/[\u05D0-\u05EA][\u0591-\u05C7\u05D0-\u05EA]*/g) || []){ const b = w.replace(/[\u0591-\u05C7]/g, ""); if (b.length < 2) continue; if (/^[ךםןףץ]/.test(b)) start++; if (/[ךםןףץ]$/.test(b)) end++; }
+    return start > end ? reverseVisual(line) : line;
+  }).join("\n");
+}
 
 /* ================= Render loop (keeps focus while data arrives) ================= */
 let rq = false, skipped = false;
@@ -594,6 +627,7 @@ function wizParams(){
       <div class="field"><label for="p-niv">Niveau</label><select id="p-niv" data-p="niveau">${selOpts(NIVEAUX, p.niveau)}</select></div>
       <div class="field"><label for="p-dur">Durée (min)</label><input id="p-dur" type="number" min="10" max="240" data-p="duree" value="${esc(p.duree)}"></div>
       <div class="field"><label for="p-nbq">Nombre de questions</label><input id="p-nbq" type="number" min="2" max="10" data-p="nbq" value="${esc(p.nbq)}"></div>
+      <div class="field"><label for="p-lang">Langue du contrôle</label><select id="p-lang" data-p="langue">${selOpts(LANGUES, p.langue || langueDef(co?.texte))}</select></div>
       <div class="field"><label for="p-dif">Difficulté</label><select id="p-dif" data-p="difficulte">${selOpts(["facile","moyen","exigeant"], p.difficulte)}</select></div>
     </div>
     <div class="field"><label for="p-titre">Titre du contrôle (facultatif)</label><input id="p-titre" data-p="titre" data-live value="${esc(p.titre)}" placeholder="Proposé par l'IA si vide"></div>
@@ -751,7 +785,7 @@ async function printSheets(c, list){
       const e = list[k]; const {pages, layout, version} = sheetPages(c, e);
       for (let i = 0; i < pages.length; i++){
         $("#ovm").textContent = `Feuille ${k + 1} / ${list.length} · ${e.prenom} ${e.nom} · page ${i + 1}`;
-        const cv = await html2canvas(pages[i], {scale:2, backgroundColor:"#ffffff", logging:false, scrollX:0, scrollY:-window.scrollY, windowWidth:900});
+        const cv = await html2canvas(pages[i], {scale:2, backgroundColor:"#ffffff", logging:false, scrollX:0, scrollY:-window.scrollY, windowWidth:900, onclone:(doc, el) => fixBidiForCanvas(el)});
         if (!first) pdf.addPage(); first = false;
         pdf.addImage(cv.toDataURL("image/jpeg", 0.9), "JPEG", 0, 0, 595.28, 841.89);
       }
@@ -1002,7 +1036,7 @@ Questions présentes sur cette page :
 ${blocks}
 
 Consignes :
-1. Transcris fidèlement ce que l'élève a écrit dans chaque cadre, sans corriger l'orthographe, ligne par ligne. ${MATH_RULE} Hébreu en caractères hébreux. Passage illisible : [illisible]. Cadre vide : "". Ignore ce qui est barré.
+1. Transcris fidèlement ce que l'élève a écrit dans chaque cadre, sans corriger l'orthographe, ligne par ligne. ${MATH_RULE} Hébreu en caractères hébreux, dans l'ordre de lecture (l'écriture manuscrite hébraïque est souvent cursive : lis-la avec soin, lettre par lettre). Passage illisible : [illisible]. Cadre vide : "". Ignore ce qui est barré.
 2. "fautes" : liste des passages erronés, recopiés exactement tels qu'ils figurent dans la transcription (courts : quelques mots). Liste vide si tout est juste.
 3. Note par pas de 0,5, strictement selon les critères : chaque demi-point doit correspondre à un élément juste réellement écrit par l'élève. Jamais de point « d'encouragement ». Réponse vide, « je ne sais pas », « ? », énoncé recopié, hors sujet ou sans aucun élément juste = 0.
 4. "commentaire" : 1 ou 2 phrases courtes (40 mots maximum), tutoiement, bienveillant : ce qui est réussi, puis l'erreur précise et comment la corriger.
@@ -1125,6 +1159,7 @@ Niveau habituel de l'élève dans cette matière : ${LVL[lvl]}.
 Ses difficultés au contrôle « ${c.titre} » :
 ${ctx}
 
+${langueRule(c.langue)}
 Crée exactement 3 exercices NOUVEAUX, de difficulté croissante, qui ciblent précisément ces erreurs :
 1 = découverte (plus simple que le niveau de l'élève), 2 = application, 3 = retour au niveau ${LVL[lvl].toLowerCase()} du contrôle.
 Total 20 points (par ex. 5, 7, 8). Chaque exercice : un énoncé autonome (avec un coup de pouce entre parenthèses pour le 1), un corrigé-type, des critères de notation, 2 ou 3 erreurs types, un nombre de lignes de réponse (3 à 12).
@@ -1163,6 +1198,7 @@ async function importCourseFiles(files){
       st.innerHTML = `<span class="thinking">Lecture du PDF « ${esc(f.name)} »…</span>`;
       const pdf = await pdfjsLib.getDocument({data: await f.arrayBuffer()}).promise; let txt = "";
       for (let i = 1; i <= pdf.numPages; i++){ const tc = await (await pdf.getPage(i)).getTextContent(); txt += tc.items.map(x => x.str + (x.hasEOL ? "\n" : " ")).join("") + "\n\n"; }
+      if (hebRatio(txt) > .05){ txt = fixHebrewText(txt); S.hebPdf = [...(S.hebPdf || []), f]; }
       if (txt.replace(/\s/g, "").length > 150 * pdf.numPages) parts.push(txt.trim());
       else { for (let i = 1; i <= Math.min(pdf.numPages, 12); i++){ const pg = await pdf.getPage(i); const vp = pg.getViewport({scale: 1800 / Math.max(pg.view[2], pg.view[3])}); const cv = document.createElement("canvas"); cv.width = vp.width; cv.height = vp.height; await pg.render({canvasContext:cv.getContext("2d"), viewport:vp}).promise; pendingImgs.push(cv); } }
     } else { (await fileToCanvases(f)).forEach(cv => pendingImgs.push(cv)); }
@@ -1174,7 +1210,7 @@ async function importCourseFiles(files){
       for (let i = 0; i < pendingImgs.length; i += per){
         st.innerHTML = `<span class="thinking">Lecture des pages ${i + 1} à ${Math.min(i + per, pendingImgs.length)} sur ${pendingImgs.length}…</span>`;
         const blobs = await Promise.all(pendingImgs.slice(i, i + per).map(cv => toBlob(scaled(cv, 1800))));
-        const t = await aiText(`Transcris fidèlement le texte de ces pages de cours (dans l'ordre), en gardant titres, définitions, exemples et formules. Recopie l'hébreu en caractères hébreux, sans traduire. Pas de commentaire : uniquement le texte.`, {images:blobs});
+        const t = await aiText(`Transcris fidèlement le texte de ces pages de cours (dans l'ordre), en gardant titres, définitions, exemples et formules. Recopie l'hébreu en caractères hébreux, dans l'ordre de lecture (droite à gauche), sans traduire ni inverser, avec le nikoud s'il est présent. Pas de commentaire : uniquement le texte.`, {images:blobs});
         parts.push(t.trim());
       }
     }
@@ -1182,7 +1218,7 @@ async function importCourseFiles(files){
   const box = $("#c-texte"); const prev = box.value.trim();
   box.value = [prev, ...parts].filter(Boolean).join("\n\n").slice(0, 60000);
   S.coursDraft = {...(S.coursDraft || {}), texte:box.value};
-  if (parts.length) st.textContent = "Texte extrait : relis-le, corrige si besoin, puis enregistre.";
+  if (parts.length) st.innerHTML = S.hebPdf?.length ? `Hébreu détecté : vérifie le texte. Si des mots sont à l'envers ou mélangés, <button class="btn sm" id="c-heb-ai">Relire le PDF avec l'IA (fiable pour l'hébreu)</button>` : "Texte extrait : relis-le, corrige si besoin, puis enregistre.";
 }
 
 /* ================= Generation ================= */
@@ -1193,6 +1229,7 @@ function genPrompt(co, p, n, extra){
 Durée : ${p.duree} minutes · Difficulté : ${p.difficulte} · Types : ${(p.types || []).map(t => T[t]).join(", ") || "variés"}
 ${n > 1 ? `Nombre de questions : ${n}. Total des points : 20 exactement.` : ""}
 ${p.consignes ? "Consignes du professeur : " + p.consignes : ""}
+${langueRule(p.langue)}
 ${extra || ""}
 Pour chaque question, rédige 3 versions de la même question, portant sur la même notion et notées sur les mêmes points :
 - "socle" : plus guidée (étapes, données simplifiées, coup de pouce), pour un élève en difficulté ;
@@ -1304,6 +1341,18 @@ document.addEventListener("click", async ev => {
     await write("classes/" + cl.id, {eleves:cl.eleves.map(e => map[e.id] ? {...e, niveaux:{...(e.niveaux || {}), [S.levelMat]:map[e.id].lvl}} : e)}, "update"); S.suggestions = null; toast("Niveaux mis à jour."); return; }
 
   /* wizard */
+  if (t.id === "c-heb-ai"){ const st = $("#c-st"), files = S.hebPdf || []; if (!files.length) return;
+    if (!confirm("Remplacer le texte extrait du PDF par une lecture IA des pages ? (plus fiable pour l'hébreu, un peu plus coûteux)")) return;
+    try { const cvs = [];
+      for (const f of files){ const pdf = await pdfjsLib.getDocument({data: await f.arrayBuffer()}).promise;
+        for (let i = 1; i <= Math.min(pdf.numPages, 12); i++){ const pg = await pdf.getPage(i); const vp = pg.getViewport({scale: 2000 / Math.max(pg.view[2], pg.view[3])}); const cv = document.createElement("canvas"); cv.width = vp.width; cv.height = vp.height; await pg.render({canvasContext:cv.getContext("2d"), viewport:vp}).promise; cvs.push(cv); } }
+      const per = Math.max(1, LIM?.images?.maxCount || 1), out = [];
+      for (let i = 0; i < cvs.length; i += per){ st.innerHTML = `<span class="thinking">Lecture IA des pages ${i + 1} à ${Math.min(i + per, cvs.length)} sur ${cvs.length}…</span>`;
+        const blobs = await Promise.all(cvs.slice(i, i + per).map(cv => toBlob(scaled(cv, 2000))));
+        out.push((await aiText(`Transcris fidèlement le texte de ces pages de cours (dans l'ordre), en gardant titres, définitions, exemples et formules. Le texte contient de l'hébreu : recopie-le en caractères hébreux, dans l'ordre de lecture (droite à gauche), sans traduire ni inverser, avec le nikoud et les lettres finales tels qu'ils apparaissent. Pas de commentaire : uniquement le texte.`, {images:blobs})).trim()); }
+      $("#c-texte").value = out.join("\n\n").slice(0, 60000); S.coursDraft = {...(S.coursDraft || {}), texte:$("#c-texte").value}; S.hebPdf = [];
+      st.textContent = "Texte relu par l'IA : vérifie-le puis enregistre."; }
+    catch(e){ console.error(e); st.textContent = e?.code ? aiErr(e.code) : "Lecture impossible."; } return; }
   if (t.id === "c-save"){ const texte = $("#c-texte").value.trim(), titre = $("#c-titre").value.trim() || "Cours sans titre";
     if (texte.length < 80) return toast("Le texte du cours est trop court.");
     const id = uid(10); await write("cours/" + id, {titre, matiere:$("#c-mat").value, niveau:$("#c-niv").value, texte:texte.slice(0, 60000), createdAt:new Date().toISOString()});
@@ -1314,10 +1363,11 @@ document.addEventListener("click", async ev => {
   if (d.delcours){ await write("cours/" + d.delcours, null, "delete"); return; }
   if (t.id === "back1"){ S.wizStep = 1; return render(); }
   if (t.id === "gen" || t.id === "genBlank"){
+    if (!S.params.langue) S.params.langue = langueDef(store.cours.find(c => c.id === S.coursId)?.texte);
     const p = S.params, co = store.cours.find(c => c.id === S.coursId), st = $("#gen-st");
     const EXO = p.kind === "exercices" && canEx();
     const id = uid(12); const base = {type:EXO ? "exercices" : "controle", titre:p.titre || (EXO ? "Exercices · " : "") + (co?.titre || "Contrôle"), gen:{types:p.types, difficulte:p.difficulte, consignes:p.consignes || ""}, matiere:p.matiere, niveau:p.niveau, classeId:p.classeId, coursId:S.coursId, duree:+p.duree || 55,
-      differencie:!!p.differencie, statut:"brouillon", date:"", mise:{affiche:S.me?.affichage || "les2", police:15, lh:30, bareme:true, consignes:EXO ? "Feuille d'exercices d'entraînement. Écris uniquement dans les cadres." : "Écris uniquement dans les cadres."}, questions:[], createdAt:new Date().toISOString()};
+      differencie:!!p.differencie, langue:p.langue || "", statut:"brouillon", date:"", mise:{affiche:S.me?.affichage || "les2", police:15, lh:30, bareme:true, consignes:EXO ? "Feuille d'exercices d'entraînement. Écris uniquement dans les cadres." : "Écris uniquement dans les cadres."}, questions:[], createdAt:new Date().toISOString()};
     if (t.id === "genBlank"){ base.questions = [mapQ({points:4, lignes:6})]; await write("controles/" + id, base); S.editId = id; S.wizStep = 1; S.step = "preparer"; return go("edit"); }
     t.disabled = true; st.innerHTML = `<span class="thinking">L'IA rédige ${EXO ? "les exercices" : "le contrôle"} en 3 niveaux (1 à 2 minutes)…</span>`;
     try{
@@ -2097,7 +2147,7 @@ async function buildPdf(builders, filename, st){
       await Promise.all($$("img", stage).map(im => im.decode ? im.decode().catch(() => {}) : null));
       for (let i = 0; i < pages.length; i++){
         $("#ovm").textContent = `${label} · ${k + 1} / ${builders.length}`;
-        const cv = await html2canvas(pages[i], {scale:2, backgroundColor:"#ffffff", logging:false, scrollX:0, scrollY:-window.scrollY, windowWidth:900, useCORS:true});
+        const cv = await html2canvas(pages[i], {scale:2, backgroundColor:"#ffffff", logging:false, scrollX:0, scrollY:-window.scrollY, windowWidth:900, useCORS:true, onclone:(doc, el) => fixBidiForCanvas(el)});
         if (!first) pdf.addPage(); first = false; pdf.addImage(cv.toDataURL("image/jpeg", 0.88), "JPEG", 0, 0, 595.28, 841.89);
       }
     }
@@ -2396,7 +2446,7 @@ Règles :
 - Pas de LaTeX : écris les maths avec des symboles simples (x², √, ½, ×, ÷, ≤).
 - Chaque question a une explication courte (1 à 3 phrases) montrée à l'élève après sa réponse.
 - Réponses sans ambiguïté : une réponse numérique a une seule valeur ; un texte à trous a un trou marqué ___ et une liste de réponses acceptées (variantes d'orthographe incluses).
-${o.consignes ? "Consignes du professeur : " + o.consignes + "\n" : ""}${deja ? "IMPORTANT : questions NOUVELLES, différentes de celles-ci : " + deja + "\n" : ""}${NOSRC}
+${o.langue ? langueRule(o.langue) + "\n" : ""}${o.consignes ? "Consignes du professeur : " + o.consignes + "\n" : ""}${deja ? "IMPORTANT : questions NOUVELLES, différentes de celles-ci : " + deja + "\n" : ""}${NOSRC}
 
 COURS :
 """${(co?.texte || "").slice(0, 30000)}"""
@@ -2459,6 +2509,7 @@ function vQuizNew(){
       <div class="field"><label for="qn-ti">Titre (facultatif)</label><input id="qn-ti" data-qn="titre" value="${esc(o.titre)}" placeholder="Proposé par l'IA si vide"></div>
       <div class="field"><label for="qn-b">Questions dans la banque</label><select id="qn-b" data-qn="banque">${selOpts(["20","30","40","50"], String(o.banque))}</select></div>
       <div class="field"><label for="qn-p">Questions par tentative</label><select id="qn-p" data-qn="parTentative">${selOpts(["5","10","15","20"], String(o.parTentative))}</select></div>
+      <div class="field"><label for="qn-l">Langue</label><select id="qn-l" data-qn="langue">${selOpts(LANGUES, o.langue || langueDef(co?.texte))}</select></div>
       <div class="field"><label for="qn-f">Date limite (facultatif)</label><input id="qn-f" type="date" data-qn="fermeture" value="${esc(o.fermeture)}"></div>
     </div>
     <div class="field"><label>Types de questions</label><div class="row">${Object.entries(QTYPES).map(([k, l]) => `<label class="row small" style="gap:6px"><input type="checkbox" data-qtype="${k}"${o.types.includes(k) ? " checked" : ""}> ${l}</label>`).join("")}</div>
@@ -2583,8 +2634,8 @@ document.addEventListener("click", async ev => {
     if (t.id === "qn-go"){ const o = S.qn, co = store.cours.find(c => c.id === o.coursId), cl = classe(o.classeId), st = $("#qn-st");
       if (!o.types.length) return toast("Choisis au moins un type de question.");
       t.disabled = true; st.innerHTML = `<span class="thinking">L'IA prépare ${o.banque} questions (1 à 2 minutes)…</span>`;
-      try { const auto = o.types.filter(x => x !== "redige"); const g = await genQuizQuestions(co, {matiere:co.matiere, niveau:co.niveau, types:o.types, consignes:o.consignes}, +o.banque);
-        const id = uid(12); await write("quizzes/" + id, {titre:o.titre || g.titre || "Quiz · " + co.titre, matiere:co.matiere, niveau:co.niveau, classeId:cl.id, coursId:co.id, statut:"brouillon", parTentative:+o.parTentative, fermeture:o.fermeture || "", redige:o.types.includes("redige"), types:o.types, consignes:o.consignes || "", questions:g.questions, createdAt:new Date().toISOString()});
+      try { const auto = o.types.filter(x => x !== "redige"); const lang = o.langue || langueDef(co.texte); const g = await genQuizQuestions(co, {matiere:co.matiere, niveau:co.niveau, types:o.types, consignes:o.consignes, langue:lang}, +o.banque);
+        const id = uid(12); await write("quizzes/" + id, {titre:o.titre || g.titre || "Quiz · " + co.titre, matiere:co.matiere, niveau:co.niveau, classeId:cl.id, coursId:co.id, statut:"brouillon", parTentative:+o.parTentative, fermeture:o.fermeture || "", redige:o.types.includes("redige"), types:o.types, consignes:o.consignes || "", langue:lang, questions:g.questions, createdAt:new Date().toISOString()});
         S.qn.titre = ""; S.qz = {id, tab:"questions", el:null}; location.hash = `#/exercices/${id}/questions`; void auto; }
       catch(e){ st.textContent = aiErr(e?.code); t.disabled = false; } return; }
     const q = S.view === "quiz" ? quizOf(S.qz.id) : null;
@@ -2595,7 +2646,7 @@ document.addEventListener("click", async ev => {
       if (t.id === "qz-more" || t.id === "qz-regen"){ const co = store.cours.find(c => c.id === q.coursId); if (!co) return toast("Cours d'origine introuvable.");
         if (t.id === "qz-regen" && !confirm("Remplacer toutes les questions par une nouvelle banque ? Les résultats déjà obtenus restent.")) return;
         const st = $("#qz-st"); t.disabled = true; st.innerHTML = `<span class="thinking">L'IA prépare de nouvelles questions…</span>`;
-        try { const n = t.id === "qz-more" ? 10 : (q.questions || []).length || 30; const g = await genQuizQuestions(co, {matiere:q.matiere, niveau:q.niveau, types:q.types || ["qcm","vf","num","trou"], consignes:q.consignes}, n, (q.questions || []).map(x => x.enonce));
+        try { const n = t.id === "qz-more" ? 10 : (q.questions || []).length || 30; const g = await genQuizQuestions(co, {matiere:q.matiere, niveau:q.niveau, types:q.types || ["qcm","vf","num","trou"], consignes:q.consignes, langue:q.langue}, n, (q.questions || []).map(x => x.enonce));
           q.questions = t.id === "qz-more" ? [...(q.questions || []), ...g.questions] : g.questions; await write("quizzes/" + q.id, q); toast(g.questions.length + " nouvelle(s) question(s)."); }
         catch(e){ st.textContent = aiErr(e?.code); t.disabled = false; } return; }
       if (d.rednote){ const [eid, i, v] = d.rednote.split("|"); const k = "quizrep/" + q.id + "_" + eid, r = store.quizrep[q.id + "_" + eid]; if (!r) return;

@@ -13,7 +13,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Caveat:wght@500;700&family=JetBrains+Mono:wght@500;700&family=Frank+Ruhl+Libre:wght@400;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+Hebrew:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Caveat:wght@500;700&family=JetBrains+Mono:wght@500;700&family=Frank+Ruhl+Libre:wght@400;700&display=swap">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.1/dist/umd/supabase.js"></script>
 <script src="config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
@@ -32,8 +32,8 @@ html,body{margin:0}[hidden]{display:none!important}img{max-width:100%}
   --paper:#FAF8F3; --surface:#FFFFFF; --surface-2:#F3EFE6; --ink:#15233F; --muted:#6B6758; --line:#E7E1D4;
   --pen:#C0392B; --pen-soft:#FBEAE7; --blue:#15233F; --blue-soft:#EBEEF4; --gold:#B7862B; --gold-soft:#F7EDD8; --on-blue:#FFFFFF;
   --ok:#1E7A4C; --ok-soft:#E3F3EA; --warn:#A8690F; --warn-soft:#FBF0DC; --bad:#B42318; --bad-soft:#FCE8E6;
-  --display:"Cormorant Garamond",Georgia,"Times New Roman",serif;
-  --body:"Inter",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+  --display:"Cormorant Garamond","Frank Ruhl Libre",Georgia,"Times New Roman",serif;
+  --body:"Inter","Noto Sans Hebrew",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
   --hand:"Caveat","Segoe Print","Bradley Hand",cursive;
   --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
   --r:10px;
@@ -184,7 +184,7 @@ td.c,th.c{text-align:center}
 
 /* Printable sheet — fixed light look, paper is paper */
 #sheetStage{position:absolute;left:-12000px;top:0}
-.sheet{width:794px;height:1123px;background:#fff;color:#111;font-family:"Inter",Arial,sans-serif;padding:108px 60px 84px;position:relative;overflow:hidden}
+.sheet{width:794px;height:1123px;background:#fff;color:#111;font-family:"Inter","Noto Sans Hebrew",Arial,sans-serif;padding:108px 60px 84px;position:relative;overflow:hidden}
 .sheet *{color:#111}
 .sh-head{display:grid;grid-template-columns:1fr;gap:16px;border-bottom:2px solid #111;padding-bottom:10px;margin-bottom:14px}
 .sh-school{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#444}
@@ -290,6 +290,11 @@ h2{font-size:26px} h3{font-size:21px;font-weight:600}
 .acc-b{padding:18px 24px 22px;display:grid;gap:16px}
 .acc-b .panel{box-shadow:none}
 @media (max-width:600px){.acc-h{padding:14px 16px;flex-wrap:wrap;gap:4px 12px}.acc-s{order:3;flex-basis:100%}.acc-b{padding:14px 16px}}
+
+/* Hébreu : chaque paragraphe prend automatiquement le bon sens (droite à gauche si hébreu) */
+p,li,td,label,textarea,input,.t,.s,.answer,.sh-qt,.sh-opt,.sh-cons,.sh-title,.item .t,.q-text,.bank-q,h1,h2,h3{unicode-bidi:plaintext}
+textarea,input{text-align:start}
+:lang(he),[dir=rtl]{font-family:"Noto Sans Hebrew","Frank Ruhl Libre",var(--body)}
 </style>
 
 </head>
@@ -441,7 +446,35 @@ async function aiText(prompt, opts = {}){
   if (!AI) throw {code:"no_ai"};
   return (await AI(prompt, {cache:false, ...opts})).text;
 }
-const NOSRC = "Don't invent any source, reference, or citation: rely only on the lesson and the provided answer key. Copy any Hebrew text exactly as it appears in the lesson.";
+const NOSRC = "Do not invent any source, reference or quotation: rely only on the lesson and the answer key provided. Copy any Hebrew text exactly as it appears in the lesson.\nHebrew: write it in Hebrew characters, in logical reading order (right to left), without transliterating, reversing or translating it; keep nikud (vowels) and te'amim only if they are in the source; respect final letters (ך ם ן ף ץ).";
+const LANGUES = ["French","Hebrew","Hebrew and English","English"];
+const langueDef = texte => hebRatio(texte || "") > .3 ? "Hebrew" : document.documentElement.lang === "en" ? "English" : "French";
+const langueRule = l => !l ? "" : l === "Hebrew" ? "Language: write everything (title, questions, choices, answer keys, criteria, explanations) in Hebrew." : l === "Hebrew and English" ? "Language: instructions and explanations in English, quotations and studied texts in Hebrew (answers expected in Hebrew when the question is about the text)." : `Language: write everything in ${l.toLowerCase()}.`;
+/* Hébreu : détection et remise à l'endroit des lignes extraites de PDF en ordre visuel */
+const hebRatio = t => { const h = (t.match(/[\u05D0-\u05EA]/g) || []).length, l = (t.match(/[A-Za-zÀ-ÿ]/g) || []).length; return h / Math.max(1, h + l); };
+function reverseVisual(line){
+  const cl = line.match(/[^\u0591-\u05C7][\u0591-\u05C7]*/gu) || [];
+  let r = cl.reverse().join("").replace(/[()[\]{}<>]/g, c => ({"(":")", ")":"(", "[":"]", "]":"[", "{":"}", "}":"{", "<":">", ">":"<"}[c]));
+  return r.replace(/[A-Za-z0-9À-ÿ](?:[A-Za-z0-9À-ÿ.,:%\/+=\- ]*[A-Za-z0-9À-ÿ])?/g, m => [...m].reverse().join(""));
+}
+/* html2canvas ne « miroite » pas les parenthèses en contexte hébreu : on les inverse dans la copie rendue */
+const MIRROR = {"(":")", ")":"(", "[":"]", "]":"[", "{":"}", "}":"{", "<":">", ">":"<", "«":"»", "»":"«"};
+function fixBidiForCanvas(root){
+  const heb = /[\u0590-\u05FF]/, strong = /[\u0590-\u05FFA-Za-zÀ-ÿ]/;
+  const w = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT); const nodes = []; while (w.nextNode()) nodes.push(w.currentNode);
+  for (const n of nodes){ const t = n.nodeValue; if (!heb.test(t) || !/[()[\]{}<>«»]/.test(t)) continue;
+    const blk = n.parentElement?.closest("p,div,td,li,span,label") || n.parentElement; const first = (blk?.textContent || "").match(strong)?.[0] || ""; const rtlPara = heb.test(first);
+    const chars = [...t]; const side = (i, dir) => { for (let j = i + dir; j >= 0 && j < chars.length; j += dir){ if (strong.test(chars[j])) return heb.test(chars[j]) ? "r" : "l"; } return rtlPara ? "r" : "l"; };
+    n.nodeValue = chars.map((c, i) => { if (!MIRROR[c]) return c; const a = side(i, -1), b = side(i, 1); const rtl = a === "r" && b === "r" || ((a === "r" || b === "r") && rtlPara); return rtl ? MIRROR[c] : c; }).join(""); }
+}
+function fixHebrewText(t){
+  return t.normalize("NFC").split("\n").map(line => {
+    if (!/[\u05D0-\u05EA]/.test(line)) return line;
+    let start = 0, end = 0;
+    for (const w of line.match(/[\u05D0-\u05EA][\u0591-\u05C7\u05D0-\u05EA]*/g) || []){ const b = w.replace(/[\u0591-\u05C7]/g, ""); if (b.length < 2) continue; if (/^[ךםןףץ]/.test(b)) start++; if (/[ךםןףץ]$/.test(b)) end++; }
+    return start > end ? reverseVisual(line) : line;
+  }).join("\n");
+}
 
 /* ================= Render loop (keeps focus while data arrives) ================= */
 let rq = false, skipped = false;
@@ -594,6 +627,7 @@ function wizParams(){
       <div class="field"><label for="p-niv">Level</label><select id="p-niv" data-p="niveau">${selOpts(NIVEAUX, p.niveau)}</select></div>
       <div class="field"><label for="p-dur">Duration (min)</label><input id="p-dur" type="number" min="10" max="240" data-p="duree" value="${esc(p.duree)}"></div>
       <div class="field"><label for="p-nbq">Number of questions</label><input id="p-nbq" type="number" min="2" max="10" data-p="nbq" value="${esc(p.nbq)}"></div>
+      <div class="field"><label for="p-lang">Test language</label><select id="p-lang" data-p="langue">${selOpts(LANGUES, p.langue || langueDef(co?.texte))}</select></div>
       <div class="field"><label for="p-dif">Difficulty</label><select id="p-dif" data-p="difficulte">${selOpts(["facile","moyen","exigeant"], p.difficulte)}</select></div>
     </div>
     <div class="field"><label for="p-titre">Test title (optional)</label><input id="p-titre" data-p="titre" data-live value="${esc(p.titre)}" placeholder="Suggested by AI if empty"></div>
@@ -751,7 +785,7 @@ async function printSheets(c, list){
       const e = list[k]; const {pages, layout, version} = sheetPages(c, e);
       for (let i = 0; i < pages.length; i++){
         $("#ovm").textContent = `Sheet ${k + 1} / ${list.length} · ${e.prenom} ${e.nom} · page ${i + 1}`;
-        const cv = await html2canvas(pages[i], {scale:2, backgroundColor:"#ffffff", logging:false, scrollX:0, scrollY:-window.scrollY, windowWidth:900});
+        const cv = await html2canvas(pages[i], {scale:2, backgroundColor:"#ffffff", logging:false, scrollX:0, scrollY:-window.scrollY, windowWidth:900, onclone:(doc, el) => fixBidiForCanvas(el)});
         if (!first) pdf.addPage(); first = false;
         pdf.addImage(cv.toDataURL("image/jpeg", 0.9), "JPEG", 0, 0, 595.28, 841.89);
       }
@@ -989,7 +1023,7 @@ Answer key: ${v.corrige || "(not provided)"}
 Criteria: ${v.criteres || "according to the answer key"}
 Possible common mistakes: ${(q.erreurs || []).join(" | ") || "(aucune)"}`;
 }
-const MATH_RULE = "Math in LaTeX between $…$ (e.g. $\\\\frac{2}{3}$, $x^2$, $\\\\sqrt{5}$, $3\\\\times 4$), everything else in plain text.";
+const MATH_RULE = "Math in LaTeX between $…$ (e.g. $\\frac{2}{3}$, $x^2$, $\\sqrt{5}$, $3\\times 4$), everything else in plain text.";
 function gradePrompt(c, cp, qids, mode){
   const blocks = qids.map(id => { const i = c.questions.findIndex(q => q.id === id); return qBlockPrompt(c, c.questions[i], cp.version?.[id] || "standard", i); }).join("\n\n");
   const bm = bonusMax(c);
@@ -1002,14 +1036,14 @@ Questions on this page:
 ${blocks}
 
 Instructions:
-1. Faithfully transcribe what the student wrote in each frame, without correcting spelling, line by line. ${MATH_RULE} Hebrew in Hebrew characters. Unreadable passage: [illegible]. Empty frame: "". Ignore anything crossed out.
+1. Faithfully transcribe what the student wrote in each frame, without correcting spelling, line by line. ${MATH_RULE} Hebrew in Hebrew characters, in reading order (handwritten Hebrew is often cursive: read it carefully, letter by letter). Illegible passage: [illegible]. Empty box: "". Ignore anything crossed out.
 2. "fautes": list of incorrect passages, copied exactly as they appear in the transcription (short: a few words). Empty list if everything is correct.
-3. Score in increments of 0.5, strictly per the criteria: each half point must correspond to something actually correct that the student wrote. Never give "encouragement" points. An empty answer, "I don't know", "?", the question copied back, off-topic, or with no correct element at all = 0.
-4. "commentaire": 1 or 2 short sentences (40 words max), informal, encouraging: what worked, then the specific mistake and how to fix it.
-5. "erreurs": choose from the common mistakes (exact text); otherwise a 2-5 word label. "acquis": 1 to 3 short labels.
+3. Score in steps of 0.5, strictly according to the criteria: every half point must correspond to a correct element actually written by the student. Never give "encouragement" points. Empty answer, "I don't know", "?", copied prompt, off-topic or no correct element = 0.
+4. "commentaire": 1 or 2 short sentences (40 words max), addressing the student as "you", kind: what went well, then the precise mistake and how to fix it. Write it in English.
+5. "erreurs": pick from the common mistakes (exact text); otherwise a 2-to-5-word label. "acquis": 1 to 3 short labels.
 6. "lisible": false if you had to guess a significant part of the answer.
 7. ${NOSRC}
-${bm ? `8. Also give for the page "proprete" (0 to 1: legibility, neatness, crossed-out text) and "orthographe" (0 to 1: 1 = no spelling mistakes).\\n` : ""}Reply only in JSON: {"reponses":[{"id":"…","transcription":"…","fautes":["…"],"lisible":true,"note":0,"commentaire":"…","erreurs":["…"],"acquis":["…"],"coches":[]}]${bm ? ',"proprete":1,"orthographe":1' : ""}}`;
+${bm ? `8. Also give for the page "proprete" (0 to 1: legibility, neatness, crossed-out text) and "orthographe" (0 to 1: 1 = no spelling mistakes).\n` : ""}Reply only in JSON: {"reponses":[{"id":"…","transcription":"…","fautes":["…"],"lisible":true,"note":0,"commentaire":"…","erreurs":["…"],"acquis":["…"],"coches":[]}]${bm ? ',"proprete":1,"orthographe":1' : ""}}`;
 }
 
 /* ================= CORRECTION ================= */
@@ -1130,6 +1164,7 @@ Student's usual level in this subject: ${LVL[lvl]}.
 Their difficulties on the test " ${c.titre} » :
 ${ctx}
 
+${langueRule(c.langue)}
 Create exactly 3 NEW exercises, of increasing difficulty, that precisely target these mistakes:
 1 = discovery (simpler than the student's level), 2 = application, 3 = back to level ${LVL[lvl].toLowerCase()} of the test.
 Total 20 points (e.g. 5, 7, 8). Each exercise: a self-contained question (with a hint in parentheses for #1), an answer key, grading criteria, 2 or 3 common mistakes, a number of answer lines (3 to 12).
@@ -1168,6 +1203,7 @@ async function importCourseFiles(files){
       st.innerHTML = `<span class="thinking">Reading the PDF " ${esc(f.name)} »…</span>`;
       const pdf = await pdfjsLib.getDocument({data: await f.arrayBuffer()}).promise; let txt = "";
       for (let i = 1; i <= pdf.numPages; i++){ const tc = await (await pdf.getPage(i)).getTextContent(); txt += tc.items.map(x => x.str + (x.hasEOL ? "\n" : " ")).join("") + "\n\n"; }
+      if (hebRatio(txt) > .05){ txt = fixHebrewText(txt); S.hebPdf = [...(S.hebPdf || []), f]; }
       if (txt.replace(/\s/g, "").length > 150 * pdf.numPages) parts.push(txt.trim());
       else { for (let i = 1; i <= Math.min(pdf.numPages, 12); i++){ const pg = await pdf.getPage(i); const vp = pg.getViewport({scale: 1800 / Math.max(pg.view[2], pg.view[3])}); const cv = document.createElement("canvas"); cv.width = vp.width; cv.height = vp.height; await pg.render({canvasContext:cv.getContext("2d"), viewport:vp}).promise; pendingImgs.push(cv); } }
     } else { (await fileToCanvases(f)).forEach(cv => pendingImgs.push(cv)); }
@@ -1179,7 +1215,7 @@ async function importCourseFiles(files){
       for (let i = 0; i < pendingImgs.length; i += per){
         st.innerHTML = `<span class="thinking">Reading pages ${i + 1} à ${Math.min(i + per, pendingImgs.length)} sur ${pendingImgs.length}…</span>`;
         const blobs = await Promise.all(pendingImgs.slice(i, i + per).map(cv => toBlob(scaled(cv, 1800))));
-        const t = await aiText(`Transcribe the text of these lesson pages faithfully (in order), keeping titles, definitions, examples, and formulas. Copy Hebrew in Hebrew characters, without translating. No commentary: text only.`, {images:blobs});
+        const t = await aiText(`Faithfully transcribe the text of these lesson pages (in order), keeping headings, definitions, examples and formulas. Copy Hebrew in Hebrew characters, in reading order (right to left), without translating or reversing it, with nikud if present. No commentary: only the text.`, {images:blobs});
         parts.push(t.trim());
       }
     }
@@ -1187,7 +1223,7 @@ async function importCourseFiles(files){
   const box = $("#c-texte"); const prev = box.value.trim();
   box.value = [prev, ...parts].filter(Boolean).join("\n\n").slice(0, 60000);
   S.coursDraft = {...(S.coursDraft || {}), texte:box.value};
-  if (parts.length) st.textContent = "Extracted text: review it, correct if needed, then save.";
+  if (parts.length) st.innerHTML = S.hebPdf?.length ? `Hebrew detected: check the text. If words are reversed or scrambled, <button class="btn sm" id="c-heb-ai">Re-read the PDF with AI (reliable for Hebrew)</button>` : "Extracted text: review it, correct if needed, then save.";
 }
 
 /* ================= Generation ================= */
@@ -1198,13 +1234,14 @@ function genPrompt(co, p, n, extra){
 Duration: ${p.duree} minutes · Difficulty: ${p.difficulte} · Types: ${(p.types || []).map(t => T[t]).join(", ") || "varied"}
 ${n > 1 ? `Number of questions: ${n}. Total points: exactly 20.` : ""}
 ${p.consignes ? "Teacher's instructions: " + p.consignes : ""}
+${langueRule(p.langue)}
 ${extra || ""}
 For each question, write 3 versions of the same question, covering the same skill and worth the same points:
 - "socle" (Foundational): more guided (steps, simplified data, a hint), for a struggling student;
 - "standard" (Standard): the level expected of the class;
 - "approfondi" (Advanced): more demanding (justification, general case, extension).
 Each version has its own prompt, a detailed model answer, and grading criteria whose points add up to the question's total.
-${(p.types || []).includes("qcm") ? `You can include MCQs (graded automatically, without AI): for those, use "type":"qcm", and in each version "choix" (3 to 5 short options, without a letter) and "bonnes" (indices of correct answers, starting at 0); "lignes" is not needed.\\n` : ""}For each question, add: the skill being assessed, 2 to 4 common error types (2- to 5-word labels), and the number of answer lines needed (3 to 14).
+${(p.types || []).includes("qcm") ? `You can include MCQs (graded automatically, without AI): for those, use "type":"qcm", and in each version "choix" (3 to 5 short options, without a letter) and "bonnes" (indices of correct answers, starting at 0); "lignes" is not needed.\n` : ""}For each question, add: the skill being assessed, 2 to 4 common error types (2- to 5-word labels), and the number of answer lines needed (3 to 14).
 ${NOSRC}
 
 LESSON:
@@ -1223,7 +1260,7 @@ const EXO_TXT = "IMPORTANT: this is a PRACTICE EXERCISE SHEET (not a test): prog
 async function exercicesFrom(c){
   const co = store.cours.find(x => x.id === c.coursId); if (!co) throw {code:"no_cours"};
   const p = {matiere:c.matiere, niveau:c.niveau, duree:c.duree || 55, difficulte:c.gen?.difficulte || "moyen", types:c.gen?.types || [], consignes:""};
-  const r = await ai(genPrompt(co, p, clamp((c.questions || []).length || 5, 1, 10), EXO_TXT + "\\nSkills to work on (those from the test \" " + c.titre + " ») : " + (c.questions || []).map(q => q.notion).filter(Boolean).join(", ")), {feature:"exercices"});
+  const r = await ai(genPrompt(co, p, clamp((c.questions || []).length || 5, 1, 10), EXO_TXT + "\nSkills to work on (those from the test \" " + c.titre + " ») : " + (c.questions || []).map(q => q.notion).filter(Boolean).join(", ")), {feature:"exercices"});
   const qs = (r?.questions || []).map(mapQ); if (!qs.length) throw {code:"invalid_json"};
   const id = uid(12);
   await write("controles/" + id, {type:"exercices", srcCtrl:c.id, titre:"Practice · " + (r.titre || c.titre), matiere:c.matiere, niveau:c.niveau, classeId:c.classeId, coursId:c.coursId, duree:c.duree || 55, differencie:!!c.differencie,
@@ -1235,7 +1272,7 @@ async function regenExercices(c){
   if (!co) throw {code:"no_cours"};
   const g = c.gen || {}, p = {matiere:c.matiere, niveau:c.niveau, duree:c.duree || 55, difficulte:g.difficulte || "moyen", types:g.types || [], consignes:g.consignes || ""};
   const deja = (c.questions || []).map(q => vOf(q, "standard").enonce).join(" / ").slice(0, 3000);
-  const r = await ai(genPrompt(co, p, clamp((c.questions || []).length || 5, 1, 10), EXO_TXT + "\\nPropose exercises that are NEW and DIFFERENT from these: " + deja), {feature:"exercices"});
+  const r = await ai(genPrompt(co, p, clamp((c.questions || []).length || 5, 1, 10), EXO_TXT + "\nPropose exercises that are NEW and DIFFERENT from these: " + deja), {feature:"exercices"});
   const qs = (r?.questions || []).map(mapQ); if (!qs.length) throw {code:"invalid_json"};
   const f = feuille(c.id), printed = f && Object.keys(f.copies || {}).length;
   if (!printed){ const o = structuredClone(c); o.questions = qs; await saveCtrl(o); return c.id; }
@@ -1309,6 +1346,18 @@ document.addEventListener("click", async ev => {
     await write("classes/" + cl.id, {eleves:cl.eleves.map(e => map[e.id] ? {...e, niveaux:{...(e.niveaux || {}), [S.levelMat]:map[e.id].lvl}} : e)}, "update"); S.suggestions = null; toast("Levels updated."); return; }
 
   /* wizard */
+  if (t.id === "c-heb-ai"){ const st = $("#c-st"), files = S.hebPdf || []; if (!files.length) return;
+    if (!confirm("Replace the text extracted from the PDF with an AI reading of the pages? (more reliable for Hebrew, slightly more costly)")) return;
+    try { const cvs = [];
+      for (const f of files){ const pdf = await pdfjsLib.getDocument({data: await f.arrayBuffer()}).promise;
+        for (let i = 1; i <= Math.min(pdf.numPages, 12); i++){ const pg = await pdf.getPage(i); const vp = pg.getViewport({scale: 2000 / Math.max(pg.view[2], pg.view[3])}); const cv = document.createElement("canvas"); cv.width = vp.width; cv.height = vp.height; await pg.render({canvasContext:cv.getContext("2d"), viewport:vp}).promise; cvs.push(cv); } }
+      const per = Math.max(1, LIM?.images?.maxCount || 1), out = [];
+      for (let i = 0; i < cvs.length; i += per){ st.innerHTML = `<span class="thinking">AI reading pages ${i + 1} à ${Math.min(i + per, cvs.length)} sur ${cvs.length}…</span>`;
+        const blobs = await Promise.all(cvs.slice(i, i + per).map(cv => toBlob(scaled(cv, 2000))));
+        out.push((await aiText(`Faithfully transcribe the text of these lesson pages (in order), keeping headings, definitions, examples and formulas. The text contains Hebrew: copy it in Hebrew characters, in reading order (right to left), without translating or reversing it, with nikud and final letters exactly as they appear. No commentary: only the text.`, {images:blobs})).trim()); }
+      $("#c-texte").value = out.join("\n\n").slice(0, 60000); S.coursDraft = {...(S.coursDraft || {}), texte:$("#c-texte").value}; S.hebPdf = [];
+      st.textContent = "Text re-read by AI: check it, then save."; }
+    catch(e){ console.error(e); st.textContent = e?.code ? aiErr(e.code) : "Couldn't read the file."; } return; }
   if (t.id === "c-save"){ const texte = $("#c-texte").value.trim(), titre = $("#c-titre").value.trim() || "Untitled lesson";
     if (texte.length < 80) return toast("The lesson text is too short.");
     const id = uid(10); await write("cours/" + id, {titre, matiere:$("#c-mat").value, niveau:$("#c-niv").value, texte:texte.slice(0, 60000), createdAt:new Date().toISOString()});
@@ -1319,10 +1368,11 @@ document.addEventListener("click", async ev => {
   if (d.delcours){ await write("cours/" + d.delcours, null, "delete"); return; }
   if (t.id === "back1"){ S.wizStep = 1; return render(); }
   if (t.id === "gen" || t.id === "genBlank"){
+    if (!S.params.langue) S.params.langue = langueDef(store.cours.find(c => c.id === S.coursId)?.texte);
     const p = S.params, co = store.cours.find(c => c.id === S.coursId), st = $("#gen-st");
     const EXO = p.kind === "exercices" && canEx();
     const id = uid(12); const base = {type:EXO ? "exercices" : "controle", titre:p.titre || (EXO ? "Practice · " : "") + (co?.titre || "Test"), gen:{types:p.types, difficulte:p.difficulte, consignes:p.consignes || ""}, matiere:p.matiere, niveau:p.niveau, classeId:p.classeId, coursId:S.coursId, duree:+p.duree || 55,
-      differencie:!!p.differencie, statut:"brouillon", date:"", mise:{affiche:S.me?.affichage || "les2", police:15, lh:30, bareme:true, consignes:EXO ? "Practice exercise sheet. Write only inside the boxes." : "Write only inside the boxes."}, questions:[], createdAt:new Date().toISOString()};
+      differencie:!!p.differencie, langue:p.langue || "", statut:"brouillon", date:"", mise:{affiche:S.me?.affichage || "les2", police:15, lh:30, bareme:true, consignes:EXO ? "Practice exercise sheet. Write only inside the boxes." : "Write only inside the boxes."}, questions:[], createdAt:new Date().toISOString()};
     if (t.id === "genBlank"){ base.questions = [mapQ({points:4, lignes:6})]; await write("controles/" + id, base); S.editId = id; S.wizStep = 1; S.step = "preparer"; return go("edit"); }
     t.disabled = true; st.innerHTML = `<span class="thinking">AI is writing ${EXO ? "the exercises" : "the test"} in 3 levels (1 to 2 minutes)…</span>`;
     try{
@@ -1351,10 +1401,10 @@ document.addEventListener("click", async ev => {
       const co = store.cours.find(x => x.id === c.coursId); const i = d.qai !== undefined ? +d.qai : -1; const q = c.questions[i];
       const st = q ? $("#q-st-" + q.id) : null; t.disabled = true; if (st) st.innerHTML = `<span class="thinking">Rewriting…</span>`; else toast("AI is writing a question…");
       const instr = q ? ($("#q-i-" + q.id).value.trim() || "improve the question") : "";
-      const extra = q ? `Rewrite the following question according to this teacher request: " ${instr} ". Keep ${q.points} points.\\nCurrent question (standard version): ${vOf(q, "standard").enonce}` :
+      const extra = q ? `Rewrite the following question according to this teacher request: " ${instr} ". Keep ${q.points} points.\nCurrent question (standard version): ${vOf(q, "standard").enonce}` :
         `Add a new question different from these: ${c.questions.map(x => vOf(x, "standard").enonce).join(" / ")}`;
       try{
-        const r = await ai(genPrompt(co, {...c, types:["cours","application","probleme"], difficulte:"moyen", consignes:""}, 1, extra) + `\\nRespond with {"questions":[ a single question ]}.`);
+        const r = await ai(genPrompt(co, {...c, types:["cours","application","probleme"], difficulte:"moyen", consignes:""}, 1, extra) + `\nRespond with {"questions":[ a single question ]}.`);
         const nq = (r?.questions || []).map(mapQ)[0]; if (!nq) throw {code:"invalid_json"};
         if (q){ nq.id = q.id; nq.points = q.points; c.questions[i] = nq; } else c.questions.push(nq);
         await saveCtrl(c);
@@ -1389,7 +1439,7 @@ document.addEventListener("click", async ev => {
         const blob = await getBlob(a.crop);
         const i = C.questions.indexOf(q);
         const smp = await sampleImages(S.corrEleve, C.matiere);
-        const r = await ai(`Read this student's handwritten answer box very carefully (${C.matiere}, ${C.niveau || ""}), then grade it. Image 1 is the box to read.${smp.txt}\n${qBlockPrompt(C, q, cp.version?.[qid] || "standard", i)}\\n\\nA first reading gave: """${a.transcription}""" (deemed uncertain).\\nTranscribe line by line, without correcting spelling. ${MATH_RULE} Hebrew in Hebrew characters. Truly illegible passage: [illegible]. "annotee" = transcription with each incorrect passage surrounded by ⟦ ⟧ (outside of $…$). Grade in increments of 0.5. Comment 2 to 3 sentences, addressed directly to the student. ${NOSRC}\\nRespond only in JSON, in English for a US school: {"transcription":"…","annotee":"…","lisible":true,"note":0,"commentaire":"…","erreurs":["…"],"acquis":["…"]}`, {images:[blob, ...smp.blobs], modelTier:"complex"});
+        const r = await ai(`Read this student's handwritten answer box very carefully (${C.matiere}, ${C.niveau || ""}), then grade it. Image 1 is the box to read.${smp.txt}\n${qBlockPrompt(C, q, cp.version?.[qid] || "standard", i)}\n\nA first reading gave: """${a.transcription}""" (deemed uncertain).\nTranscribe line by line, without correcting spelling. ${MATH_RULE} Hebrew in Hebrew characters. Truly illegible passage: [illegible]. "annotee" = transcription with each incorrect passage surrounded by ⟦ ⟧ (outside of $…$). Grade in increments of 0.5. Comment 2 to 3 sentences, addressed directly to the student. ${NOSRC}\nRespond only in JSON, in English for a US school: {"transcription":"…","annotee":"…","lisible":true,"note":0,"commentaire":"…","erreurs":["…"],"acquis":["…"]}`, {images:[blob, ...smp.blobs], modelTier:"complex"});
         await write("feuilles/" + C.id, {copies:{[S.corrEleve]:{validee:false, answers:{[qid]:{transcription:String(r.transcription || ""), annot:String(r.annotee || r.transcription || ""), lisible:r.lisible !== false,
           noteIA:clamp(half(+r.note || 0), 0, +q.points), note:null, commentaire:String(r.commentaire || ""), erreurs:(r.erreurs || []).map(String).slice(0, 4), acquis:(r.acquis || []).map(String).slice(0, 4), valide:false}}}}}, "update");
       }catch(e){ st.textContent = e?.code ? aiErr(e.code) : "Box image not found."; t.disabled = false; }
@@ -1400,7 +1450,7 @@ document.addEventListener("click", async ev => {
       t.disabled = true; st.innerHTML = `<span class="thinking">Grading…</span>`;
       try{
         const i = C.questions.indexOf(q);
-        const r = await ai(`Grade a student's answer (${C.matiere}, ${C.niveau || ""}).\n${qBlockPrompt(C, q, cp.version?.[qid] || "standard", i)}\\n\\nStudent's answer (transcribed and verified by the teacher):\\n"""${text}"""\\n\\nGrade in increments of 0.5. "annotee" = the answer with each incorrect passage surrounded by ⟦ ⟧ (outside of $…$). ${MATH_RULE} Comment 2 to 3 sentences, addressed directly to the student, kind and encouraging. Choose "erreurs" from the common error types when possible. ${NOSRC}\\nRespond only in JSON, in English for a US school: {"annotee":"…","note":0,"commentaire":"…","erreurs":["…"],"acquis":["…"]}`);
+        const r = await ai(`Grade a student's answer (${C.matiere}, ${C.niveau || ""}).\n${qBlockPrompt(C, q, cp.version?.[qid] || "standard", i)}\n\nStudent's answer (transcribed and verified by the teacher):\n"""${text}"""\n\nGrade in increments of 0.5. "annotee" = the answer with each incorrect passage surrounded by ⟦ ⟧ (outside of $…$). ${MATH_RULE} Comment 2 to 3 sentences, addressed directly to the student, kind and encouraging. Choose "erreurs" from the common error types when possible. ${NOSRC}\nRespond only in JSON, in English for a US school: {"annotee":"…","note":0,"commentaire":"…","erreurs":["…"],"acquis":["…"]}`);
         await write("feuilles/" + C.id, {copies:{[S.corrEleve]:{validee:false, answers:{[qid]:{transcription:text, annot:String(r.annotee || text), lisible:true, noteIA:clamp(half(+r.note || 0), 0, +q.points), note:null,
           commentaire:String(r.commentaire || ""), erreurs:(r.erreurs || []).map(String).slice(0, 4), acquis:(r.acquis || []).map(String).slice(0, 4), valide:false}}}}}, "update");
         delete S.editTr[qid];
@@ -1438,9 +1488,9 @@ document.addEventListener("click", async ev => {
       const rows = studentsOf(C).map(e => f.copies[e.id]).filter(k => copyDone(C, k));
       const lines = C.questions.map((q, k) => { const got = rows.map(r => noteOf(r.answers[q.id]) / q.points); const tags = {}; rows.forEach(r => (r.answers[q.id]?.erreurs || []).forEach(x => tags[x] = (tags[x] || 0) + 1));
         const coms = rows.map(r => r.answers[q.id]?.commentaire).filter(Boolean).slice(0, 6);
-        return `Q${k + 1} — ${q.notion || ""} (${q.points} pts): ${vOf(q, "standard").enonce}\\nAverage success rate ${pct(got.reduce((a, b) => a + b, 0) / got.length)} ; erreurs : ${Object.entries(tags).map(([x, n]) => x + " ×" + n).join(", ") || "aucune"}\\nComment excerpts: ${coms.join(" | ")}`; }).join("\n\n");
+        return `Q${k + 1} — ${q.notion || ""} (${q.points} pts): ${vOf(q, "standard").enonce}\nAverage success rate ${pct(got.reduce((a, b) => a + b, 0) / got.length)} ; erreurs : ${Object.entries(tags).map(([x, n]) => x + " ×" + n).join(", ") || "aucune"}\nComment excerpts: ${coms.join(" | ")}`; }).join("\n\n");
       try{
-        const txt = await aiText(`You are helping a teacher of ${C.matiere} (${C.niveau || ""}) analyze their class's results on the test " ${C.titre} » (${rows.length} papers, average ${fmt(rows.reduce((a, r) => a + final20(C, r), 0) / rows.length)}/20).\n\n${lines}\\n\\nWrite in English, in plain text with no markdown or headings, 8 to 12 lines: (1) the skills not understood by a significant part of the class, with the figure; (2) the most common error and its likely cause; (3) three concrete actions for the next lesson. ${NOSRC}`);
+        const txt = await aiText(`You are helping a teacher of ${C.matiere} (${C.niveau || ""}) analyze their class's results on the test " ${C.titre} » (${rows.length} papers, average ${fmt(rows.reduce((a, r) => a + final20(C, r), 0) / rows.length)}/20).\n\n${lines}\n\nWrite in English, in plain text with no markdown or headings, 8 to 12 lines: (1) the skills not understood by a significant part of the class, with the figure; (2) the most common error and its likely cause; (3) three concrete actions for the next lesson. ${NOSRC}`);
         C.analyse = txt.trim(); await saveCtrl(C);
       }catch(e){ st.textContent = aiErr(e?.code); t.disabled = false; }
       return; }
@@ -1545,7 +1595,7 @@ function apiSample(){
     const imgs = opts.images ? (opts.images instanceof Blob ? [opts.images] : Array.from(opts.images)) : [];
     const content = [];
     for (const im of imgs) content.push({type:"image", source:{type:"base64", media_type:im.type && im.type.startsWith("image/") ? im.type : "image/jpeg", data:await b64(im)}});
-    content.push({type:"text", text:String(input) + (asJson ? "\\n\\n(Respond only with the requested JSON, with no text around it.)" : "")});
+    content.push({type:"text", text:String(input) + (asJson ? "\n\n(Respond only with the requested JSON, with no text around it.)" : "")});
     const headers = {"content-type":"application/json", "x-tikoun-code":accessCode()};
     if (SB && SB_USER){ const {data} = await SB.auth.getSession(); headers.authorization = "Bearer " + data.session.access_token; }
     let r;
@@ -2102,7 +2152,7 @@ async function buildPdf(builders, filename, st){
       await Promise.all($$("img", stage).map(im => im.decode ? im.decode().catch(() => {}) : null));
       for (let i = 0; i < pages.length; i++){
         $("#ovm").textContent = `${label} · ${k + 1} / ${builders.length}`;
-        const cv = await html2canvas(pages[i], {scale:2, backgroundColor:"#ffffff", logging:false, scrollX:0, scrollY:-window.scrollY, windowWidth:900, useCORS:true});
+        const cv = await html2canvas(pages[i], {scale:2, backgroundColor:"#ffffff", logging:false, scrollX:0, scrollY:-window.scrollY, windowWidth:900, useCORS:true, onclone:(doc, el) => fixBidiForCanvas(el)});
         if (!first) pdf.addPage(); first = false; pdf.addImage(cv.toDataURL("image/jpeg", 0.88), "JPEG", 0, 0, 595.28, 841.89);
       }
     }
@@ -2310,7 +2360,7 @@ async function sampleImages(eid, mat, max = 3){
   const u = usageOf(mat), sel = (w.samples || []).filter(s => s.asset && s.usage === u).slice(0, max);
   const blobs = []; for (const s of sel){ try { blobs.push(await getBlob(s.asset)); } catch(x){} }
   const ok = sel.slice(0, blobs.length);
-  return {blobs, txt: ok.length ? `\\nImages 2 through ${ok.length + 1} are samples of THIS student's handwriting, with the exact text they copied: ${ok.map((s, k) => `image ${k + 2} = « ${s.texte} »`).join(" ; ")}. Use them to recognize how they form letters and numbers.` : ""};
+  return {blobs, txt: ok.length ? `\nImages 2 through ${ok.length + 1} are samples of THIS student's handwriting, with the exact text they copied: ${ok.map((s, k) => `image ${k + 2} = « ${s.texte} »`).join(" ; ")}. Use them to recognize how they form letters and numbers.` : ""};
 }
 
 /* ================= Events for the modules above ================= */
@@ -2401,7 +2451,7 @@ Rules:
 - No LaTeX: write math using simple symbols (x², √, ½, ×, ÷, ≤).
 - Each question has a short explanation (1 to 3 sentences) shown to the student after they answer.
 - Answers must be unambiguous: a numeric answer has a single value; a fill-in-the-blank has a blank marked ___ and a list of accepted answers (including spelling variants).
-${o.consignes ? "Teacher's instructions: " + o.consignes + "\n" : ""}${deja ? "IMPORTANT: NEW questions, different from these: " + deja + "\n" : ""}${NOSRC}
+${o.langue ? langueRule(o.langue) + "\n" : ""}${o.consignes ? "Teacher's instructions: " + o.consignes + "\n" : ""}${deja ? "IMPORTANT: NEW questions, different from these: " + deja + "\n" : ""}${NOSRC}
 
 LESSON:
 """${(co?.texte || "").slice(0, 30000)}"""
@@ -2464,6 +2514,7 @@ function vQuizNew(){
       <div class="field"><label for="qn-ti">Title (optional)</label><input id="qn-ti" data-qn="titre" value="${esc(o.titre)}" placeholder="Suggested by AI if empty"></div>
       <div class="field"><label for="qn-b">Questions in the bank</label><select id="qn-b" data-qn="banque">${selOpts(["20","30","40","50"], String(o.banque))}</select></div>
       <div class="field"><label for="qn-p">Questions per attempt</label><select id="qn-p" data-qn="parTentative">${selOpts(["5","10","15","20"], String(o.parTentative))}</select></div>
+      <div class="field"><label for="qn-l">Language</label><select id="qn-l" data-qn="langue">${selOpts(LANGUES, o.langue || langueDef(co?.texte))}</select></div>
       <div class="field"><label for="qn-f">Due date (optional)</label><input id="qn-f" type="date" data-qn="fermeture" value="${esc(o.fermeture)}"></div>
     </div>
     <div class="field"><label>Question types</label><div class="row">${Object.entries(QTYPES).map(([k, l]) => `<label class="row small" style="gap:6px"><input type="checkbox" data-qtype="${k}"${o.types.includes(k) ? " checked" : ""}> ${l}</label>`).join("")}</div>
@@ -2588,8 +2639,8 @@ document.addEventListener("click", async ev => {
     if (t.id === "qn-go"){ const o = S.qn, co = store.cours.find(c => c.id === o.coursId), cl = classe(o.classeId), st = $("#qn-st");
       if (!o.types.length) return toast("Choose at least one question type.");
       t.disabled = true; st.innerHTML = `<span class="thinking">AI is preparing ${o.banque} questions (1 to 2 minutes)…</span>`;
-      try { const auto = o.types.filter(x => x !== "redige"); const g = await genQuizQuestions(co, {matiere:co.matiere, niveau:co.niveau, types:o.types, consignes:o.consignes}, +o.banque);
-        const id = uid(12); await write("quizzes/" + id, {titre:o.titre || g.titre || "Quiz · " + co.titre, matiere:co.matiere, niveau:co.niveau, classeId:cl.id, coursId:co.id, statut:"brouillon", parTentative:+o.parTentative, fermeture:o.fermeture || "", redige:o.types.includes("redige"), types:o.types, consignes:o.consignes || "", questions:g.questions, createdAt:new Date().toISOString()});
+      try { const auto = o.types.filter(x => x !== "redige"); const lang = o.langue || langueDef(co.texte); const g = await genQuizQuestions(co, {matiere:co.matiere, niveau:co.niveau, types:o.types, consignes:o.consignes, langue:lang}, +o.banque);
+        const id = uid(12); await write("quizzes/" + id, {titre:o.titre || g.titre || "Quiz · " + co.titre, matiere:co.matiere, niveau:co.niveau, classeId:cl.id, coursId:co.id, statut:"brouillon", parTentative:+o.parTentative, fermeture:o.fermeture || "", redige:o.types.includes("redige"), types:o.types, consignes:o.consignes || "", langue:lang, questions:g.questions, createdAt:new Date().toISOString()});
         S.qn.titre = ""; S.qz = {id, tab:"questions", el:null}; location.hash = `#/exercices/${id}/questions`; void auto; }
       catch(e){ st.textContent = aiErr(e?.code); t.disabled = false; } return; }
     const q = S.view === "quiz" ? quizOf(S.qz.id) : null;
@@ -2600,7 +2651,7 @@ document.addEventListener("click", async ev => {
       if (t.id === "qz-more" || t.id === "qz-regen"){ const co = store.cours.find(c => c.id === q.coursId); if (!co) return toast("Original lesson not found.");
         if (t.id === "qz-regen" && !confirm("Replace all questions with a new question bank? Results already obtained are kept.")) return;
         const st = $("#qz-st"); t.disabled = true; st.innerHTML = `<span class="thinking">AI is preparing new questions…</span>`;
-        try { const n = t.id === "qz-more" ? 10 : (q.questions || []).length || 30; const g = await genQuizQuestions(co, {matiere:q.matiere, niveau:q.niveau, types:q.types || ["qcm","vf","num","trou"], consignes:q.consignes}, n, (q.questions || []).map(x => x.enonce));
+        try { const n = t.id === "qz-more" ? 10 : (q.questions || []).length || 30; const g = await genQuizQuestions(co, {matiere:q.matiere, niveau:q.niveau, types:q.types || ["qcm","vf","num","trou"], consignes:q.consignes, langue:q.langue}, n, (q.questions || []).map(x => x.enonce));
           q.questions = t.id === "qz-more" ? [...(q.questions || []), ...g.questions] : g.questions; await write("quizzes/" + q.id, q); toast(g.questions.length + " new question(s)."); }
         catch(e){ st.textContent = aiErr(e?.code); t.disabled = false; } return; }
       if (d.rednote){ const [eid, i, v] = d.rednote.split("|"); const k = "quizrep/" + q.id + "_" + eid, r = store.quizrep[q.id + "_" + eid]; if (!r) return;
@@ -2609,7 +2660,7 @@ document.addEventListener("click", async ev => {
         if (!items.length) return; t.disabled = true; st.innerHTML = `<span class="thinking">Grading ${Math.min(items.length, 30)} answer(s)…</span>`;
         try { const batch = items.slice(0, 30);
           const res = await ai(`You are grading students' written answers (${q.matiere}, ${q.niveau}) to a practice quiz. Be fair and kind; an empty answer or "I don't know" is wrong.
-${batch.map((o, k) => `#${k}\\nQuestion: ${o.x.enonce}\\nAnswer key: ${o.x.corrige || ""}\\nCriteria: ${o.x.criteres || ""}\\nStudent's answer: ${o.a.rep}`).join("\n\n")}
+${batch.map((o, k) => `#${k}\nQuestion: ${o.x.enonce}\nAnswer key: ${o.x.corrige || ""}\nCriteria: ${o.x.criteres || ""}\nStudent's answer: ${o.a.rep}`).join("\n\n")}
 Reply in JSON only: {"notes":[{"k":0,"juste":true,"commentaire":"…"}]}`, {feature:"exercices", modelTier:"quick"});
           const byDoc = {}; (res?.notes || []).forEach(n => { const o = batch[+n.k]; if (!o) return; const key = q.id + "_" + o.r.eleveId; byDoc[key] = byDoc[key] || structuredClone(o.r.redigees || []); byDoc[key][o.i] = {...byDoc[key][o.i], note:n.juste ? 1 : 0, commentaire:String(n.commentaire || "")}; });
           for (const [key, red] of Object.entries(byDoc)) await write("quizrep/" + key, {redigees:red}, "update");

@@ -96,3 +96,11 @@ l'administrateur est recréé automatiquement.
 - En anglais : l'IA rédige contrôles, quiz et corrections en anglais ; niveaux 6th–12th grade ; l'école est saisie
   manuellement (pas d'annuaire officiel) et marquée « non vérifiée ».
 - Fichiers : `index.en.html`, `landing.en.html`, `eleve.en.html` (générés à partir des versions françaises).
+
+## Hébreu
+
+- Cours : texte collé, PDF ou photos. Un PDF en hébreu est remis à l'endroit automatiquement (lignes « à l'envers »
+  corrigées) ; bouton **« Relire le PDF avec l'IA »** si le texte reste mélangé. Photos : lues par l'IA en caractères hébreux, avec nikoud.
+- **Langue du contrôle / du quiz** : Français, Hébreu, Hébreu et français, Anglais (proposée automatiquement selon le cours).
+- Affichage de droite à gauche automatique (écran, feuilles imprimées, espace élève) ; polices Noto Sans Hebrew et Frank Ruhl Libre.
+- Copies manuscrites en hébreu (écriture cursive) : l'IA est prévenue et transcrit en caractères hébreux.

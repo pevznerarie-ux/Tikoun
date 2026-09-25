@@ -9,9 +9,9 @@
 <meta name="theme-color" content="#15233F">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+Hebrew:wght@400;500;600;700&family=Frank+Ruhl+Libre:wght@500&family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&display=swap">
 <style>
-:root{--paper:#FAF8F3;--surface:#fff;--surface-2:#F3EFE6;--ink:#15233F;--muted:#6B6758;--line:#E7E1D4;--gold:#B7862B;--gold-soft:#F7EDD8;--ok:#1E7A4C;--ok-soft:#E3F3EA;--bad:#B42318;--bad-soft:#FCE8E6;--display:"Cormorant Garamond",Georgia,serif;--body:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif}
+:root{--paper:#FAF8F3;--surface:#fff;--surface-2:#F3EFE6;--ink:#15233F;--muted:#6B6758;--line:#E7E1D4;--gold:#B7862B;--gold-soft:#F7EDD8;--ok:#1E7A4C;--ok-soft:#E3F3EA;--bad:#B42318;--bad-soft:#FCE8E6;--display:"Cormorant Garamond","Frank Ruhl Libre",Georgia,serif;--body:"Inter","Noto Sans Hebrew",system-ui,-apple-system,"Segoe UI",sans-serif}
 @media (prefers-color-scheme:dark){:root{--paper:#10141D;--surface:#171C27;--surface-2:#1F2532;--ink:#EFEADF;--muted:#A7A192;--line:#2C3342;--gold:#D9AE58;--gold-soft:#3A3120;--ok:#4FC98D;--ok-soft:#15301F;--bad:#FF7A6E;--bad-soft:#3A1C1A}.wm{filter:brightness(0) invert(.92)}}
 *{box-sizing:border-box}html,body{margin:0}
 body{background:var(--paper);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased;padding-bottom:env(safe-area-inset-bottom)}
@@ -54,6 +54,8 @@ textarea{min-height:160px;resize:vertical}
 .hello{display:grid;gap:4px}
 h1{font-size:1.15em}.big{font-size:54px}h2{font-size:26px!important}
 h1,h2,h3,.big,.price{font-variant-numeric:lining-nums;font-feature-settings:"lnum" 1}
+p,h1,h2,.enonce,.opt,input,textarea,.fb b{unicode-bidi:plaintext}
+input,textarea{text-align:start}
 </style>
 </head>
 <body>
@@ -101,13 +103,13 @@ function show(){
   const R = RUN, q = R.qs[R.i]; R.answered = false; R.sel = new Set(); R.t0 = Date.now();
   const pct = Math.round(R.i / R.qs.length * 100);
   let input = "";
-  if (q.type === "qcm") input = `<div class="opts">${q.choix.map((c, k) => `<button class="btn opt" data-k="${k}">${esc(c)}</button>`).join("")}</div>${q.multi ? `<p class="small muted">Plusieurs bonnes réponses possibles.</p><button class="btn primary" id="val">Valider</button>` : ""}`;
+  if (q.type === "qcm") input = `<div class="opts">${q.choix.map((c, k) => `<button class="btn opt" dir="auto" data-k="${k}">${esc(c)}</button>`).join("")}</div>${q.multi ? `<p class="small muted">Plusieurs bonnes réponses possibles.</p><button class="btn primary" id="val">Valider</button>` : ""}`;
   if (q.type === "vf") input = `<div class="opts" style="grid-template-columns:1fr 1fr"><button class="btn opt" data-vf="true">Vrai</button><button class="btn opt" data-vf="false">Faux</button></div>`;
   if (q.type === "num") input = `<div class="row" style="flex-wrap:nowrap"><input id="rep" inputmode="decimal" autocomplete="off" placeholder="Ta réponse">${q.unite ? `<span class="muted">${esc(q.unite)}</span>` : ""}</div><button class="btn primary" id="val">Valider</button>`;
-  if (q.type === "trou") input = `<input id="rep" autocomplete="off" autocapitalize="off" placeholder="Le mot manquant"><button class="btn primary" id="val">Valider</button>`;
-  if (q.type === "redige") input = `<textarea id="rep" placeholder="Rédige ta réponse"></textarea><button class="btn primary" id="val">Envoyer</button>`;
+  if (q.type === "trou") input = `<input id="rep" dir="auto" autocomplete="off" autocapitalize="off" placeholder="Le mot manquant"><button class="btn primary" id="val">Valider</button>`;
+  if (q.type === "redige") input = `<textarea id="rep" dir="auto" placeholder="Rédige ta réponse"></textarea><button class="btn primary" id="val">Envoyer</button>`;
   app.innerHTML = `<section class="card q"><div class="qhead"><span>Question ${R.i + 1} / ${R.qs.length}</span><span>${esc(q.notion || "")} · ${"★".repeat(q.niveau || 1)}</span></div><div class="bar"><i style="width:${pct}%"></i></div>
-    <div class="enonce">${esc(q.enonce)}</div>${input}<div id="fb"></div></section>
+    <div class="enonce" dir="auto">${esc(q.enonce)}</div>${input}<div id="fb"></div></section>
     <button class="btn ghost" id="quit">← Arrêter et revenir à mes exercices</button>`;
   $("#quit").onclick = () => { if (confirm("Arrêter cette tentative ?")) finish(); };
   const send = rep => answer(q, rep);
