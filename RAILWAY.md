@@ -12,16 +12,22 @@ Sans volume, les données sont effacées à chaque redéploiement (le site affic
 | Variable | Obligatoire | Rôle |
 | --- | --- | --- |
 | `ANTHROPIC_API_KEY` | oui | Clé IA de l'école (avec limite de dépense sur console.anthropic.com) |
-| `TIKOUN_CODE` | oui | Code d'accès de l'école, demandé une fois par appareil. Active le stockage sur le serveur |
+| `TIKOUN_CODE` | oui | Code de l'établissement, demandé **une seule fois** pour créer le premier compte administrateur |
 | `AI_MAX_PER_DAY` | non (400) | Plafond d'appels IA par jour |
 | `MODEL_QUICK`, `MODEL_DEFAULT`, `MODEL_COMPLEX` | non | Modèles (défaut économique : Haiku 4.5, Sonnet 5 pour la relecture précise) |
 
 ## 3. Vérifier
 
 - `/health` affiche **ok**.
-- Le site demande le code, puis affiche en haut à droite « IA ✓ · Données : serveur ✓ ».
+- Au premier lancement, le site propose de créer le **compte administrateur** (avec TIKOUN_CODE). Ensuite : onglet **Comptes** pour ajouter chaque professeur (e-mail + mot de passe provisoire).
 - Logs Railway : « stockage serveur (volume /data) ».
 
 ## Sauvegardes
 
 Onglet **Sauvegarde → Télécharger une sauvegarde** (toutes les données, sans les photos). À faire régulièrement, par exemple chaque fin de mois.
+
+## Comptes
+
+- **Administrateur** (direction) : voit tous les contrôles (« Toute l'école »), la vue Direction, crée et désactive les comptes, réinitialise les mots de passe.
+- **Professeur** : retrouve ses contrôles, cours, copies et résultats ; les classes et élèves sont communs à l'établissement ; la Banque montre les contrôles de tous pour les réutiliser.
+- Un professeur ne peut pas modifier les contrôles d'un autre.

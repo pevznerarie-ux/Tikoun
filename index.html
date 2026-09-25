@@ -224,7 +224,9 @@ td.c,th.c{text-align:center}
       <a class="tab" data-r="classes" href="#/classes">Classes</a>
       <a class="tab" data-r="suivi" href="#/suivi">Suivi élèves</a>
       <a class="tab" data-r="banque" href="#/banque">Banque</a>
-      <a class="tab" data-r="direction" href="#/direction">Direction</a>
+      <a class="tab" data-r="direction" href="#/direction" id="tabDir">Direction</a>
+      <a class="tab" data-r="comptes" href="#/comptes" id="tabComptes" hidden>Comptes</a>
+      <a class="tab" data-r="compte" href="#/compte" id="tabCompte" hidden>Mon compte</a>
       <a class="tab" data-r="sauvegarde" href="#/sauvegarde" id="tabReglages" hidden>Sauvegarde</a>
     </nav>
   </div>
@@ -294,7 +296,7 @@ const S = {
 
 
 const classe = id => store.classes.find(c => c.id === id);
-const ctrl = id => store.controles.find(c => c.id === id);
+const ctrl = id => (store.allCtrl || store.controles).find(c => c.id === id);
 const feuille = id => store.feuilles[id];
 const eleveOf = (c, eid) => (classe(c.classeId)?.eleves || []).find(e => e.id === eid);
 const studentsOf = c => { const cl = classe(c.classeId); if (!cl) return []; return c.eleves?.length ? cl.eleves.filter(e => c.eleves.includes(e.id)) : cl.eleves; };
@@ -346,8 +348,10 @@ function render(){
   if (keep?.typing && a.dataset.live !== undefined){ skipped = true; return; } // don't clobber a field being typed
   skipped = false;
   $$(".tab").forEach(t => t.setAttribute("aria-selected", t.dataset.r === navKey()));
-  const V = (typeof SB !== "undefined" && SB && !SB_USER) ? vLogin : (typeof NEED_CODE !== "undefined" && NEED_CODE) ? vCode : {home:vHome, classes:vClasses, new:vNew, edit:vEdit, scan:vScan, correct:vCorrect, analyse:vAnalyse, suivi:vSuivi, banque:vBanque, direction:vDirection, reglages:vReglages, controles:vControles}[S.view] || vHome;
-  $("#tabs").hidden = V === vLogin || V === vCode;
+  const V = S.auth ? vAuth : (typeof SB !== "undefined" && SB && !SB_USER) ? vLogin : (typeof NEED_CODE !== "undefined" && NEED_CODE) ? vCode : {home:vHome, classes:vClasses, new:vNew, edit:vEdit, scan:vScan, correct:vCorrect, analyse:vAnalyse, suivi:vSuivi, banque:vBanque, direction:vDirection, reglages:vReglages, controles:vControles, compte:vCompte, comptes:vComptes}[S.view] || vHome;
+  $("#tabs").hidden = V === vLogin || V === vCode || V === vAuth;
+  { const acc = !!window.TIKOUN_CONFIG?.accounts; const tg = (id, h) => { const e = document.getElementById(id); if (e) e.hidden = h; };
+    tg("tabComptes", !isAdmin()); tg("tabCompte", !(acc && S.me)); tg("tabReglages", acc || !STANDALONE); tg("tabDir", acc && !isAdmin()); }
   let html = V();
   const fc = S.inCtrl && ["edit","scan","correct","analyse"].includes(S.view) && V !== vLogin && ctrl(S.inCtrl);
   if (fc){
@@ -1384,7 +1388,8 @@ function apiSample(){
     try { r = await fetch(cc.endpoint, {method:"POST", signal:opts.signal, headers, body:JSON.stringify({tier:opts.modelTier || "default", messages:[{role:"user", content}]})}); }
     catch(e){ throw {code:e?.name === "AbortError" ? "cancelled" : "upstream_error"}; }
     if (!r.ok){
-      if (r.status === 401 && !SB){ NEED_CODE = true; try { localStorage.removeItem("tikoun.code"); } catch(e){} scheduleRender(); }
+      if (r.status === 401 && window.TIKOUN_CONFIG?.accounts){ S.auth = "login"; scheduleRender(); }
+      else if (r.status === 401 && !SB){ NEED_CODE = true; try { localStorage.removeItem("tikoun.code"); } catch(e){} scheduleRender(); }
       const code = r.status === 401 ? "need_code" : r.status === 429 ? "rate_limited" : r.status === 400 || r.status === 413 ? "api_400" : r.status === 503 ? "no_ai" : "upstream_error";
       let msg = ""; try { msg = (await r.json())?.error?.message || ""; } catch(e){} throw {code, message:msg}; }
     const j = await r.json(); const text = (j.content || []).filter(b => b.type === "text").map(b => b.text).join("");
@@ -1450,6 +1455,7 @@ document.addEventListener("change", async ev => {
 function refreshCaps(){
   if (!STANDALONE) return;
   const aiOk = !!cloudCfg().endpoint;
+  if (window.TIKOUN_CONFIG?.accounts){ $("#caps").innerHTML = S.me ? `${esc(S.me.nom)}${isAdmin() ? " · admin" : ""} · IA ${aiOk ? "✓" : "✗"}${SERVERSTORE && !SRV_PERSIST ? " · ⚠ données temporaires" : ""}` : "Connexion requise"; return; }
   $("#caps").innerHTML = `IA ${aiOk ? "✓" : "✗ (serveur)"} · Données : ${SB ? (SB_USER ? "en ligne ✓" : "connexion requise") : SERVERSTORE ? (SRV_PERSIST ? "serveur ✓" : "serveur ⚠ temporaire") : (window.TIKOUN_CONFIG?.storage === "server" ? "code requis" : "cet appareil")}`;
 }
 
@@ -1563,7 +1569,9 @@ const serverAssets = { upload: async (blob, want) => {
   const r = await fetch("/api/files" + (want ? "?id=" + want : ""), {method:"POST", credentials:"same-origin", headers:{"content-type":blob.type || "image/jpeg"}, body:blob});
   if (!r.ok) throw {code:"cloud_write"}; const {id} = await r.json(); return {id, url:"/api/files/" + id}; } };
 function subscribeStore(){
-  for (const col of ["classes","cours","controles"]) DB.collection(col).onSnapshot(s => { store[col] = s.docs.map(x => ({id:x.id, ...structuredClone(x.data())})); scheduleRender(); });
+  DB.collection("classes").onSnapshot(s => { store.classes = s.docs.map(x => ({id:x.id, ...structuredClone(x.data())})); scheduleRender(); });
+  DB.collection("controles").onSnapshot(s => { store.allCtrl = s.docs.map(x => ({id:x.id, ...structuredClone(x.data())})); applyScope(); scheduleRender(); });
+  DB.collection("cours").onSnapshot(s => { store.allCours = s.docs.map(x => ({id:x.id, ...structuredClone(x.data())})); applyScope(); scheduleRender(); });
   for (const col of ["ecritures","bilans"]) DB.collection(col).onSnapshot(s => { const m = {}; s.docs.forEach(x => m[x.id] = structuredClone(x.data())); store[col] = m; scheduleRender(); });
   DB.collection("feuilles").onSnapshot(s => { const m = {}; s.docs.forEach(x => m[x.id] = structuredClone(x.data())); store.feuilles = m; scheduleRender(); });
 }
@@ -1612,7 +1620,7 @@ function applyRoute(){
     else if (step === "corriger"){ S.view = "correct"; if (S.corrCtrl !== b){ S.corrCtrl = b; S.corrEleve = null; S.editTr = {}; S.editCom = {}; } }
     else { S.view = "analyse"; S.anCtrl = b; }
   }
-  else S.view = {accueil:"home", nouveau:"new", scanner:"scan", sauvegarde:"reglages", correction:"correct", resultats:"analyse"}[a] || (["controles","classes","suivi","banque","direction"].includes(a) ? a : "home");
+  else S.view = {accueil:"home", nouveau:"new", scanner:"scan", sauvegarde:"reglages", correction:"correct", resultats:"analyse"}[a] || (["controles","classes","suivi","banque","direction","compte","comptes"].includes(a) ? a : "home");
 }
 function go(v){
   S.view = v;
@@ -1657,19 +1665,119 @@ function vControles(){
   const groups = {}; list.forEach(c => { const k = (classe(c.classeId)?.nom || "Sans classe"); (groups[k] = groups[k] || []).push(c); });
   const F = [["tous","Tous"],["brouillon","Brouillons"],["imprime","Imprimés"],["correction","En correction"],["corrige","Corrigés"],["rattrapage","Rattrapages"]];
   const mats = [...new Set(all.map(c => c.matiere))];
-  return `<div class="head"><div><h2>Contrôles</h2><p>Tous les contrôles, rangés par classe. Un clic ouvre l'étape où tu en étais.</p></div>
-    <a class="btn primary" href="#/nouveau">+ Nouveau contrôle</a></div>
+  return `<div class="head"><div><h2>${S.me && S.scope !== "ecole" ? "Mes contrôles" : "Contrôles"}</h2><p>Rangés par classe. Un clic ouvre l'étape où tu en étais.</p></div>
+    <div class="row">${isAdmin() ? `<select id="scope-sel" style="width:auto" aria-label="Portée">${selOpts(["moi","ecole"], S.scope, x => x === "moi" ? "Mes contrôles" : "Toute l'école")}</select>` : ""}<a class="btn primary" href="#/nouveau">+ Nouveau contrôle</a></div></div>
   <div class="row">${F.map(([k, l]) => `<button class="fchip ${f.st === k ? "on" : ""}" data-cf="${k}">${l} <span class="num">${cnt(k)}</span></button>`).join("")}</div>
   <div class="row"><select id="cf-cl" style="width:auto" aria-label="Classe"><option value="">Toutes les classes</option>${selOpts(store.classes, f.cl, x => x.nom, x => x.id)}</select>
     <select id="cf-mat" style="width:auto" aria-label="Matière"><option value="">Toutes les matières</option>${selOpts(mats, f.mat)}</select></div>
   ${Object.keys(groups).length ? Object.entries(groups).map(([g, cs]) => `<section class="panel"><h3>${esc(g)}</h3><div style="margin-top:4px">${cs.map(c => { const pr = ctrlProgress(c);
     return `<a class="item link" href="#/controle/${c.id}/${defaultStep(c)}"><div><div class="t">${c.type === "rattrapage" ? '<span class="chip blue">Rattrapage</span> ' : ""}${esc(c.titre)}</div>
-      <div class="s">${esc(c.matiere)}${c.date ? " · " + esc(frDate(c.date)) : ""}${c.type === "rattrapage" ? " · " + esc(studentsOf(c).map(e => e.prenom + " " + e.nom).join(", ")) : ""}${pr.printed ? ` · ${pr.sc}/${pr.n} scannées · ${pr.va}/${pr.n} validées` : ""}</div></div>
+      <div class="s">${esc(c.matiere)}${c.date ? " · " + esc(frDate(c.date)) : ""}${c.type === "rattrapage" ? " · " + esc(studentsOf(c).map(e => e.prenom + " " + e.nom).join(", ")) : ""}${S.scope === "ecole" && c.owner ? " · " + esc(userName(c.owner) || "?") : ""}${pr.printed ? ` · ${pr.sc}/${pr.n} scannées · ${pr.va}/${pr.n} validées` : ""}</div></div>
       <div class="row">${chipStatut(c)}<span class="muted">›</span></div></a>`; }).join("")}</div></section>`).join("")
     : `<section class="panel empty">Aucun contrôle ${f.st !== "tous" ? "dans cette catégorie" : "pour l'instant"}.</section>`}`;
 }
 document.addEventListener("click", ev => { const t = ev.target.closest("[data-cf]"); if (!t) return; S.cf.st = t.dataset.cf; render(); });
 document.addEventListener("change", ev => { if (ev.target.id === "cf-cl"){ S.cf.cl = ev.target.value; render(); } if (ev.target.id === "cf-mat"){ S.cf.mat = ev.target.value; render(); } });
+
+
+/* ================= Comptes des professeurs (serveur de l'école) ================= */
+S.auth = null; S.me = null; S.scope = "moi"; S.users = [];
+const isAdmin = () => S.me?.role === "admin";
+function scopeCtrls(all){ if (!S.me || (isAdmin() && S.scope === "ecole")) return all; return all.filter(c => !c.owner || c.owner === S.me.id); }
+function applyScope(){ store.controles = scopeCtrls(store.allCtrl || []); store.cours = scopeCours(store.allCours || store.cours); }
+function scopeCours(all){ if (!S.me || (isAdmin() && S.scope === "ecole")) return all; return all.filter(c => !c.owner || c.owner === S.me.id); }
+const userName = id => S.users.find(u => u.id === id)?.nom || "";
+async function api(path, opts = {}){
+  const r = await fetch(path, {credentials:"same-origin", ...opts, headers:{"content-type":"application/json", ...(opts.headers || {})}});
+  let j = {}; try { j = await r.json(); } catch(e){}
+  if (!r.ok) throw {status:r.status, message:j?.error?.message || "Erreur " + r.status, setup:j?.setup};
+  return j;
+}
+async function loadUsers(){ if (!isAdmin()) return; try { S.users = (await api("/api/users")).users; } catch(e){} }
+
+function vAuth(){
+  if (S.auth === "setup") return `<div class="head"><div><h2>Premier démarrage</h2><p>Crée le compte administrateur (direction). Il faut le code de l'établissement défini sur le serveur (variable TIKOUN_CODE).</p></div></div>
+  <section class="panel grid" style="max-width:440px">
+    <div class="field"><label for="su-code">Code de l'établissement</label><input id="su-code" type="password"></div>
+    <div class="field"><label for="su-nom">Nom affiché</label><input id="su-nom" placeholder="ex. Direction · A. Pevzner"></div>
+    <div class="field"><label for="su-mail">E-mail</label><input id="su-mail" type="email" autocomplete="username"></div>
+    <div class="field"><label for="su-pw">Mot de passe (8 caractères minimum)</label><input id="su-pw" type="password" autocomplete="new-password"></div>
+    <div class="row"><button class="btn primary" id="su-go">Créer le compte</button></div><div class="status" id="au-st"></div></section>`;
+  if (S.auth === "change") return `<div class="head"><div><h2>Choisis ton mot de passe</h2><p>Bienvenue ${esc(S.me?.nom || "")} : remplace le mot de passe provisoire.</p></div></div>
+  <section class="panel grid" style="max-width:440px">
+    <div class="field"><label for="ch-pw">Nouveau mot de passe (8 caractères minimum)</label><input id="ch-pw" type="password" autocomplete="new-password"></div>
+    <div class="field"><label for="ch-pw2">Confirmer</label><input id="ch-pw2" type="password" autocomplete="new-password"></div>
+    <div class="row"><button class="btn primary" id="ch-go">Enregistrer</button></div><div class="status" id="au-st"></div></section>`;
+  return `<div class="head"><div><h2>Connexion</h2><p>Accès réservé aux professeurs de l'établissement. Ton compte est créé par la direction.</p></div></div>
+  <section class="panel grid" style="max-width:440px">
+    <div class="field"><label for="lg-mail2">E-mail</label><input id="lg-mail2" type="email" autocomplete="username"></div>
+    <div class="field"><label for="lg-pw2">Mot de passe</label><input id="lg-pw2" type="password" autocomplete="current-password"></div>
+    <div class="row"><button class="btn primary" id="lg-go2">Se connecter</button></div>
+    <p class="small muted">Mot de passe oublié : demande à la direction de le réinitialiser.</p><div class="status" id="au-st"></div></section>`;
+}
+async function afterLogin(user, mustChange){
+  S.me = user; S.auth = mustChange ? "change" : null;
+  if (!S.auth){ await loadUsers(); if (!SERVERSTORE) await startServer(); else { applyScope(); render(); } } else render();
+}
+async function bootAccounts(){
+  try { const j = await api("/api/me"); await afterLogin(j.user, false); }
+  catch(e){ S.auth = e.status === 401 && e.setup ? "setup" : "login"; refreshCaps(); render(); }
+}
+
+/* Mon compte */
+function vCompte(){
+  return `<div class="head"><div><h2>Mon compte</h2><p>${esc(S.me?.nom || "")} · ${esc(S.me?.email || "")} · ${isAdmin() ? "Administrateur" : "Professeur"}</p></div>
+    <button class="btn" id="out-go">Se déconnecter</button></div>
+  <section class="panel grid" style="max-width:520px"><h3>Changer de mot de passe</h3>
+    <div class="field"><label for="mc-old">Mot de passe actuel</label><input id="mc-old" type="password" autocomplete="current-password"></div>
+    <div class="field"><label for="mc-new">Nouveau mot de passe (8 caractères minimum)</label><input id="mc-new" type="password" autocomplete="new-password"></div>
+    <div class="row"><button class="btn primary" id="mc-go">Enregistrer</button></div><div class="status" id="mc-st"></div></section>
+  ${vReglages()}`;
+}
+/* Comptes (administrateur) */
+const genPw = () => { const a = "abcdefghjkmnpqrstuvwxyz23456789"; let s = ""; for (const b of crypto.getRandomValues(new Uint8Array(10))) s += a[b % a.length]; return s; };
+function vComptes(){
+  if (!isAdmin()) return `<div class="panel empty">Réservé à la direction.</div>`;
+  const nb = id => (store.allCtrl || []).filter(c => c.owner === id).length;
+  return `<div class="head"><div><h2>Comptes des professeurs</h2><p>Chaque professeur retrouve ses contrôles, ses copies et ses résultats. Les classes sont communes à tout l'établissement.</p></div></div>
+  <section class="panel"><div class="tbl-wrap"><table><thead><tr><th>Nom</th><th>E-mail</th><th>Rôle</th><th class="c">Contrôles</th><th></th></tr></thead><tbody>
+  ${S.users.map(u => `<tr><td><b>${esc(u.nom)}</b>${u.actif ? "" : ' <span class="chip bad">désactivé</span>'}</td><td>${esc(u.email)}</td>
+    <td><select data-urole="${u.id}" style="width:auto" aria-label="Rôle">${selOpts(["prof","admin"], u.role, x => x === "admin" ? "Administrateur" : "Professeur")}</select></td>
+    <td class="c num">${nb(u.id)}</td>
+    <td><div class="row"><button class="btn sm" data-ureset="${u.id}">Nouveau mot de passe</button>${u.id !== S.me.id ? `<button class="btn sm ghost" data-uact="${u.id}" data-v="${u.actif ? 0 : 1}">${u.actif ? "Désactiver" : "Réactiver"}</button>` : ""}</div></td></tr>`).join("")}
+  </tbody></table></div><div class="status" id="us-st"></div></section>
+  <section class="panel grid" style="max-width:640px"><h3>Ajouter un professeur</h3>
+    <div class="form-row"><div class="field"><label for="nu-nom">Nom</label><input id="nu-nom" placeholder="ex. M. Cohen (maths)"></div>
+      <div class="field"><label for="nu-mail">E-mail</label><input id="nu-mail" type="email"></div></div>
+    <div class="form-row"><div class="field"><label for="nu-pw">Mot de passe provisoire</label><input id="nu-pw" value="${genPw()}"></div>
+      <div class="field"><label for="nu-role">Rôle</label><select id="nu-role">${selOpts(["prof","admin"], "prof", x => x === "admin" ? "Administrateur" : "Professeur")}</select></div></div>
+    <p class="small muted">Transmets l'e-mail et le mot de passe provisoire au professeur : il devra le changer à sa première connexion.</p>
+    <div class="row"><button class="btn primary" id="nu-go">Créer le compte</button></div><div class="status" id="nu-st"></div></section>`;
+}
+
+document.addEventListener("click", async ev => {
+  const t = ev.target.closest("button"); if (!t) return; const d = t.dataset;
+  const st = () => $("#au-st");
+  try {
+    if (t.id === "lg-go2"){ st().innerHTML = `<span class="thinking">Connexion…</span>`;
+      const j = await api("/api/login", {method:"POST", body:JSON.stringify({email:$("#lg-mail2").value, password:$("#lg-pw2").value})}); return afterLogin(j.user, j.mustChange); }
+    if (t.id === "su-go"){ st().innerHTML = `<span class="thinking">Création…</span>`;
+      const j = await api("/api/setup", {method:"POST", body:JSON.stringify({code:$("#su-code").value, nom:$("#su-nom").value, email:$("#su-mail").value, password:$("#su-pw").value})}); return afterLogin(j.user, false); }
+    if (t.id === "ch-go"){ if ($("#ch-pw").value !== $("#ch-pw2").value){ st().textContent = "Les deux mots de passe sont différents."; return; }
+      const j = await api("/api/me/password", {method:"POST", body:JSON.stringify({password:$("#ch-pw").value})}); return afterLogin(j.user, false); }
+    if (t.id === "out-go" || t.id === "srv-out"){ await api("/api/logout", {method:"POST"}).catch(() => {}); location.hash = "#/accueil"; location.reload(); return; }
+    if (t.id === "mc-go"){ await api("/api/me/password", {method:"POST", body:JSON.stringify({old:$("#mc-old").value, password:$("#mc-new").value})}); $("#mc-st").textContent = "Mot de passe modifié."; return; }
+    if (t.id === "nu-go"){ const j = await api("/api/users", {method:"POST", body:JSON.stringify({nom:$("#nu-nom").value, email:$("#nu-mail").value, password:$("#nu-pw").value, role:$("#nu-role").value})});
+      await loadUsers(); render(); $("#nu-st").textContent = `Compte créé : ${j.user.email} · mot de passe provisoire à transmettre.`; return; }
+    if (d.ureset){ const pw = genPw(); await api("/api/users/" + d.ureset, {method:"PATCH", body:JSON.stringify({password:pw})}); $("#us-st").innerHTML = `Nouveau mot de passe provisoire pour ${esc(S.users.find(u => u.id === d.ureset)?.email)} : <b class="num">${pw}</b>`; return; }
+    if (d.uact){ await api("/api/users/" + d.uact, {method:"PATCH", body:JSON.stringify({actif:d.v === "1"})}); await loadUsers(); return render(); }
+  } catch(e){ const box = $("#au-st") || $("#mc-st") || $("#nu-st") || $("#us-st"); if (box) box.textContent = e.message || "Erreur."; }
+});
+document.addEventListener("change", async ev => {
+  const el = ev.target;
+  if (el.dataset.urole){ try { await api("/api/users/" + el.dataset.urole, {method:"PATCH", body:JSON.stringify({role:el.value})}); await loadUsers(); } catch(e){ toast(e.message); } render(); }
+  if (el.id === "scope-sel"){ S.scope = el.value; applyScope(); render(); }
+});
 
 
 /* ================= Shared: document pages → PDF ================= */
@@ -1787,7 +1895,7 @@ function vSuivi(){
 }
 
 /* ================= 3. Vue direction ================= */
-function vDirection(){
+function vDirection_0(){
   const cls = store.classes; if (!cls.length) return `<div class="head"><h2>Direction</h2></div><div class="panel empty">Aucune classe.</div>`;
   const mats = [...new Set(store.controles.filter(c => c.type !== "rattrapage").map(c => c.matiere))];
   const avgOf = (cl, mat, e) => { const v = studentCtrls(cl, mat, e).filter(x => x.c.type !== "rattrapage" && x.cp.validee).slice(-3).map(x => final20(x.c, x.cp)); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
@@ -1813,7 +1921,7 @@ function vDirection(){
 }
 
 /* ================= 5. Banque ================= */
-function vBanque(){
+function vBanque_0(){
   const b = S.bk = S.bk || {mat:"", niv:"", q:""};
   const all = store.controles.filter(c => c.type !== "rattrapage" && (!b.mat || c.matiere === b.mat) && (!b.niv || c.niveau === b.niv)
     && (!b.q || nkey(c.titre + " " + (c.questions || []).map(q => q.notion + " " + vOf(q, "standard").enonce).join(" ")).includes(nkey(b.q))))
@@ -1829,7 +1937,7 @@ function vBanque(){
       <div class="tags" style="margin-top:4px">${[...new Set((c.questions || []).map(q => q.notion).filter(Boolean))].slice(0, 5).map(n => `<span class="chip">${esc(n)}</span>`).join("")}</div></div>
       <div class="row" style="justify-content:flex-end"><select id="dup-${c.id}" style="width:auto" aria-label="Classe">${selOpts(store.classes, c.classeId, x => x.nom, x => x.id)}</select><button class="btn sm primary" data-dup="${c.id}">Dupliquer</button></div></div>`).join("") || `<p class="empty">Aucun contrôle ne correspond.</p>`}</section>`;
 }
-function bankPanel(c){
+function bankPanel_0(c){
   const seen = new Set(), q = nkey(S.bkq || "");
   const list = [];
   store.controles.filter(x => x.id !== c.id && x.matiere === c.matiere).forEach(x => (x.questions || []).forEach(qq => { const en = vOf(qq, "standard").enonce, k = nkey(en);
@@ -1951,6 +2059,12 @@ document.addEventListener("change", ev => {
   if (el.id === "bkq-search"){ S.bkq = el.value; return render(); }
 });
 
+function vDirection(...a){ const sv = store.controles; store.controles = store.allCtrl || sv; try { return vDirection_0(...a); } finally { store.controles = sv; } }
+
+function vBanque(...a){ const sv = store.controles; store.controles = store.allCtrl || sv; try { return vBanque_0(...a); } finally { store.controles = sv; } }
+
+function bankPanel(...a){ const sv = store.controles; store.controles = store.allCtrl || sv; try { return bankPanel_0(...a); } finally { store.controles = sv; } }
+
 /* ================= Boot ================= */
 applyRoute(); render();
 (async () => {
@@ -1964,6 +2078,7 @@ applyRoute(); render();
       if (SB_USER) await startCloud(); else { refreshCaps(); render(); }
       return;
     }
+    if (window.TIKOUN_CONFIG?.accounts){ await bootAccounts(); return; }
     if (window.TIKOUN_CONFIG?.storage === "server"){
       const ok = await fetch("/api/check", {credentials:"same-origin", headers:{"x-tikoun-code":accessCode()}}).then(r => r.ok).catch(() => false);
       if (ok) await startServer(); else { NEED_CODE = true; refreshCaps(); render(); }
