@@ -46,11 +46,15 @@ const merge = (a, b) => { if (!isObj(a) || !isObj(b)) return b; const r = {...a}
 /* ---------- Comptes des professeurs ---------- */
 const USERS_F = path.join(DATA, "users.json"), SESS_F = path.join(DATA, "sessions.json");
 let USERS = readJ(USERS_F, []); let SESS = readJ(SESS_F, {});
+for (const u of USERS) if (!u.plan){ u.plan = u.role === "admin" ? "pro" : "essentiel"; u.options = {exercices:u.role === "admin"}; }
 const saveUsers = () => writeAtomic(USERS_F, USERS);
 let sessTimer = null; const saveSess = () => { clearTimeout(sessTimer); sessTimer = setTimeout(() => writeAtomic(SESS_F, SESS), 500); };
 const hashPw = (pw, salt = crypto.randomBytes(16).toString("hex")) => salt + ":" + crypto.scryptSync(String(pw), salt, 64).toString("hex");
 const checkPw = (pw, stored) => { const [salt, h] = String(stored || "").split(":"); if (!salt || !h) return false; return same(crypto.scryptSync(String(pw), salt, 64).toString("hex"), h); };
-const pub = u => ({id:u.id, email:u.email, nom:u.nom, role:u.role, actif:u.actif !== false, createdAt:u.createdAt});
+/* Abonnements : « essentiel » (contrôles, correction, suivi) · « pro » (+ option Exercices, activée par la direction) */
+const PLANS = ["essentiel", "pro"];
+const entitled = u => !!u && u.plan === "pro" && !!u.options?.exercices;
+const pub = u => ({id:u.id, email:u.email, nom:u.nom, role:u.role, plan:u.plan || "essentiel", options:{exercices:!!u.options?.exercices}, can:{exercices:entitled(u)}, actif:u.actif !== false, createdAt:u.createdAt});
 const sidOf = req => ((req.headers.cookie || "").match(/(?:^|;\s*)sid=([a-f0-9]{64})/) || [])[1] || "";
 function userOf(req){
   const s = SESS[sidOf(req)]; if (!s || s.exp < Date.now()) return null;
@@ -80,7 +84,7 @@ async function accounts(req, res, url, p, u){
     const b = await readJSON(req, 1e4) || {};
     if (!same(String(b.code || ""), env("TIKOUN_CODE"))) return sendJ(res, 401, {error:{message:"Code de l'établissement incorrect"}});
     const email = String(b.email || "").trim().toLowerCase(); if (!validEmail(email) || String(b.password || "").length < 8) return sendJ(res, 400, {error:{message:"E-mail valide et mot de passe de 8 caractères minimum"}});
-    const a = {id:crypto.randomBytes(8).toString("hex"), email, nom:String(b.nom || "Direction").slice(0, 80), role:"admin", pw:hashPw(b.password), createdAt:new Date().toISOString()};
+    const a = {id:crypto.randomBytes(8).toString("hex"), email, nom:String(b.nom || "Direction").slice(0, 80), role:"admin", plan:"pro", options:{exercices:true}, pw:hashPw(b.password), createdAt:new Date().toISOString()};
     USERS.push(a); saveUsers();
     for (const [k, v] of DOCS) if (OWNED.includes(k.split("/")[0]) && isObj(v) && !v.owner) persist(k, {...v, owner:a.id});   // données déjà saisies → à l'admin
     return openSession(req, res, a);
@@ -106,7 +110,8 @@ async function accounts(req, res, url, p, u){
     if (!validEmail(email)) return sendJ(res, 400, {error:{message:"E-mail invalide"}});
     if (USERS.some(v => v.email === email)) return sendJ(res, 409, {error:{message:"Ce compte existe déjà"}});
     if (String(b.password || "").length < 8) return sendJ(res, 400, {error:{message:"Mot de passe provisoire : 8 caractères minimum"}});
-    const n = {id:crypto.randomBytes(8).toString("hex"), email, nom:String(b.nom || email).slice(0, 80), role:b.role === "admin" ? "admin" : "prof", pw:hashPw(b.password), mustChange:true, createdAt:new Date().toISOString()};
+    const n = {id:crypto.randomBytes(8).toString("hex"), email, nom:String(b.nom || email).slice(0, 80), role:b.role === "admin" ? "admin" : "prof", plan:PLANS.includes(b.plan) ? b.plan : "essentiel", pw:hashPw(b.password), mustChange:true, createdAt:new Date().toISOString()};
+    n.options = {exercices:n.plan === "pro" && !!b.exercices};
     USERS.push(n); saveUsers(); return sendJ(res, 200, {user:pub(n)});
   }
   const m = p.match(/^\/api\/users\/([a-f0-9]{16})$/);
@@ -118,6 +123,8 @@ async function accounts(req, res, url, p, u){
       if (b.nom) x.nom = String(b.nom).slice(0, 80);
       if (b.role === "admin" || b.role === "prof") x.role = b.role;
       if (typeof b.actif === "boolean") x.actif = b.actif;
+      if (PLANS.includes(b.plan)){ x.plan = b.plan; if (b.plan !== "pro") x.options = {...(x.options || {}), exercices:false}; }
+      if (typeof b.exercices === "boolean") x.options = {...(x.options || {}), exercices:b.exercices && (x.plan || "essentiel") === "pro"};
       if (b.password){ if (String(b.password).length < 8) return sendJ(res, 400, {error:{message:"8 caractères minimum"}}); x.pw = hashPw(b.password); x.mustChange = true; }
       if (x.actif === false) for (const [k, v] of Object.entries(SESS)) if (v.uid === x.id) delete SESS[k];
       saveUsers(); saveSess(); return sendJ(res, 200, {user:pub(x)});
@@ -142,6 +149,8 @@ async function storage(req, res, url, p, u){
       if (req.method === "DELETE"){ persist(dp, null); return sendJ(res, 200, {seq:SEQ}); }
       const body = await readJSON(req); if (!isObj(body)) return sendJ(res, 400, {error:{message:"Objet JSON attendu"}});
       const col = dp.split("/")[0], cur = DOCS.get(dp);
+      if (req.method === "PUT" && col === "controles" && body.type === "exercices" && !cur && !entitled(u))
+        return sendJ(res, 403, {error:{message:"Option Exercices non activée pour ce compte (abonnement Pro)"}});
       if (req.method === "PUT"){
         const own = cur?.owner || (col === "feuilles" ? ownerOf(dp) : null) || u.id;
         persist(dp, OWNED.includes(col) ? {...body, owner:own} : {...body, ...(cur?.createdBy || !cur ? {createdBy:cur?.createdBy || u.id} : {})});
@@ -178,6 +187,7 @@ async function aiProxy(req, res, u){
   if (!env("ANTHROPIC_API_KEY")) return sendJ(res, 503, {error:{message:"ANTHROPIC_API_KEY manquante sur le serveur"}});
   if (!u) return sendJ(res, 401, {error:{message:"Connexion requise"}});
   let body; try { body = await readJSON(req, 40e6); } catch(e){ return sendJ(res, e.message === "too_large" ? 413 : 400, {error:{message:"Requête invalide"}}); }
+  if (body?.feature === "exercices" && !entitled(u)) return sendJ(res, 403, {error:{message:"Option Exercices non activée pour ce compte (abonnement Pro)"}});
   const stop = allowCall(ipOf(req)); if (stop) return sendJ(res, 429, {error:{message:stop}});
   const M = MODELS(), model = M[body?.tier] || M.default;
   const r = await fetch((env("ANTHROPIC_BASE_URL") || "https://api.anthropic.com") + "/v1/messages", {method:"POST",

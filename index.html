@@ -263,7 +263,7 @@ const aiErr = c => ({
   image_rejected:"Image refusée : essaie une photo JPG ou PNG plus nette.", invalid_json:"Réponse de l'IA illisible : relance.",
   refused:"Demande refusée par l'IA : reformule.", prompt_too_large:"Document trop long : raccourcis le cours.",
   images_unavailable:"Cette vue ne peut pas envoyer d'images à l'IA.", no_ai:"IA indisponible pour le moment (serveur non configuré ?).",
-  no_key:"IA non configurée sur le serveur.", bad_key:"Clé IA refusée par le serveur.", need_code:"Code d'accès requis : recharge la page.", api_400:"Requête refusée par l'API (document trop long ou modèle inconnu : vérifie les Réglages).", no_blob:"Image introuvable.", cloud_write:"Enregistrement en ligne impossible (connexion ?)."
+  no_key:"IA non configurée sur le serveur.", bad_key:"Clé IA refusée par le serveur.", need_code:"Code d'accès requis : recharge la page.", no_option:"Option Exercices non activée pour ton compte (abonnement Pro).", no_cours:"Cours d'origine introuvable.", not_failed:"Rattrapage réservé aux élèves sous 10/20 (copie corrigée).", ratt_exists:"Cet élève a déjà un rattrapage pour ce contrôle.", api_400:"Requête refusée par l'API (document trop long ou modèle inconnu : vérifie les Réglages).", no_blob:"Image introuvable.", cloud_write:"Enregistrement en ligne impossible (connexion ?)."
 }[c] || "Échec temporaire de l'IA : relance.");
 
 /* ================= Capabilities ================= */
@@ -383,7 +383,7 @@ function vHome(){
   const cs = [...store.controles].sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
   const todo = cs.filter(c => c.statut !== "corrige"), done = cs.filter(c => c.statut === "corrige");
   let aValider = 0; cs.forEach(c => { const f = feuille(c.id); if (f) Object.values(f.copies || {}).forEach(cp => { if (!cp.validee && Object.keys(cp.answers || {}).length) aValider++; }); });
-  const line = c => `<div class="item"><div><div class="t">${c.type === "rattrapage" ? '<span class="chip blue">Rattrapage</span> ' : ""}${esc(c.titre)}</div>
+  const line = c => `<div class="item"><div><div class="t">${c.type === "rattrapage" ? '<span class="chip blue">Rattrapage</span> ' : c.type === "exercices" ? '<span class="chip">Exercices</span> ' : ""}${esc(c.titre)}</div>
       <div class="s">${esc(c.matiere)} · ${esc(classe(c.classeId)?.nom || "?")}${c.type === "rattrapage" ? " · " + esc(studentsOf(c).map(e => e.prenom + " " + e.nom).join(", ")) : ""} · ${frDate(c.date) || "sans date"}</div></div>
       <div class="row">${chipStatut(c)}<button class="btn sm" data-edit="${c.id}">${c.statut === "brouillon" ? "Modifier" : "Feuilles"}</button>
       ${c.statut !== "brouillon" ? `<button class="btn sm" data-corr="${c.id}">Correction</button>` : ""}${c.statut === "corrige" || c.statut === "correction" ? `<button class="btn sm" data-an="${c.id}">Analyse</button>` : ""}</div></div>`;
@@ -465,9 +465,14 @@ function wizParams(){
   if (!p.matiere) p.matiere = co?.matiere || "Mathématiques";
   if (!p.niveau) p.niveau = co?.niveau || "3e";
   if (!p.classeId && store.classes[0]) p.classeId = (store.classes.find(c => c.niveau === p.niveau) || store.classes[0]).id;
+  if (!p.kind || (p.kind === "exercices" && !canEx())) p.kind = "controle";
+  const EXO = p.kind === "exercices";
   const T = [["cours","Questions de cours"],["application","Exercices d'application"],["probleme","Problème / rédaction"],["texte","Lecture / explication de texte"],["traduction","Traduction"],["qcm","QCM (corrigés sans IA, gratuit)"]];
   return `
   <section class="panel grid">
+    <div><div class="label" style="margin-bottom:6px">Type de document</div><div class="row">
+      <label class="row small" style="gap:6px"><input type="radio" style="width:auto" name="kind" data-kind="controle"${EXO ? "" : " checked"}> Contrôle (noté)</label>
+      <label class="row small" style="gap:6px"><input type="radio" style="width:auto" name="kind" data-kind="exercices"${EXO ? " checked" : ""}${canEx() ? "" : " disabled"}> Feuille d'exercices d'entraînement (régénérable, scannable)</label>${canEx() ? "" : lockChip()}</div></div>
     <div class="row between"><div><div class="label">Cours</div><b>${esc(co?.titre || "?")}</b> <span class="muted small">· ${esc(co?.matiere)} · ${esc(co?.niveau)}</span></div><button class="btn sm" id="back1">Changer de cours</button></div>
     <div class="form-row">
       <div class="field"><label for="p-cl">Classe</label><select id="p-cl" data-p="classeId">${store.classes.length ? selOpts(store.classes, p.classeId, c => c.nom, c => c.id) : `<option value="">Crée d'abord une classe</option>`}</select></div>
@@ -481,7 +486,7 @@ function wizParams(){
     <div class="field"><label>Types de questions</label><div class="row">${T.map(([k, l]) => `<label class="row small" style="gap:6px"><input type="checkbox" data-type="${k}"${p.types.includes(k) ? " checked" : ""}> ${l}</label>`).join("")}</div></div>
     <label class="row small" style="gap:6px"><input type="checkbox" id="p-diff"${p.differencie ? " checked" : ""}> Feuilles différenciées : chaque question en 3 niveaux (socle, standard, approfondi), selon le niveau de chaque élève</label>
     <div class="field"><label for="p-cons">Tes consignes à l'IA (facultatif)</label><textarea id="p-cons" data-p="consignes" data-live placeholder="ex. Insister sur la notion d'antécédent. Une question de rédaction à la fin.">${esc(p.consignes)}</textarea></div>
-    <div class="row"><button class="btn primary" id="gen" ${store.classes.length ? "" : "disabled"}>Générer le contrôle (IA)</button><button class="btn" id="genBlank" ${store.classes.length ? "" : "disabled"}>Partir d'un contrôle vide</button><span class="status" id="gen-st"></span></div>
+    <div class="row"><button class="btn primary" id="gen" ${store.classes.length ? "" : "disabled"}>${EXO ? "Générer les exercices (IA)" : "Générer le contrôle (IA)"}</button><button class="btn" id="genBlank" ${store.classes.length ? "" : "disabled"}>Partir d'un contrôle vide</button><span class="status" id="gen-st"></span></div>
   </section>`;
 }
 
@@ -503,7 +508,7 @@ function vEdit(){
     <label class="row small" style="gap:6px"><input type="checkbox" id="e-diff"${c.differencie ? " checked" : ""}> Feuilles différenciées selon le niveau de chaque élève</label>
   </section>
   <div class="head"><h3>Questions <span class="muted num" style="font-weight:500">· total ${fmt(tot)} pts${tot !== 20 ? " (ramené sur 20)" : ""}</span></h3>
-    <div class="row"><button class="btn sm" id="addQ">+ Question vide</button><button class="btn sm" id="addQcm">+ QCM</button><button class="btn sm" id="addQai">+ Question (IA)</button><button class="btn sm" id="bankOpen">${S.bankOpen ? "Fermer la banque" : "+ Depuis la banque"}</button></div></div>
+    <div class="row">${c.type === "exercices" ? (canEx() ? `<button class="btn sm primary" id="regenEx">↻ Régénérer les exercices (IA)</button>` : lockChip()) : ""}<button class="btn sm" id="addQ">+ Question vide</button><button class="btn sm" id="addQcm">+ QCM</button><button class="btn sm" id="addQai">+ Question (IA)</button><button class="btn sm" id="bankOpen">${S.bankOpen ? "Fermer la banque" : "+ Depuis la banque"}</button></div></div>
   ${S.bankOpen ? bankPanel(c) : ""}
   ${(c.questions || []).map((q, i) => qEditor(c, q, i)).join("") || `<div class="panel empty">Aucune question.</div>`}`;
   const partLayout = `  <section class="panel grid">
@@ -903,7 +908,7 @@ function vCorrect(){
   const nAlert = studs.filter(x => { const k = f.copies[x.id]; return k && !k.validee && copyDone(c, k) && !Object.values(k.answers || {}).some(a => !a.lisible); }).length;
   return `
   <div class="head"><div><h2>Correction</h2><p>L'IA propose ; tu valides. Les passages soulignés en rouge sont ceux que l'IA juge erronés.</p></div>
-    <select id="corrSel" style="max-width:440px" aria-label="Contrôle">${selOpts(list, c.id, x => (x.type === "rattrapage" ? "Rattrapage · " : "") + x.titre + " · " + (classe(x.classeId)?.nom || ""), x => x.id)}</select></div>
+    <select id="corrSel" style="max-width:440px" aria-label="Contrôle">${selOpts(list, c.id, x => (x.type === "rattrapage" ? "Rattrapage · " : x.type === "exercices" ? "Exercices · " : "") + x.titre + " · " + (classe(x.classeId)?.nom || ""), x => x.id)}</select></div>
   <div class="split">
     <aside class="panel" style="padding:8px">
       <div class="row between" style="padding:4px 8px 8px"><span class="label">Copies</span>
@@ -926,7 +931,7 @@ function copyView(c, e, cp){
     <div class="copy-h"><div><div class="label">Copie${c.differencie ? ` · <span class="lvl ${versionFor(c, e)}">${LVL[versionFor(c, e)]}</span>` : ""}</div><h3 style="font-size:20px">${esc(e.prenom)} ${esc(e.nom)}</h3></div>
       <div class="row">${done ? `<div><div class="total num">${fmt(final20(c, cp))}<small>/20</small></div>${bonusMax(c) ? `<div class="small muted num">brute ${fmt(on20(copyTotal(c, cp), max))} + bonus ${fmt(bonusOf(c, cp).proprete + bonusOf(c, cp).orthographe)}</div>` : ""}</div>` : ""}
       <button class="btn ${cp?.validee ? "" : "pen"}" id="validate" ${has || done ? "" : "disabled"}>${cp?.validee ? "Validée ✓" : "Valider la copie"}</button>
-      <button class="btn sm" id="mkRatt">Rattrapage</button>${done ? `<button class="btn sm" id="rendu1">Copie rendue (PDF)</button>` : ""}</div><div class="status" id="rd-st" style="width:100%"></div></div>
+      ${done && final20(c, cp) < SEUIL ? `<button class="btn sm" id="mkRatt">Rattrapage</button>` : ""}${done ? `<button class="btn sm" id="rendu1">Copie rendue (PDF)</button>` : ""}</div><div class="status" id="rd-st" style="width:100%"></div></div>
     ${scans.length ? `<div class="scans">${scans.map(([p, s]) => `<img alt="Page ${p}" src="${esc(s.asset ? blobSrc(s.asset) : s.url)}" data-zoom="${esc(s.asset ? blobSrc(s.asset) : s.url)}">`).join("")}</div>` : ""}
     ${has && bonusMax(c) ? `<div class="row" style="padding:10px 16px;border-bottom:1px solid var(--line);gap:14px">${["proprete","orthographe"].filter(k => +c.bonus?.[k]).map(k => `<label class="row small" style="gap:6px">Bonus ${k === "proprete" ? "propreté" : "orthographe"} <input type="number" min="0" max="${c.bonus[k]}" step="0.5" id="bo-${k}" data-bonus="${k}" value="${bonusOf(c, cp)[k]}" style="width:70px"> / ${fmt(+c.bonus[k])}</label>`).join("")}</div>` : ""}
     ${!has ? `<div class="empty">Copie pas encore scannée. <button class="btn sm" data-go="scan">Scanner</button><br><span class="small">Tu peux aussi saisir les notes directement ci-dessous.</span></div>` : ""}
@@ -967,7 +972,7 @@ function vAnalyse(){
   const unval = rows.filter(r => !r.cp.validee).length;
   return `
   <div class="head"><div><h2>Classe & rattrapage</h2><p>${rows.length} copie(s) corrigée(s) sur ${studs.length}${unval ? ` · <span style="color:var(--warn)">${unval} pas encore validée(s)</span>` : ""}</p></div>
-    <select id="anSel" style="max-width:440px" aria-label="Contrôle">${selOpts(list, c.id, x => (x.type === "rattrapage" ? "Rattrapage · " : "") + x.titre + " · " + (classe(x.classeId)?.nom || ""), x => x.id)}</select></div>
+    <select id="anSel" style="max-width:440px" aria-label="Contrôle">${selOpts(list, c.id, x => (x.type === "rattrapage" ? "Rattrapage · " : x.type === "exercices" ? "Exercices · " : "") + x.titre + " · " + (classe(x.classeId)?.nom || ""), x => x.id)}</select></div>
   <div class="grid g3">
     <div class="panel"><div class="label">Moyenne</div><div class="total num" style="color:var(--ink)">${fmt(avg)}<small>/20</small></div></div>
     <div class="panel"><div class="label">Min – max</div><div class="total num" style="color:var(--ink)">${fmt(Math.min(...notes))} – ${fmt(Math.max(...notes))}</div></div>
@@ -981,18 +986,20 @@ function vAnalyse(){
   <section class="panel grid"><div class="row between"><h3>Synthèse pédagogique</h3><button class="btn sm" id="synth">${c.analyse ? "Actualiser" : "Rédiger"} (IA)</button></div>
     <div class="status" id="syn-st"></div>
     ${c.analyse ? `<div style="white-space:pre-wrap">${esc(c.analyse)}</div>` : `<p class="muted small">L'IA repère les notions non comprises et propose quoi reprendre en classe.</p>`}</section>
-  <section class="panel"><div class="row between"><h3>Élèves</h3><button class="btn sm primary" id="rattAll">Rattrapages pour les élèves sous 10/20</button></div>
+  <section class="panel"><div class="row between"><h3>Élèves</h3><span class="small muted">Rattrapage individuel possible pour chaque élève sous ${SEUIL}/20</span></div>
     <div class="status" id="ra-st"></div>
     <div class="tbl-wrap" style="margin-top:6px"><table><thead><tr><th>Élève</th>${c.questions.map((q, k) => `<th class="c">Q${k + 1}</th>`).join("")}<th class="c">/20</th><th>Rattrapage</th></tr></thead><tbody>
     ${studs.map(e => { const cp = f.copies[e.id]; const ok = copyDone(c, cp); const r = ratts.find(x => x.eleves?.includes(e.id));
       return `<tr><td><b>${esc(e.prenom)} ${esc(e.nom)}</b>${c.differencie ? ` <span class="lvl ${versionFor(c, e)}">${LVL[versionFor(c, e)][0]}</span>` : ""}</td>
       ${c.questions.map(q => { const n = noteOf(cp?.answers?.[q.id]); return `<td class="c"><span class="cell ${n == null ? "none" : tone(n / q.points)}">${fmt(n)}</span></td>`; }).join("")}
       <td class="c num"><b>${ok ? fmt(final20(c, cp)) : "—"}</b></td>
-      <td>${r ? `<button class="btn sm" data-edit="${r.id}">${STATUT[r.statut]?.[0] || "Voir"}</button>` : ok ? `<button class="btn sm" data-ratt="${e.id}">Créer</button>` : ""}</td></tr>`; }).join("")}
+      <td>${r ? `<button class="btn sm" data-edit="${r.id}">${STATUT[r.statut]?.[0] || "Voir"}</button>` : ok && final20(c, cp) < SEUIL ? `<button class="btn sm" data-ratt="${e.id}">Créer</button>` : ok ? `<span class="small muted">—</span>` : ""}</td></tr>`; }).join("")}
     </tbody></table></div></section>`;
 }
-async function createRattrapage(c, e){
+async function createRattrapage(c, e, replaceId){
   const f = feuille(c.id), cp = f?.copies?.[e.id]; if (!cp) throw {code:"no_copy"};
+  if (!copyDone(c, cp) || final20(c, cp) >= SEUIL) throw {code:"not_failed"};
+  if (!replaceId && store.controles.some(x => x.type === "rattrapage" && x.parentId === c.id && x.eleves?.includes(e.id))) throw {code:"ratt_exists"};
   const weak = c.questions.map(q => ({q, a:cp.answers[q.id]})).filter(x => x.a && noteOf(x.a) / x.q.points < 0.6);
   const target = weak.length ? weak : c.questions.map(q => ({q, a:cp.answers[q.id]})).sort((x, y) => noteOf(x.a) / x.q.points - noteOf(y.a) / y.q.points).slice(0, 1);
   const lvl = levelOf(e, c.matiere);
@@ -1007,12 +1014,15 @@ Crée exactement 3 exercices NOUVEAUX, de difficulté croissante, qui ciblent pr
 1 = découverte (plus simple que le niveau de l'élève), 2 = application, 3 = retour au niveau ${LVL[lvl].toLowerCase()} du contrôle.
 Total 20 points (par ex. 5, 7, 8). Chaque exercice : un énoncé autonome (avec un coup de pouce entre parenthèses pour le 1), un corrigé-type, des critères de notation, 2 ou 3 erreurs types, un nombre de lignes de réponse (3 à 12).
 ${NOSRC}
-Réponds uniquement en JSON : {"titre":"…","questions":[{"notion":"…","points":5,"lignes":5,"enonce":"…","corrige":"…","criteres":"…","erreurs":["…"]}]}`);
+${replaceId ? "IMPORTANT : propose des exercices DIFFÉRENTS de ceux-ci : " + (ctrl(replaceId)?.questions || []).map(q => vOf(q, "standard").enonce).join(" / ") + "\n" : ""}Réponds uniquement en JSON : {"titre":"…","questions":[{"notion":"…","points":5,"lignes":5,"enonce":"…","corrige":"…","criteres":"…","erreurs":["…"]}]}`);
   const qs = (r?.questions || []).slice(0, 3).map(x => ({id:"q" + uid(5), notion:String(x.notion || ""), points:+x.points || 5, lignes:clamp(+x.lignes || 6, 2, 20), erreurs:(x.erreurs || []).map(String),
     v:{standard:{enonce:String(x.enonce || ""), corrige:String(x.corrige || ""), criteres:String(x.criteres || "")}}}));
   if (!qs.length) throw {code:"invalid_json"};
+  const old = replaceId && ctrl(replaceId), printed = old && feuille(replaceId) && Object.keys(feuille(replaceId).copies || {}).length;
+  if (old && !printed){ const o = structuredClone(old); o.questions = qs; o.titre = "Rattrapage · " + (r.titre || c.titre); await saveCtrl(o); return replaceId; }
+  const round = store.controles.filter(x => x.type === "rattrapage" && x.parentId === c.id && x.eleves?.includes(e.id)).length;
   const id = uid(12);
-  const doc = {type:"rattrapage", parentId:c.id, titre:"Rattrapage · " + (r.titre || c.titre), matiere:c.matiere, niveau:c.niveau, classeId:c.classeId, eleves:[e.id], coursId:c.coursId || null,
+  const doc = {type:"rattrapage", parentId:c.id, titre:"Rattrapage" + (round ? " " + (round + 1) : "") + " · " + (r.titre || c.titre), matiere:c.matiere, niveau:c.niveau, classeId:c.classeId, eleves:[e.id], coursId:c.coursId || null,
     duree:30, differencie:false, mise:{...(c.mise || {}), consignes:"Feuille de rattrapage personnelle. Prends ton temps et relis le coup de pouce."}, statut:"brouillon", date:today(), questions:qs, createdAt:new Date().toISOString()};
   await write("controles/" + id, doc);
   return id;
@@ -1020,7 +1030,7 @@ Réponds uniquement en JSON : {"titre":"…","questions":[{"notion":"…","point
 
 /* ================= Classes: level suggestions ================= */
 function suggestLevels(cl, mat){
-  const cs = store.controles.filter(c => c.classeId === cl.id && c.matiere === mat && c.type !== "rattrapage").sort((a, b) => (b.date || b.createdAt || "").localeCompare(a.date || a.createdAt || ""));
+  const cs = store.controles.filter(c => c.classeId === cl.id && c.matiere === mat && isCtrl(c)).sort((a, b) => (b.date || b.createdAt || "").localeCompare(a.date || a.createdAt || ""));
   const map = {};
   cl.eleves.forEach(e => {
     const ns = []; for (const c of cs){ const cp = feuille(c.id)?.copies?.[e.id]; if (cp?.validee && copyDone(c, cp)) ns.push(final20(c, cp)); if (ns.length === 3) break; }
@@ -1086,6 +1096,24 @@ const mapQ = x => ({id:"q" + uid(5), ...(x.type === "qcm" ? {type:"qcm"} : {}), 
   v:Object.fromEntries(LEVELS.map(l => { const y = x.versions?.[l] || {}; const o = {enonce:String(y.enonce || ""), corrige:String(y.corrige || ""), criteres:String(y.criteres || "")};
     if (x.type === "qcm"){ o.choix = (y.choix || []).map(String).slice(0, 6); o.bonnes = (y.bonnes || []).map(Number).filter(n => n >= 0 && n < o.choix.length); o.corrige = "Bonne(s) réponse(s) : " + o.bonnes.map(n => "ABCDEF"[n]).join(", "); o.criteres = "Tout ou rien."; }
     return [l, o]; }))});
+
+const SEUIL = 10;
+const isCtrl = c => !c.type || c.type === "controle";
+const EXO_TXT = "IMPORTANT : il s'agit d'une FEUILLE D'EXERCICES D'ENTRAÎNEMENT (pas d'un contrôle) : exercices progressifs, du plus simple au plus complet, pour pratiquer les notions du cours. Le mot « contrôle » ne doit pas apparaître.";
+async function regenExercices(c){
+  const co = store.cours.find(x => x.id === c.coursId);
+  if (!co) throw {code:"no_cours"};
+  const g = c.gen || {}, p = {matiere:c.matiere, niveau:c.niveau, duree:c.duree || 55, difficulte:g.difficulte || "moyen", types:g.types || [], consignes:g.consignes || ""};
+  const deja = (c.questions || []).map(q => vOf(q, "standard").enonce).join(" / ").slice(0, 3000);
+  const r = await ai(genPrompt(co, p, clamp((c.questions || []).length || 5, 1, 10), EXO_TXT + "\nPropose des exercices NOUVEAUX et DIFFÉRENTS de ceux-ci : " + deja), {feature:"exercices"});
+  const qs = (r?.questions || []).map(mapQ); if (!qs.length) throw {code:"invalid_json"};
+  const f = feuille(c.id), printed = f && Object.keys(f.copies || {}).length;
+  if (!printed){ const o = structuredClone(c); o.questions = qs; await saveCtrl(o); return c.id; }
+  const n = store.controles.filter(x => x.type === "exercices" && (x.srcId || x.id) === (c.srcId || c.id)).length + 1;
+  const id = uid(12), doc = structuredClone(c); delete doc.id; delete doc.owner;
+  Object.assign(doc, {srcId:c.srcId || c.id, titre:"Exercices " + n + " · " + (r.titre || co.titre), statut:"brouillon", date:"", questions:qs, createdAt:new Date().toISOString()});
+  await write("controles/" + id, doc); return id;
+}
 
 /* ================= Demo ================= */
 async function loadDemo(){
@@ -1156,14 +1184,15 @@ document.addEventListener("click", async ev => {
   if (t.id === "back1"){ S.wizStep = 1; return render(); }
   if (t.id === "gen" || t.id === "genBlank"){
     const p = S.params, co = store.cours.find(c => c.id === S.coursId), st = $("#gen-st");
-    const id = uid(12); const base = {type:"controle", titre:p.titre || co?.titre || "Contrôle", matiere:p.matiere, niveau:p.niveau, classeId:p.classeId, coursId:S.coursId, duree:+p.duree || 55,
-      differencie:!!p.differencie, statut:"brouillon", date:"", mise:{entete:ECOLE, police:15, lh:30, bareme:true, consignes:"Écris uniquement dans les cadres."}, questions:[], createdAt:new Date().toISOString()};
+    const EXO = p.kind === "exercices" && canEx();
+    const id = uid(12); const base = {type:EXO ? "exercices" : "controle", titre:p.titre || (EXO ? "Exercices · " : "") + (co?.titre || "Contrôle"), gen:{types:p.types, difficulte:p.difficulte, consignes:p.consignes || ""}, matiere:p.matiere, niveau:p.niveau, classeId:p.classeId, coursId:S.coursId, duree:+p.duree || 55,
+      differencie:!!p.differencie, statut:"brouillon", date:"", mise:{entete:ECOLE, police:15, lh:30, bareme:true, consignes:EXO ? "Feuille d'exercices d'entraînement. Écris uniquement dans les cadres." : "Écris uniquement dans les cadres."}, questions:[], createdAt:new Date().toISOString()};
     if (t.id === "genBlank"){ base.questions = [mapQ({points:4, lignes:6})]; await write("controles/" + id, base); S.editId = id; S.wizStep = 1; S.step = "preparer"; return go("edit"); }
-    t.disabled = true; st.innerHTML = `<span class="thinking">L'IA rédige le contrôle en 3 niveaux (1 à 2 minutes)…</span>`;
+    t.disabled = true; st.innerHTML = `<span class="thinking">L'IA rédige ${EXO ? "les exercices" : "le contrôle"} en 3 niveaux (1 à 2 minutes)…</span>`;
     try{
-      const r = await ai(genPrompt(co, p, clamp(+p.nbq || 5, 1, 10)));
+      const r = await ai(genPrompt(co, p, clamp(+p.nbq || 5, 1, 10), EXO ? EXO_TXT : ""), EXO ? {feature:"exercices"} : {});
       const qs = (r?.questions || []).map(mapQ); if (!qs.length) throw {code:"invalid_json"};
-      base.titre = p.titre || r.titre || base.titre; base.questions = qs;
+      base.titre = p.titre || (EXO && r.titre ? "Exercices · " + r.titre : r.titre) || base.titre; base.questions = qs;
       await write("controles/" + id, base); S.editId = id; S.wizStep = 1; S.params.titre = ""; S.step = "preparer"; return go("edit");
     }catch(e){ st.textContent = aiErr(e?.code); t.disabled = false; }
     return;
@@ -1176,6 +1205,11 @@ document.addEventListener("click", async ev => {
     if (d.qup !== undefined){ const i = +d.qup; [c.questions[i - 1], c.questions[i]] = [c.questions[i], c.questions[i - 1]]; await saveCtrl(c); return; }
     if (d.qdown !== undefined){ const i = +d.qdown; [c.questions[i + 1], c.questions[i]] = [c.questions[i], c.questions[i + 1]]; await saveCtrl(c); return; }
     if (d.qdel !== undefined){ c.questions.splice(+d.qdel, 1); await saveCtrl(c); return; }
+    if (t.id === "regenEx"){ if (!canEx()) return toast(aiErr("no_option"));
+      t.disabled = true; t.textContent = "Régénération…";
+      try { const nid = await regenExercices(c); if (nid !== c.id){ toast("Feuille déjà imprimée : une nouvelle feuille d'exercices a été créée."); S.editId = nid; S.step = "preparer"; return go("edit"); } toast("Nouveaux exercices générés."); }
+      catch(er){ toast(aiErr(er?.code)); t.disabled = false; t.textContent = "↻ Régénérer les exercices (IA)"; }
+      return; }
     if (t.id === "addQ"){ c.questions.push(mapQ({points:4, lignes:6})); await saveCtrl(c); return; }
     if (t.id === "addQai" || d.qai !== undefined){
       const co = store.cours.find(x => x.id === c.coursId); const i = d.qai !== undefined ? +d.qai : -1; const q = c.questions[i];
@@ -1264,13 +1298,6 @@ document.addEventListener("click", async ev => {
     const C = ctrl(S.anCtrl);
     if (d.ratt){ t.disabled = true; t.textContent = "Création…";
       try { await createRattrapage(C, eleveOf(C, d.ratt)); toast("Rattrapage créé : ouvre-le pour l'imprimer."); } catch(e){ toast(aiErr(e?.code)); t.disabled = false; t.textContent = "Créer"; } return; }
-    if (t.id === "rattAll"){ const f = feuille(C.id), max = maxOf(C), st = $("#ra-st"); const ratts = store.controles.filter(x => x.type === "rattrapage" && x.parentId === C.id);
-      const who = studentsOf(C).filter(e => { const k = f.copies[e.id]; return copyDone(C, k) && final20(C, k) < 10 && !ratts.some(r => r.eleves?.includes(e.id)); });
-      if (!who.length){ st.textContent = "Aucun élève sous 10/20 sans rattrapage."; return; }
-      t.disabled = true;
-      for (let i = 0; i < who.length; i++){ st.innerHTML = `<span class="thinking">Rattrapage ${i + 1} / ${who.length} · ${esc(who[i].prenom)}…</span>`;
-        try { await createRattrapage(C, who[i]); } catch(e){ st.textContent = aiErr(e?.code); t.disabled = false; return; } }
-      st.textContent = who.length + " rattrapage(s) créé(s). Ouvre chacun pour l'imprimer."; t.disabled = false; return; }
     if (t.id === "synth"){ const f = feuille(C.id), max = maxOf(C), st = $("#syn-st"); t.disabled = true; st.innerHTML = `<span class="thinking">Analyse de la classe…</span>`;
       const rows = studentsOf(C).map(e => f.copies[e.id]).filter(k => copyDone(C, k));
       const lines = C.questions.map((q, k) => { const got = rows.map(r => noteOf(r.answers[q.id]) / q.points); const tags = {}; rows.forEach(r => (r.answers[q.id]?.erreurs || []).forEach(x => tags[x] = (tags[x] || 0) + 1));
@@ -1299,6 +1326,7 @@ document.addEventListener("change", async ev => {
   if (d.p){ S.params[d.p] = el.value; if (d.p === "niveau") S.params.classeId = S.params.classeId || ""; return; }
   if (d.type){ const s = new Set(S.params.types); el.checked ? s.add(d.type) : s.delete(d.type); S.params.types = [...s]; return; }
   if (el.id === "p-diff"){ S.params.differencie = el.checked; return; }
+  if (d.kind){ S.params.kind = d.kind; return render(); }
   if (el.id === "sc-files"){ const fs = Array.from(el.files); el.value = ""; if (fs.length) addScans(fs); return; }
   if (d.mq){ const it = S.queue.find(x => x.id === d.mq); it[d.f] = d.f === "page" ? +el.value : el.value; if (d.f === "ctrlId") it.eleveId = ""; return render(); }
   if (el.id === "lvlMat"){ S.levelMat = el.value; S.suggestions = null; return render(); }
@@ -1385,12 +1413,12 @@ function apiSample(){
     const headers = {"content-type":"application/json", "x-tikoun-code":accessCode()};
     if (SB && SB_USER){ const {data} = await SB.auth.getSession(); headers.authorization = "Bearer " + data.session.access_token; }
     let r;
-    try { r = await fetch(cc.endpoint, {method:"POST", signal:opts.signal, headers, body:JSON.stringify({tier:opts.modelTier || "default", messages:[{role:"user", content}]})}); }
+    try { r = await fetch(cc.endpoint, {method:"POST", signal:opts.signal, headers, body:JSON.stringify({tier:opts.modelTier || "default", feature:opts.feature || "", messages:[{role:"user", content}]})}); }
     catch(e){ throw {code:e?.name === "AbortError" ? "cancelled" : "upstream_error"}; }
     if (!r.ok){
       if (r.status === 401 && window.TIKOUN_CONFIG?.accounts){ S.auth = "login"; scheduleRender(); }
       else if (r.status === 401 && !SB){ NEED_CODE = true; try { localStorage.removeItem("tikoun.code"); } catch(e){} scheduleRender(); }
-      const code = r.status === 401 ? "need_code" : r.status === 429 ? "rate_limited" : r.status === 400 || r.status === 413 ? "api_400" : r.status === 503 ? "no_ai" : "upstream_error";
+      const code = r.status === 403 ? "no_option" : r.status === 401 ? "need_code" : r.status === 429 ? "rate_limited" : r.status === 400 || r.status === 413 ? "api_400" : r.status === 503 ? "no_ai" : "upstream_error";
       let msg = ""; try { msg = (await r.json())?.error?.message || ""; } catch(e){} throw {code, message:msg}; }
     const j = await r.json(); const text = (j.content || []).filter(b => b.type === "text").map(b => b.text).join("");
     if (!text.trim()) throw {code:"empty_completion"};
@@ -1647,7 +1675,7 @@ function ctrlFrame(c, inner){
   const doneUpTo = {brouillon:-1, imprime:2, correction:3, corrige:4}[c.statut] ?? -1;
   const prev = STEPS[i - 1], next = STEPS[i + 1];
   return `<div class="crumbs small"><a href="#/controles">← Tous les contrôles</a></div>
-  <div class="head"><div><div class="label">${c.type === "rattrapage" ? "Rattrapage" : "Contrôle"} · ${esc(c.matiere)} · ${esc(cl?.nom || "?")}${c.date ? " · " + esc(frDate(c.date)) : ""}</div><h2>${esc(c.titre)}</h2></div>
+  <div class="head"><div><div class="label">${c.type === "rattrapage" ? "Rattrapage" : c.type === "exercices" ? "Exercices" : "Contrôle"} · ${esc(c.matiere)} · ${esc(cl?.nom || "?")}${c.date ? " · " + esc(frDate(c.date)) : ""}</div><h2>${esc(c.titre)}</h2></div>
     <div class="row">${chipStatut(c)}${pr.printed ? `<span class="chip">${pr.sc}/${pr.n} scannées · ${pr.va}/${pr.n} validées</span>` : ""}</div></div>
   <nav class="stepper" aria-label="Étapes">${STEPS.map(([k, l], j) => `<a href="#/controle/${c.id}/${k}" class="st ${j === i ? "on" : j <= doneUpTo ? "done" : ""}" ${j === i ? 'aria-current="step"' : ""}><b>${j + 1}</b><span>${l}</span></a>`).join("")}</nav>
   ${i <= 2 && c.statut === "brouillon" ? `<p class="small muted">Brouillon · chaque modification est enregistrée automatiquement.</p>` : ""}
@@ -1659,11 +1687,11 @@ function ctrlFrame(c, inner){
 function vControles(){
   const f = S.cf = S.cf || {st:"tous", cl:"", mat:""};
   const all = store.controles;
-  const cnt = k => all.filter(c => k === "tous" ? true : k === "rattrapage" ? c.type === "rattrapage" : c.type !== "rattrapage" && c.statut === k).length;
-  const list = all.filter(c => (f.st === "tous" || (f.st === "rattrapage" ? c.type === "rattrapage" : c.type !== "rattrapage" && c.statut === f.st)) && (!f.cl || c.classeId === f.cl) && (!f.mat || c.matiere === f.mat))
+  const cnt = k => all.filter(c => k === "tous" ? true : k === "rattrapage" || k === "exercices" ? c.type === k : isCtrl(c) && c.statut === k).length;
+  const list = all.filter(c => (f.st === "tous" || (f.st === "rattrapage" || f.st === "exercices" ? c.type === f.st : isCtrl(c) && c.statut === f.st)) && (!f.cl || c.classeId === f.cl) && (!f.mat || c.matiere === f.mat))
     .sort((a, b) => (b.date || b.createdAt || "").localeCompare(a.date || a.createdAt || ""));
   const groups = {}; list.forEach(c => { const k = (classe(c.classeId)?.nom || "Sans classe"); (groups[k] = groups[k] || []).push(c); });
-  const F = [["tous","Tous"],["brouillon","Brouillons"],["imprime","Imprimés"],["correction","En correction"],["corrige","Corrigés"],["rattrapage","Rattrapages"]];
+  const F = [["tous","Tous"],["brouillon","Brouillons"],["imprime","Imprimés"],["correction","En correction"],["corrige","Corrigés"],["rattrapage","Rattrapages"],["exercices","Exercices"]];
   const mats = [...new Set(all.map(c => c.matiere))];
   return `<div class="head"><div><h2>${S.me && S.scope !== "ecole" ? "Mes contrôles" : "Contrôles"}</h2><p>Rangés par classe. Un clic ouvre l'étape où tu en étais.</p></div>
     <div class="row">${isAdmin() ? `<select id="scope-sel" style="width:auto" aria-label="Portée">${selOpts(["moi","ecole"], S.scope, x => x === "moi" ? "Mes contrôles" : "Toute l'école")}</select>` : ""}<a class="btn primary" href="#/nouveau">+ Nouveau contrôle</a></div></div>
@@ -1671,7 +1699,7 @@ function vControles(){
   <div class="row"><select id="cf-cl" style="width:auto" aria-label="Classe"><option value="">Toutes les classes</option>${selOpts(store.classes, f.cl, x => x.nom, x => x.id)}</select>
     <select id="cf-mat" style="width:auto" aria-label="Matière"><option value="">Toutes les matières</option>${selOpts(mats, f.mat)}</select></div>
   ${Object.keys(groups).length ? Object.entries(groups).map(([g, cs]) => `<section class="panel"><h3>${esc(g)}</h3><div style="margin-top:4px">${cs.map(c => { const pr = ctrlProgress(c);
-    return `<a class="item link" href="#/controle/${c.id}/${defaultStep(c)}"><div><div class="t">${c.type === "rattrapage" ? '<span class="chip blue">Rattrapage</span> ' : ""}${esc(c.titre)}</div>
+    return `<a class="item link" href="#/controle/${c.id}/${defaultStep(c)}"><div><div class="t">${c.type === "rattrapage" ? '<span class="chip blue">Rattrapage</span> ' : c.type === "exercices" ? '<span class="chip">Exercices</span> ' : ""}${esc(c.titre)}</div>
       <div class="s">${esc(c.matiere)}${c.date ? " · " + esc(frDate(c.date)) : ""}${c.type === "rattrapage" ? " · " + esc(studentsOf(c).map(e => e.prenom + " " + e.nom).join(", ")) : ""}${S.scope === "ecole" && c.owner ? " · " + esc(userName(c.owner) || "?") : ""}${pr.printed ? ` · ${pr.sc}/${pr.n} scannées · ${pr.va}/${pr.n} validées` : ""}</div></div>
       <div class="row">${chipStatut(c)}<span class="muted">›</span></div></a>`; }).join("")}</div></section>`).join("")
     : `<section class="panel empty">Aucun contrôle ${f.st !== "tous" ? "dans cette catégorie" : "pour l'instant"}.</section>`}`;
@@ -1683,6 +1711,9 @@ document.addEventListener("change", ev => { if (ev.target.id === "cf-cl"){ S.cf.
 /* ================= Comptes des professeurs (serveur de l'école) ================= */
 S.auth = null; S.me = null; S.scope = "moi"; S.users = [];
 const isAdmin = () => S.me?.role === "admin";
+const canEx = () => !window.TIKOUN_CONFIG?.accounts || !!S.me?.can?.exercices;
+const lockChip = () => `<span class="chip" title="Feuilles d'exercices régénérables et scannables : abonnement Pro + option activée par la direction">🔒 Option Exercices</span>`;
+const PLAN = {essentiel:"Essentiel", pro:"Pro"};
 function scopeCtrls(all){ if (!S.me || (isAdmin() && S.scope === "ecole")) return all; return all.filter(c => !c.owner || c.owner === S.me.id); }
 function applyScope(){ store.controles = scopeCtrls(store.allCtrl || []); store.cours = scopeCours(store.allCours || store.cours); }
 function scopeCours(all){ if (!S.me || (isAdmin() && S.scope === "ecole")) return all; return all.filter(c => !c.owner || c.owner === S.me.id); }
@@ -1726,7 +1757,7 @@ async function bootAccounts(){
 
 /* Mon compte */
 function vCompte(){
-  return `<div class="head"><div><h2>Mon compte</h2><p>${esc(S.me?.nom || "")} · ${esc(S.me?.email || "")} · ${isAdmin() ? "Administrateur" : "Professeur"}</p></div>
+  return `<div class="head"><div><h2>Mon compte</h2><p>${esc(S.me?.nom || "")} · ${esc(S.me?.email || "")} · ${isAdmin() ? "Administrateur" : "Professeur"} · Abonnement ${PLAN[S.me?.plan] || "Essentiel"} · Option Exercices ${S.me?.can?.exercices ? "✓" : "✗"}</p></div>
     <button class="btn" id="out-go">Se déconnecter</button></div>
   <section class="panel grid" style="max-width:520px"><h3>Changer de mot de passe</h3>
     <div class="field"><label for="mc-old">Mot de passe actuel</label><input id="mc-old" type="password" autocomplete="current-password"></div>
@@ -1740,9 +1771,11 @@ function vComptes(){
   if (!isAdmin()) return `<div class="panel empty">Réservé à la direction.</div>`;
   const nb = id => (store.allCtrl || []).filter(c => c.owner === id).length;
   return `<div class="head"><div><h2>Comptes des professeurs</h2><p>Chaque professeur retrouve ses contrôles, ses copies et ses résultats. Les classes sont communes à tout l'établissement.</p></div></div>
-  <section class="panel"><div class="tbl-wrap"><table><thead><tr><th>Nom</th><th>E-mail</th><th>Rôle</th><th class="c">Contrôles</th><th></th></tr></thead><tbody>
+  <section class="panel"><div class="tbl-wrap"><table><thead><tr><th>Nom</th><th>E-mail</th><th>Rôle</th><th>Abonnement</th><th>Option Exercices</th><th class="c">Contrôles</th><th></th></tr></thead><tbody>
   ${S.users.map(u => `<tr><td><b>${esc(u.nom)}</b>${u.actif ? "" : ' <span class="chip bad">désactivé</span>'}</td><td>${esc(u.email)}</td>
     <td><select data-urole="${u.id}" style="width:auto" aria-label="Rôle">${selOpts(["prof","admin"], u.role, x => x === "admin" ? "Administrateur" : "Professeur")}</select></td>
+    <td><select data-uplan="${u.id}" style="width:auto" aria-label="Abonnement">${selOpts(["essentiel","pro"], u.plan || "essentiel", x => PLAN[x])}</select></td>
+    <td>${(u.plan || "essentiel") === "pro" ? `<label class="row small" style="gap:6px"><input type="checkbox" data-uex="${u.id}"${u.options?.exercices ? " checked" : ""}> ${u.options?.exercices ? "Activée" : "Désactivée"}</label>` : `<span class="muted small">Pro requis</span>`}</td>
     <td class="c num">${nb(u.id)}</td>
     <td><div class="row"><button class="btn sm" data-ureset="${u.id}">Nouveau mot de passe</button>${u.id !== S.me.id ? `<button class="btn sm ghost" data-uact="${u.id}" data-v="${u.actif ? 0 : 1}">${u.actif ? "Désactiver" : "Réactiver"}</button>` : ""}</div></td></tr>`).join("")}
   </tbody></table></div><div class="status" id="us-st"></div></section>
@@ -1751,6 +1784,8 @@ function vComptes(){
       <div class="field"><label for="nu-mail">E-mail</label><input id="nu-mail" type="email"></div></div>
     <div class="form-row"><div class="field"><label for="nu-pw">Mot de passe provisoire</label><input id="nu-pw" value="${genPw()}"></div>
       <div class="field"><label for="nu-role">Rôle</label><select id="nu-role">${selOpts(["prof","admin"], "prof", x => x === "admin" ? "Administrateur" : "Professeur")}</select></div></div>
+    <div class="form-row"><div class="field"><label for="nu-plan">Abonnement</label><select id="nu-plan">${selOpts(["essentiel","pro"], "essentiel", x => PLAN[x])}</select></div>
+      <label class="row small" style="gap:6px;align-self:end"><input type="checkbox" id="nu-ex"> Activer l'option Exercices (Pro)</label></div>
     <p class="small muted">Transmets l'e-mail et le mot de passe provisoire au professeur : il devra le changer à sa première connexion.</p>
     <div class="row"><button class="btn primary" id="nu-go">Créer le compte</button></div><div class="status" id="nu-st"></div></section>`;
 }
@@ -1767,7 +1802,7 @@ document.addEventListener("click", async ev => {
       const j = await api("/api/me/password", {method:"POST", body:JSON.stringify({password:$("#ch-pw").value})}); return afterLogin(j.user, false); }
     if (t.id === "out-go" || t.id === "srv-out"){ await api("/api/logout", {method:"POST"}).catch(() => {}); location.hash = "#/accueil"; location.reload(); return; }
     if (t.id === "mc-go"){ await api("/api/me/password", {method:"POST", body:JSON.stringify({old:$("#mc-old").value, password:$("#mc-new").value})}); $("#mc-st").textContent = "Mot de passe modifié."; return; }
-    if (t.id === "nu-go"){ const j = await api("/api/users", {method:"POST", body:JSON.stringify({nom:$("#nu-nom").value, email:$("#nu-mail").value, password:$("#nu-pw").value, role:$("#nu-role").value})});
+    if (t.id === "nu-go"){ const j = await api("/api/users", {method:"POST", body:JSON.stringify({nom:$("#nu-nom").value, email:$("#nu-mail").value, password:$("#nu-pw").value, role:$("#nu-role").value, plan:$("#nu-plan").value, exercices:$("#nu-ex").checked})});
       await loadUsers(); render(); $("#nu-st").textContent = `Compte créé : ${j.user.email} · mot de passe provisoire à transmettre.`; return; }
     if (d.ureset){ const pw = genPw(); await api("/api/users/" + d.ureset, {method:"PATCH", body:JSON.stringify({password:pw})}); $("#us-st").innerHTML = `Nouveau mot de passe provisoire pour ${esc(S.users.find(u => u.id === d.ureset)?.email)} : <b class="num">${pw}</b>`; return; }
     if (d.uact){ await api("/api/users/" + d.uact, {method:"PATCH", body:JSON.stringify({actif:d.v === "1"})}); await loadUsers(); return render(); }
@@ -1776,6 +1811,8 @@ document.addEventListener("click", async ev => {
 document.addEventListener("change", async ev => {
   const el = ev.target;
   if (el.dataset.urole){ try { await api("/api/users/" + el.dataset.urole, {method:"PATCH", body:JSON.stringify({role:el.value})}); await loadUsers(); } catch(e){ toast(e.message); } render(); }
+  if (el.dataset.uplan){ try { await api("/api/users/" + el.dataset.uplan, {method:"PATCH", body:JSON.stringify({plan:el.value})}); await loadUsers(); } catch(e){ toast(e.message); } render(); }
+  if (el.dataset.uex){ try { await api("/api/users/" + el.dataset.uex, {method:"PATCH", body:JSON.stringify({exercices:el.checked})}); await loadUsers(); if (el.dataset.uex === S.me.id){ S.me = (await api("/api/me")).user; } } catch(e){ toast(e.message); } render(); }
   if (el.id === "scope-sel"){ S.scope = el.value; applyScope(); render(); }
 });
 
@@ -1872,7 +1909,7 @@ function vSuivi(){
   const e = (cl.eleves || []).find(x => x.id === S.su.el);
   let detail = "";
   if (e){
-    const hist = studentCtrls(cl, mat, e), avg = hist.filter(x => x.c.type !== "rattrapage").map(x => final20(x.c, x.cp));
+    const hist = studentCtrls(cl, mat, e), avg = hist.filter(x => isCtrl(x.c)).map(x => final20(x.c, x.cp));
     const bil = store.bilans[`${cl.id}_${e.id}_${slug(mat)}`];
     const nl = st.notions.map(k => ({k, r:ms(e.id, k), n:st.per[e.id]?.[k]?.n || 0})).filter(x => x.r != null).sort((a, b) => a.r - b.r);
     detail = `<section class="panel grid">
@@ -1897,8 +1934,8 @@ function vSuivi(){
 /* ================= 3. Vue direction ================= */
 function vDirection_0(){
   const cls = store.classes; if (!cls.length) return `<div class="head"><h2>Direction</h2></div><div class="panel empty">Aucune classe.</div>`;
-  const mats = [...new Set(store.controles.filter(c => c.type !== "rattrapage").map(c => c.matiere))];
-  const avgOf = (cl, mat, e) => { const v = studentCtrls(cl, mat, e).filter(x => x.c.type !== "rattrapage" && x.cp.validee).slice(-3).map(x => final20(x.c, x.cp)); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+  const mats = [...new Set(store.controles.filter(isCtrl).map(c => c.matiere))];
+  const avgOf = (cl, mat, e) => { const v = studentCtrls(cl, mat, e).filter(x => isCtrl(x.c) && x.cp.validee).slice(-3).map(x => final20(x.c, x.cp)); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
   const grid = cls.map(cl => ({cl, m:Object.fromEntries(mats.map(mat => { const v = (cl.eleves || []).map(e => avgOf(cl, mat, e)).filter(x => x != null); return [mat, v.length ? v.reduce((a, b) => a + b, 0) / v.length : null]; }))}));
   const risk = []; cls.forEach(cl => (cl.eleves || []).forEach(e => { const low = mats.map(m => [m, avgOf(cl, m, e)]).filter(([, a]) => a != null && a < 10); if (low.length >= 2) risk.push({cl, e, low}); }));
   const weak = []; cls.forEach(cl => mats.forEach(mat => { const st = notionStats(cl, mat); st.notions.forEach(k => { const v = Object.values(st.per).map(p => p[k]).filter(Boolean); if (v.length >= 3){ const r = v.reduce((a, o) => a + o.s / o.n, 0) / v.length; if (r < .5) weak.push({cl, mat, label:st.labels[k], r, n:v.length}); } }); }));
@@ -1907,7 +1944,7 @@ function vDirection_0(){
   let pending = 0; store.controles.forEach(c => { const f = feuille(c.id); if (f) Object.values(f.copies || {}).forEach(cp => { if (!cp.validee && Object.keys(cp.answers || {}).length) pending++; }); });
   return `<div class="head"><div><h2>Vue direction</h2><p>Toutes les classes et matières d'un coup d'œil. Moyennes sur les 3 derniers contrôles validés.</p></div></div>
   <div class="grid g3">
-    <div class="panel"><div class="label">Contrôles créés · 30 jours</div><div class="total num" style="color:var(--ink)">${recent.filter(c => c.type !== "rattrapage").length}</div></div>
+    <div class="panel"><div class="label">Contrôles créés · 30 jours</div><div class="total num" style="color:var(--ink)">${recent.filter(isCtrl).length}</div></div>
     <div class="panel"><div class="label">Rattrapages · 30 jours</div><div class="total num" style="color:var(--ink)">${recent.filter(c => c.type === "rattrapage").length}</div></div>
     <div class="panel"><div class="label">Copies à valider</div><div class="total num" style="color:${pending ? "var(--pen)" : "var(--ink)"}">${pending}</div></div>
   </div>
@@ -1923,7 +1960,7 @@ function vDirection_0(){
 /* ================= 5. Banque ================= */
 function vBanque_0(){
   const b = S.bk = S.bk || {mat:"", niv:"", q:""};
-  const all = store.controles.filter(c => c.type !== "rattrapage" && (!b.mat || c.matiere === b.mat) && (!b.niv || c.niveau === b.niv)
+  const all = store.controles.filter(c => isCtrl(c) && (!b.mat || c.matiere === b.mat) && (!b.niv || c.niveau === b.niv)
     && (!b.q || nkey(c.titre + " " + (c.questions || []).map(q => q.notion + " " + vOf(q, "standard").enonce).join(" ")).includes(nkey(b.q))))
     .sort((x, y) => (y.createdAt || "").localeCompare(x.createdAt || ""));
   const mats = [...new Set(store.controles.map(c => c.matiere))];
@@ -2041,7 +2078,7 @@ document.addEventListener("click", async ev => {
     try{
       const txt = await aiText(`Rédige l'appréciation de bulletin trimestriel d'un élève en ${mat} (classe de ${cl.niveau}).
 Prénom : ${e.prenom}
-Notes : ${hist.map(x => `${x.c.titre} : ${fmt(final20(x.c, x.cp))}/20${x.c.type === "rattrapage" ? " (rattrapage)" : ""}`).join(" ; ")}
+Notes : ${hist.map(x => `${x.c.titre} : ${fmt(final20(x.c, x.cp))}/20${x.c.type === "rattrapage" ? " (rattrapage)" : x.c.type === "exercices" ? " (exercices)" : ""}`).join(" ; ")}
 Maîtrise par notion : ${notions}
 Extraits de commentaires de correction : ${coms}
 Style bulletin scolaire français : 2 à 3 phrases, 300 caractères maximum, à la 3e personne avec le prénom, juste et encourageante, avec un point fort et un conseil précis. Uniquement l'appréciation, sans guillemets. N'invente rien qui ne soit pas dans ces données.`, {modelTier:"quick"});

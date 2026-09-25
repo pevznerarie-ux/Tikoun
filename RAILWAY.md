@@ -31,3 +31,17 @@ Onglet **Sauvegarde → Télécharger une sauvegarde** (toutes les données, san
 - **Administrateur** (direction) : voit tous les contrôles (« Toute l'école »), la vue Direction, crée et désactive les comptes, réinitialise les mots de passe.
 - **Professeur** : retrouve ses contrôles, cours, copies et résultats ; les classes et élèves sont communs à l'établissement ; la Banque montre les contrôles de tous pour les réutiliser.
 - Un professeur ne peut pas modifier les contrôles d'un autre.
+
+## Abonnements et option Exercices
+
+| Abonnement | Contenu |
+|---|---|
+| **Essentiel** | Contrôles (création IA, QR, scan, correction, vue classe, suivi) **+ rattrapages** |
+| **Pro** | Tout Essentiel + possibilité d'activer l'**option Exercices** |
+
+**Rattrapages (inclus pour tous)** : uniquement élève par élève, pour un élève **sous 10/20** dont la copie est corrigée.
+Un seul rattrapage par élève et par contrôle ; pas de génération pour toute la classe d'un coup.
+
+**Option Exercices** (Pro + case cochée dans *Comptes*) : feuilles d'exercices d'entraînement générées depuis un cours
+pour la classe, avec bouton **↻ Régénérer les exercices**. Elles s'impriment avec QR code et se scannent/corrigent
+comme un contrôle, mais ne comptent pas dans les moyennes. Sans l'option : cadenas 🔒 et refus côté serveur.
