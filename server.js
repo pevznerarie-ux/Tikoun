@@ -8,6 +8,7 @@
 //                       (l'ancienne variable TIKOUN_CODE reste acceptée)
 //   AI_MAX_PER_DAY    : plafond d'appels IA par jour, tous comptes confondus (défaut 400)
 //   AI_MAX_PER_USER_DAY : plafond d'appels IA par jour et par professeur (défaut 80)
+//   ADMIN_EMAIL, ADMIN_PASSWORD (+ ADMIN_NAME) : crée automatiquement l'administrateur au démarrage s'il n'existe aucun compte
 //   SIGNUP            : "off" pour fermer l'inscription libre des professeurs (ouverte par défaut)
 //   MODEL_QUICK, MODEL_DEFAULT, MODEL_COMPLEX : modèles (défaut économique)
 const http = require("http"), fs = require("fs"), path = require("path"), crypto = require("crypto");
@@ -20,7 +21,28 @@ const MODELS = () => ({quick:env("MODEL_QUICK") || "claude-haiku-4-5-20251001", 
 function send(res, status, body, type = "text/plain; charset=utf-8", extra = {}){
   res.writeHead(status, {"Content-Type":type, "X-Content-Type-Options":"nosniff", "Referrer-Policy":"same-origin", ...extra}); res.end(body);
 }
-const sendJ = (res, status, obj, extra) => send(res, status, JSON.stringify(obj), TYPES[".json"], extra);
+/* Langue : cookie « lang » (fr / en), sinon en-tête du navigateur. Messages d'erreur traduits pour l'anglais. */
+const EN_MSG = {"8 caractères minimum":"8 characters minimum","ANTHROPIC_API_KEY manquante sur le serveur":"ANTHROPIC_API_KEY is missing on the server",
+ "Annuaire officiel injoignable pour le moment : tu peux enregistrer ton école manuellement.":"School directory unavailable right now: you can enter your school manually.",
+ "Ce compte existe déjà":"This account already exists","Ce document appartient à un autre professeur":"This document belongs to another teacher","Ce quiz est fermé":"This quiz is closed",
+ "Chemin invalide":"Invalid path","Code de l'établissement incorrect":"Incorrect setup code","Code inconnu : vérifie ta carte":"Unknown code: check your card","Compte désactivé":"Account disabled",
+ "Compte introuvable":"Account not found","Connexion requise":"Please sign in","Document introuvable":"Document not found","Définis la variable MASTERY_CODE sur le serveur":"Set the MASTERY_CODE variable on the server",
+ "E-mail invalide":"Invalid email","E-mail ou mot de passe incorrect":"Incorrect email or password","E-mail valide et mot de passe de 8 caractères minimum":"A valid email and a password of at least 8 characters are required",
+ "Exercices en ligne : forfait Pro avec l'option Exercices":"Online practice requires the Pro plan with the Practice add-on","IA injoignable":"AI service unreachable","Impossible sur ton propre compte":"Not possible on your own account",
+ "Indique ton nom":"Please enter your name","Le compte administrateur existe déjà":"The admin account already exists","Les inscriptions sont fermées":"Sign-ups are closed",
+ "Mot de passe : 8 caractères minimum":"Password: 8 characters minimum","Mot de passe actuel incorrect":"Current password is incorrect","Mot de passe provisoire : 8 caractères minimum":"Temporary password: 8 characters minimum",
+ "Objet JSON attendu":"JSON object expected","Option Exercices non activée pour ce compte (abonnement Pro)":"Practice add-on not enabled for this account (Pro plan)","Question invalide":"Invalid question",
+ "Quiz introuvable":"Quiz not found","Requête invalide":"Invalid request","Route inconnue":"Unknown route","Réservé à l'administrateur":"Admins only","Session de quiz expirée : recommence":"Quiz session expired: please start again",
+ "Ton inscription est en attente de validation par l'équipe Mastery. Tu pourras te connecter dès qu'elle sera acceptée.":"Your sign-up is awaiting approval by the Mastery team. You'll be able to sign in as soon as it's accepted.",
+ "Ton inscription n'a pas été acceptée. Contacte l'équipe Mastery.":"Your sign-up was not accepted. Please contact the Mastery team.",
+ "Trop d'essais : réessaie dans 15 minutes":"Too many attempts: try again in 15 minutes","Trop d'essais, réessaie dans 15 minutes":"Too many attempts: try again in 15 minutes",
+ "Trop de recherches, réessaie dans quelques minutes":"Too many searches: try again in a few minutes","Tu ne peux pas te retirer tes propres droits":"You can't remove your own admin rights",
+ "Un compte existe déjà avec cet e-mail":"An account already exists with this email","Indique ton école":"Please enter your school","École invalide":"Invalid school","Trop lourd":"Too large",
+ "Indique le nom de l'école, son code postal (5 chiffres) et sa ville":"Enter the school's name, ZIP code (5 digits) and city",
+ "Plafond quotidien d'appels IA atteint.":"Daily AI limit reached.","Plafond quotidien d'appels IA atteint pour ton compte : réessaie demain.":"Your daily AI limit is reached: try again tomorrow.",
+ "Trop d'appels IA depuis cet appareil : réessaie dans une heure.":"Too many AI requests from this device: try again in an hour."};
+const langOf = req => { const c = ((req.headers.cookie || "").match(/(?:^|;\s*)lang=(fr|en)/) || [])[1]; if (c) return c; const h = String(req.headers["x-lang"] || ""); if (/^(fr|en)$/.test(h)) return h; return /^en\b/i.test(String(req.headers["accept-language"] || "")) ? "en" : "fr"; };
+const sendJ = (res, status, obj, extra) => { if (res._lang === "en" && obj?.error?.message && EN_MSG[obj.error.message]) obj = {...obj, error:{...obj.error, message:EN_MSG[obj.error.message]}}; return send(res, status, JSON.stringify(obj), TYPES[".json"], extra); };
 const same = (a, b) => { const x = Buffer.from(String(a)), y = Buffer.from(String(b)); return x.length === y.length && crypto.timingSafeEqual(x, y); };
 async function readBody(req, max){ const chunks = []; let size = 0; for await (const c of req){ size += c.length; if (size > max) throw new Error("too_large"); chunks.push(c); } return Buffer.concat(chunks); }
 const readJSON = async (req, max = 8e6) => JSON.parse((await readBody(req, max)).toString("utf8") || "null");
@@ -71,7 +93,7 @@ const checkPw = (pw, stored) => { const [salt, h] = String(stored || "").split("
 const PLANS = ["essentiel", "pro"];
 const entitled = u => !!u && u.plan === "pro" && !!u.options?.exercices;
 const AFF = ["ecole", "nom", "les2"];
-const pub = u => ({id:u.id, email:u.email, nom:u.nom, role:u.role, ecole:u.ecole || null, affichage:AFF.includes(u.affichage) ? u.affichage : "les2", plan:u.plan || "essentiel", options:{exercices:!!u.options?.exercices}, can:{exercices:entitled(u)}, actif:u.actif !== false, statut:u.statut || "valide", planDemande:u.planDemande || null, createdAt:u.createdAt});
+const pub = u => ({id:u.id, email:u.email, nom:u.nom, role:u.role, ecole:u.ecole || null, matieres:u.matieres || [], affichage:AFF.includes(u.affichage) ? u.affichage : "les2", plan:u.plan || "essentiel", options:{exercices:!!u.options?.exercices}, can:{exercices:entitled(u)}, actif:u.actif !== false, statut:u.statut || "valide", planDemande:u.planDemande || null, createdAt:u.createdAt});
 const sidOf = req => ((req.headers.cookie || "").match(/(?:^|;\s*)sid=([a-f0-9]{64})/) || [])[1] || "";
 function userOf(req){
   const s = SESS[sidOf(req)]; if (!s || s.exp < Date.now()) return null;
@@ -183,6 +205,7 @@ async function accounts(req, res, url, p, u){
     const b = await readJSON(req, 2e4) || {};
     if (b.nom && String(b.nom).trim()) u.nom = String(b.nom).trim().slice(0, 80);
     if (AFF.includes(b.affichage)) u.affichage = b.affichage;
+    if (Array.isArray(b.matieres)) u.matieres = [...new Set(b.matieres.map(x => String(x).trim().slice(0, 40)).filter(Boolean))].slice(0, 40);
     if (b.ecole){ const e = await checkEcole(b.ecole); if (!e || e.error) return sendJ(res, 400, {error:{message:e?.error || "École invalide"}}); u.ecole = e; }
     saveUsers(); return sendJ(res, 200, {user:pub(u)});
   }
@@ -379,10 +402,20 @@ async function aiProxy(req, res, u){
 }
 
 /* ---------- Routes ---------- */
+/* Sécurité : si aucun compte n'existe (ex. données perdues sans Volume), recrée l'administrateur depuis ADMIN_EMAIL / ADMIN_PASSWORD */
+if (!USERS.length && validEmail(env("ADMIN_EMAIL").toLowerCase()) && env("ADMIN_PASSWORD").length >= 8){
+  const aid = crypto.randomBytes(8).toString("hex");
+  USERS.push({id:aid, espace:aid, email:env("ADMIN_EMAIL").toLowerCase(), nom:env("ADMIN_NAME") || "Admin", role:"admin", plan:"pro", options:{exercices:true}, affichage:"les2", pw:hashPw(env("ADMIN_PASSWORD")), createdAt:new Date().toISOString()});
+  saveUsers(); console.log("Compte administrateur créé depuis ADMIN_EMAIL");
+}
 migrateEspaces();
 http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, "http://x"); let p = decodeURIComponent(url.pathname);
+    res._lang = langOf(req);
+    const wantLang = url.searchParams.get("lang");
+    if (/^(fr|en)$/.test(wantLang || "") && !p.startsWith("/api/")){ url.searchParams.delete("lang"); const q = url.searchParams.toString();
+      res.writeHead(302, {"Location":p + (q ? "?" + q : ""), "Set-Cookie":`lang=${wantLang}; Path=/; SameSite=Lax; Max-Age=${365 * 86400}`}); return res.end(); }
     if (p === "/health") return send(res, 200, "ok");
     const u = userOf(req);
     if (p.startsWith("/api/eleve/")) return await eleveApi(req, res, url, p);
@@ -397,6 +430,7 @@ http.createServer(async (req, res) => {
       return send(res, 200, "window.TIKOUN_CONFIG = " + JSON.stringify({aiEndpoint:env("ANTHROPIC_API_KEY") ? "/api/ai" : "", storage:"server", accounts:true, signup:signupOpen(), persistent:PERSISTENT}) + ";\n", TYPES[".js"], {"Cache-Control":"no-store"});
     if (p === "/" || p === "") p = u ? "/index.html" : "/landing.html";
     if (p === "/app" || p === "/app/") p = "/index.html";
+    if (res._lang === "en" && /\.html$/.test(p) && fs.existsSync(path.join(ROOT, p.replace(/\.html$/, ".en.html")))) p = p.replace(/\.html$/, ".en.html");
     const file = path.normalize(path.join(ROOT, p));
     if (!file.startsWith(ROOT + path.sep) || file.startsWith(path.resolve(DATA)) || /^\/(data|src)(\/|$)/.test(p) || p.split("/").some(s => s.startsWith(".")) || /server\.js$|package(-lock)?\.json$|railway\.json$/.test(file)) return send(res, 404, "Introuvable");
     fs.stat(file, (err, st) => {

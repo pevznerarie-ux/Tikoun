@@ -76,3 +76,23 @@ comme un contrôle, mais ne comptent pas dans les moyennes. Sans l'option : cade
 - **Accès élève** : `https://ton-site/eleve` avec un **code personnel** (sans e-mail). Codes et cartes à imprimer (avec QR) :
   onglet **Classes → Codes élèves**.
 - Résultats : par élève (tentatives, questions vues, réussite, notions acquises, temps) et par question ; aussi dans **Suivi élèves**.
+
+## ⚠️ Garder les données entre deux mises à jour (Volume)
+
+Sans Volume, **chaque mise à jour efface tout** (comptes, classes, contrôles) : c'est pour ça que l'administrateur
+était à recréer. Le haut du site affiche alors « mémoire temporaire ».
+
+1. Railway → ton projet → clic droit sur le service (ou **+ New → Volume**) → **Attach volume**.
+2. **Mount path** : `/data` → Create. Railway redéploie tout seul.
+3. Vérifie : `https://ton-site/config.js` doit contenir `"persistent":true`.
+
+Sécurité en plus (facultatif) : variables `ADMIN_EMAIL` et `ADMIN_PASSWORD` → si aucun compte n'existe au démarrage,
+l'administrateur est recréé automatiquement.
+
+## Anglais (US)
+
+- Le site existe en français et en anglais américain : `?lang=en` / `?lang=fr` (lien « EN / FR » sur la page d'accueil,
+  l'espace élève, la page de connexion et *Mon compte*). Sans choix, la langue du navigateur est utilisée.
+- En anglais : l'IA rédige contrôles, quiz et corrections en anglais ; niveaux 6th–12th grade ; l'école est saisie
+  manuellement (pas d'annuaire officiel) et marquée « non vérifiée ».
+- Fichiers : `index.en.html`, `landing.en.html`, `eleve.en.html` (générés à partir des versions françaises).
