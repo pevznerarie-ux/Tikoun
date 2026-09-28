@@ -107,7 +107,10 @@ section{padding:72px 0}
 .flow .row b{font-family:var(--display);font-weight:600}
 .flow .pill{margin-left:auto;font-size:12.5px;font-weight:700;padding:3px 9px;border-radius:999px}
 .p-ok{background:var(--ok-soft);color:var(--ok)}.p-ai{background:var(--blue-soft);color:var(--blue)}.p-pen{background:var(--pen-soft);color:var(--pen)}
-.plans{display:grid;grid-template-columns:1fr 1fr;gap:18px;max-width:880px}
+.plans{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;max-width:1080px}
+[data-on]{display:none}html.bill [data-on]{display:revert}html.bill [data-off]{display:none}
+.plan .per{font-size:14px;color:var(--muted);margin-top:-8px}
+.referral{margin-top:22px;max-width:1080px;padding:16px 20px;border:1px dashed var(--gold);border-radius:14px;color:var(--muted);font-size:15px}
 .plan{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:28px;display:flex;flex-direction:column;gap:14px}
 .plan.pro{border:2px solid var(--gold)}
 .plan h3{font-size:22px}
@@ -193,9 +196,9 @@ h1,h2,h3,.big,.price{font-variant-numeric:lining-nums;font-feature-settings:"lnu
       <a class="l" href="#fonctionnement">How it works</a>
       <a class="l" href="#fonctionnalites">Features</a>
       <a class="l" href="#forfaits">Plans</a>
-      <a class="l lang" href="?lang=fr" hreflang="fr">FR</a>
+      <a class="l lang" href="?lang=fr" hreflang="fr">FR</a><a class="l lang" href="?lang=en" hreflang="en">EN</a><a class="l lang" href="?lang=pt" hreflang="pt-BR">PT</a>
       <a class="btn sm ghost" href="/app#/connexion">Sign in</a>
-      <a class="btn sm primary" href="/app#/inscription">Join the beta</a>
+      <a class="btn sm primary" href="/app#/inscription"><span data-off>Join the beta</span><span data-on>Try it free</span></a>
     </nav>
   </div>
 </header>
@@ -204,21 +207,21 @@ h1,h2,h3,.big,.price{font-variant-numeric:lining-nums;font-feature-settings:"lnu
 <div class="hero">
   <div class="wrap">
     <div>
-      <span class="badge"><i></i>Free beta · open to teachers</span>
+      <span class="badge"><i></i><span data-off>Free beta · open to teachers</span><span data-on>1 month free · no credit card</span></span>
       <h1>From lesson to graded paper, <em>without spending your evenings on it.</em></h1>
       <p class="lead">Mastery builds your tests from your lesson, prints a personalized sheet for each student, reads the scanned papers, and suggests grading. You always have the final say.</p>
       <div class="cta">
         <a class="btn primary" href="/app#/inscription">Create my teacher account</a>
         <a class="btn" href="#fonctionnement">See how it works</a>
       </div>
-      <p class="note">Free during the beta · sign-up reviewed by the Mastery team</p>
+      <p class="note"><span data-off>Free during the beta</span><span data-on>1-month free trial, no credit card</span> · sign-up reviewed by the Mastery team</p>
     </div>
 
     <div class="mock" aria-hidden="true">
       <div class="sheet">
         <span class="qr tl"></span><span class="qr tr"></span><span class="qr bl"></span><span class="qr br"></span>
         <div class="sh-h"><small>Test · Math · Grade 8</small><b>Fractions</b></div>
-        <div class="grade">14<small>/20</small></div>
+        <div class="grade">70<small>%</small></div>
         <div class="qz"><div class="t"><span>1. Calculate 2/3 + 1/6</span><span>/4</span></div>
           <div class="hand">= 4/6 + 1/6 = 5/6 ✓</div></div>
         <div class="qz"><div class="t"><span>2. Simplify 18/24</span><span>/3</span></div>
@@ -284,11 +287,11 @@ h1,h2,h3,.big,.price{font-variant-numeric:lining-nums;font-feature-settings:"lnu
 
 <section id="forfaits" class="band">
   <div class="wrap">
-    <div class="sec-h"><div class="kicker">Plans</div><h2>Free during the beta</h2><p>Choose your plan when you sign up. No payment is required during the beta phase.</p></div>
+    <div class="sec-h"><div class="kicker">Plans</div><h2 data-off>Free during the beta</h2><p data-off>Choose your plan when you sign up. No payment is required during the beta phase.</p><h2 data-on>One month free, then a simple plan</h2><p data-on>The full Pro plan is open during the trial, no credit card needed. Then you pick your plan, cancel anytime.</p></div>
     <div class="plans">
       <div class="plan">
         <h3>Essential</h3>
-        <div class="price">0 €<small>during the beta</small></div>
+        <div class="price" data-off>0 €<small>during the beta</small></div><div class="price" data-on data-prix="essentiel"></div><div class="per" data-on>Yearly: <span data-prix="essentielAn"></span></div>
         <ul>
           <li>Tests generated from your lessons</li>
           <li>Sheets per student with QR code</li>
@@ -300,7 +303,7 @@ h1,h2,h3,.big,.price{font-variant-numeric:lining-nums;font-feature-settings:"lnu
       </div>
       <div class="plan pro">
         <h3>Pro</h3>
-        <div class="price">0 €<small>during the beta</small></div>
+        <div class="price" data-off>0 €<small>during the beta</small></div><div class="price" data-on data-prix="pro"></div><div class="per" data-on>Yearly: <span data-prix="proAn"></span></div>
         <ul>
           <li>Everything in Essential</li>
           <li>Online practice built from your lessons</li>
@@ -309,7 +312,19 @@ h1,h2,h3,.big,.price{font-variant-numeric:lining-nums;font-feature-settings:"lnu
         </ul>
         <a class="btn primary" href="/app#/inscription/pro">Choose Pro</a>
       </div>
+      <div class="plan">
+        <h3>School</h3>
+        <div class="price" data-off>0 €<small>during the beta</small></div><div class="price" data-on><span data-prix="ecole"></span></div>
+        <ul>
+          <li>Leadership view of every class</li>
+          <li>Results, retakes and struggling students by subject</li>
+          <li>Teachers join the school with a code</li>
+          <li>Option: the school pays Pro for all its teachers</li>
+        </ul>
+        <a class="btn" href="/app#/inscription">Create the leadership account</a>
+      </div>
     </div>
+    <p class="referral" data-on><b>Referrals:</b> invite a colleague with your link. They get an extra month of trial, and you get a free month as soon as they subscribe.</p>
   </div>
 </section>
 
@@ -331,7 +346,8 @@ h1,h2,h3,.big,.price{font-variant-numeric:lining-nums;font-feature-settings:"lnu
       <details><summary>Do I need a scanner?</summary><p>No. A phone photo is enough — the four QR codes let us straighten the sheet. You can also upload a photocopier PDF with all the papers for the class.</p></details>
       <details><summary>Can the AI make mistakes?</summary><p>Yes, which is why every transcription and every grade stays editable, and a paper only counts once you've approved it.</p></details>
       <details><summary>Who sees my students' data?</summary><p>Your space is private: your classes, students, and papers are not visible to other registered teachers.</p></details>
-      <details><summary>What happens after the beta?</summary><p>Plan pricing will be announced before the end of the beta. You won't be charged anything without your consent.</p></details>
+      <details data-off><summary>What happens after the beta?</summary><p>Plan pricing will be announced before the end of the beta. You won't be charged anything without your consent.</p></details>
+      <details data-on><summary>What happens after the free month?</summary><p>You choose Essential or Pro, monthly or yearly, with secure payment by Stripe. Without a plan, your data stays viewable but you can no longer create or grade. Nothing is charged without your consent.</p></details>
       <details><summary>My school doesn't show up</summary><p>You can add it manually with its mailing address. It will appear as "unverified," without limiting your use of Mastery.</p></details>
     </div>
   </div>
@@ -340,7 +356,7 @@ h1,h2,h3,.big,.price{font-variant-numeric:lining-nums;font-feature-settings:"lnu
 <div class="wrap" style="padding-top:72px">
   <div class="final">
     <h2>Ready to try Mastery with your classes?</h2>
-    <p>Join the free beta: build your next test from your lesson.</p>
+    <p><span data-off>Join the free beta</span><span data-on>Try it free for a month</span> : build your next test from your lesson.</p>
     <a class="btn" href="/app#/inscription">Create my teacher account</a>
   </div>
 </div>
@@ -349,5 +365,8 @@ h1,h2,h3,.big,.price{font-variant-numeric:lining-nums;font-feature-settings:"lnu
 <footer>
   <div class="wrap"><span>© 2026 Mastery</span><span><a href="/cgu">Terms of use</a> · <a href="/confidentialite">Privacy</a> · <a href="/app#/connexion">Sign in</a></span></div>
 </footer>
+<script src="/config.js"></script>
+<script>(function(){ var c = window.TIKOUN_CONFIG || {}; if (!c.billing) return; document.documentElement.classList.add("bill");
+  var p = c.prix || {}; document.querySelectorAll("[data-prix]").forEach(function(e){ var v = p[e.getAttribute("data-prix")]; if (v) e.textContent = v; }); })();</script>
 </body>
 </html>

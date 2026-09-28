@@ -37,12 +37,13 @@ const EN_MSG = {"8 caractères minimum":"8 characters minimum","ANTHROPIC_API_KE
  "Ton inscription n'a pas été acceptée. Contacte l'équipe Mastery.":"Your sign-up was not accepted. Please contact the Mastery team.",
  "Trop d'essais : réessaie dans 15 minutes":"Too many attempts: try again in 15 minutes","Trop d'essais, réessaie dans 15 minutes":"Too many attempts: try again in 15 minutes",
  "Trop de recherches, réessaie dans quelques minutes":"Too many searches: try again in a few minutes","Tu ne peux pas te retirer tes propres droits":"You can't remove your own admin rights",
- "Un compte existe déjà avec cet e-mail":"An account already exists with this email","Indique ton école":"Please enter your school","École invalide":"Invalid school","Trop lourd":"Too large","Accepte les conditions d'utilisation et la politique de confidentialité":"Please accept the terms of use and the privacy policy",
+ "Un compte existe déjà avec cet e-mail":"An account already exists with this email","Indique ton école":"Please enter your school","École invalide":"Invalid school","Trop lourd":"Too large","Ton essai gratuit est terminé : choisis un abonnement dans Mon compte pour continuer.":"Your free trial has ended: choose a plan in My account to continue.","Tu fais déjà partie d'un établissement":"You already belong to a school","Indique le nom de l'établissement":"Enter the school name","Code d'établissement inconnu":"Unknown school code","Résilie d'abord l'abonnement de l'établissement":"Cancel the school subscription first","Réservé à la direction de l'établissement":"School leadership only","Le paiement n'est pas encore ouvert : la bêta est gratuite":"Payments aren't open yet: the beta is free","Tarif non configuré sur le serveur":"Price not configured on the server","Tu as déjà un abonnement : gère-le avec « Gérer mon abonnement »":"You already have a plan: use “Manage my plan”","L'établissement a déjà un abonnement":"The school already has a plan","Indique le nombre d'élèves de l'établissement":"Enter the school's number of students","Aucun abonnement à gérer":"No plan to manage","Paiement indisponible pour le moment : réessaie dans un instant.":"Payments are unavailable right now: try again in a moment.","Accepte les conditions d'utilisation et la politique de confidentialité":"Please accept the terms of use and the privacy policy",
  "Indique le nom de l'école, son code postal (5 chiffres) et sa ville":"Enter the school's name, ZIP code (5 digits) and city",
  "Plafond quotidien d'appels IA atteint.":"Daily AI limit reached.","Plafond quotidien d'appels IA atteint pour ton compte : réessaie demain.":"Your daily AI limit is reached: try again tomorrow.",
  "Trop d'appels IA depuis cet appareil : réessaie dans une heure.":"Too many AI requests from this device: try again in an hour."};
-const langOf = req => { const c = ((req.headers.cookie || "").match(/(?:^|;\s*)lang=(fr|en)/) || [])[1]; if (c) return c; const h = String(req.headers["x-lang"] || ""); if (/^(fr|en)$/.test(h)) return h; return /^en\b/i.test(String(req.headers["accept-language"] || "")) ? "en" : "fr"; };
-const sendJ = (res, status, obj, extra) => { if (res._lang === "en" && obj?.error?.message && EN_MSG[obj.error.message]) obj = {...obj, error:{...obj.error, message:EN_MSG[obj.error.message]}}; return send(res, status, JSON.stringify(obj), TYPES[".json"], extra); };
+const PT_MSG = {"8 caractères minimum": "Mínimo de 8 caracteres", "ANTHROPIC_API_KEY manquante sur le serveur": "ANTHROPIC_API_KEY ausente no servidor", "Annuaire officiel injoignable pour le moment : tu peux enregistrer ton école manuellement.": "Diretório oficial de escolas indisponível no momento: você pode cadastrar sua escola manualmente.", "Ce compte existe déjà": "Esta conta já existe", "Ce document appartient à un autre professeur": "Este documento pertence a outro professor", "Ce quiz est fermé": "Este quiz está encerrado", "Chemin invalide": "Caminho inválido", "Code de l'établissement incorrect": "Código da escola incorreto", "Code inconnu : vérifie ta carte": "Código desconhecido: confira o seu cartão", "Compte désactivé": "Conta desativada", "Compte introuvable": "Conta não encontrada", "Connexion requise": "É necessário entrar na sua conta", "Document introuvable": "Documento não encontrado", "Définis la variable MASTERY_CODE sur le serveur": "Defina a variável MASTERY_CODE no servidor", "E-mail invalide": "E-mail inválido", "E-mail ou mot de passe incorrect": "E-mail ou senha incorretos", "E-mail valide et mot de passe de 8 caractères minimum": "Informe um e-mail válido e uma senha com no mínimo 8 caracteres", "Exercices en ligne : forfait Pro avec l'option Exercices": "Exercícios on-line: exigem o plano Pro com o complemento Exercícios", "IA injoignable": "Serviço de IA indisponível", "Impossible sur ton propre compte": "Não é possível na sua própria conta", "Indique ton nom": "Informe o seu nome", "Le compte administrateur existe déjà": "A conta de administrador já existe", "Les inscriptions sont fermées": "As inscrições estão encerradas", "Mot de passe : 8 caractères minimum": "Senha: mínimo de 8 caracteres", "Mot de passe actuel incorrect": "Senha atual incorreta", "Mot de passe provisoire : 8 caractères minimum": "Senha provisória: mínimo de 8 caracteres", "Objet JSON attendu": "Era esperado um objeto JSON", "Option Exercices non activée pour ce compte (abonnement Pro)": "Complemento Exercícios não ativado para esta conta (assinatura Pro)", "Question invalide": "Questão inválida", "Quiz introuvable": "Quiz não encontrado", "Requête invalide": "Requisição inválida", "Route inconnue": "Rota desconhecida", "Réservé à l'administrateur": "Exclusivo para o administrador", "Session de quiz expirée : recommence": "Sessão do quiz expirada: comece de novo", "Ton inscription est en attente de validation par l'équipe Mastery. Tu pourras te connecter dès qu'elle sera acceptée.": "Sua inscrição está aguardando aprovação da equipe Mastery. Você poderá entrar assim que ela for aceita.", "Ton inscription n'a pas été acceptée. Contacte l'équipe Mastery.": "Sua inscrição não foi aceita. Entre em contato com a equipe Mastery.", "Trop d'essais : réessaie dans 15 minutes": "Muitas tentativas: tente novamente em 15 minutos", "Trop d'essais, réessaie dans 15 minutes": "Muitas tentativas: tente novamente em 15 minutos", "Trop de recherches, réessaie dans quelques minutes": "Muitas buscas: tente novamente em alguns minutos", "Tu ne peux pas te retirer tes propres droits": "Você não pode remover os seus próprios direitos de administrador", "Un compte existe déjà avec cet e-mail": "Já existe uma conta com este e-mail", "Indique ton école": "Informe a sua escola", "École invalide": "Escola inválida", "Trop lourd": "Arquivo grande demais", "Ton essai gratuit est terminé : choisis un abonnement dans Mon compte pour continuer.": "Seu teste grátis terminou: escolha uma assinatura em Minha conta para continuar.", "Tu fais déjà partie d'un établissement": "Você já faz parte de uma escola", "Indique le nom de l'établissement": "Informe o nome da escola", "Code d'établissement inconnu": "Código de escola desconhecido", "Résilie d'abord l'abonnement de l'établissement": "Cancele primeiro a assinatura da escola", "Réservé à la direction de l'établissement": "Exclusivo para a direção da escola", "Le paiement n'est pas encore ouvert : la bêta est gratuite": "O pagamento ainda não está disponível: a versão beta é gratuita", "Tarif non configuré sur le serveur": "Preço não configurado no servidor", "Tu as déjà un abonnement : gère-le avec « Gérer mon abonnement »": "Você já tem uma assinatura: gerencie-a em “Gerenciar minha assinatura”", "L'établissement a déjà un abonnement": "A escola já tem uma assinatura", "Indique le nombre d'élèves de l'établissement": "Informe o número de alunos da escola", "Aucun abonnement à gérer": "Nenhuma assinatura para gerenciar", "Paiement indisponible pour le moment : réessaie dans un instant.": "Pagamento indisponível no momento: tente novamente em instantes.", "Accepte les conditions d'utilisation et la politique de confidentialité": "Aceite os termos de uso e a política de privacidade", "Indique le nom de l'école, son code postal (5 chiffres) et sa ville": "Informe o nome da escola, o código postal (5 dígitos) e a cidade", "Plafond quotidien d'appels IA atteint.": "Limite diário de uso da IA atingido.", "Plafond quotidien d'appels IA atteint pour ton compte : réessaie demain.": "Sua conta atingiu o limite diário de uso da IA: tente novamente amanhã.", "Trop d'appels IA depuis cet appareil : réessaie dans une heure.": "Muitas solicitações de IA a partir deste dispositivo: tente novamente em uma hora."};
+const langOf = req => { const c = ((req.headers.cookie || "").match(/(?:^|;\s*)lang=(fr|en|pt)/) || [])[1]; if (c) return c; const h = String(req.headers["x-lang"] || ""); if (/^(fr|en|pt)$/.test(h)) return h; const al = String(req.headers["accept-language"] || ""); return /^en\b/i.test(al) ? "en" : /^pt\b/i.test(al) ? "pt" : "fr"; };
+const sendJ = (res, status, obj, extra) => { const DICT = res._lang === "en" ? EN_MSG : res._lang === "pt" ? PT_MSG : null; if (DICT && obj?.error?.message && DICT[obj.error.message]) obj = {...obj, error:{...obj.error, message:DICT[obj.error.message]}}; return send(res, status, JSON.stringify(obj), TYPES[".json"], extra); };
 const same = (a, b) => { const x = Buffer.from(String(a)), y = Buffer.from(String(b)); return x.length === y.length && crypto.timingSafeEqual(x, y); };
 async function readBody(req, max){ const chunks = []; let size = 0; for await (const c of req){ size += c.length; if (size > max) throw new Error("too_large"); chunks.push(c); } return Buffer.concat(chunks); }
 const readJSON = async (req, max = 8e6) => JSON.parse((await readBody(req, max)).toString("utf8") || "null");
@@ -91,9 +92,9 @@ const hashPw = (pw, salt = crypto.randomBytes(16).toString("hex")) => salt + ":"
 const checkPw = (pw, stored) => { const [salt, h] = String(stored || "").split(":"); if (!salt || !h) return false; return same(crypto.scryptSync(String(pw), salt, 64).toString("hex"), h); };
 /* Abonnements : « essentiel » (contrôles, correction, suivi) · « pro » (+ option Exercices, activée par la direction) */
 const PLANS = ["essentiel", "pro"];
-const entitled = u => !!u && u.plan === "pro" && !!u.options?.exercices;
+const entitled = u => { if (!u) return false; const a = access(u); if (a.mode === "essai" || a.mode === "ecole") return true; if (a.mode === "abonne") return a.plan === "pro"; if (!a.ok) return false; return u.plan === "pro" && !!u.options?.exercices; };
 const AFF = ["ecole", "nom", "les2"];
-const pub = u => ({id:u.id, email:u.email, nom:u.nom, role:u.role, ecole:u.ecole || null, matieres:u.matieres || [], affichage:AFF.includes(u.affichage) ? u.affichage : "les2", plan:u.plan || "essentiel", options:{exercices:!!u.options?.exercices}, can:{exercices:entitled(u)}, actif:u.actif !== false, statut:u.statut || "valide", planDemande:u.planDemande || null, createdAt:u.createdAt});
+const pub = u => ({id:u.id, email:u.email, nom:u.nom, role:u.role, ecole:u.ecole || null, matieres:u.matieres || [], affichage:AFF.includes(u.affichage) ? u.affichage : "les2", plan:u.plan || "essentiel", options:{exercices:!!u.options?.exercices}, can:{exercices:entitled(u)}, actif:u.actif !== false, statut:u.statut || "valide", planDemande:u.planDemande || null, createdAt:u.createdAt, bareme:u.bareme || null, espace:u.espace, ref:refCode(u), acces:access(u), billing:BILLING(), parrainage:refStats(u), etab:etabPub(groupOf(u), u), inscription:u.inscription || "admin"});
 const sidOf = req => ((req.headers.cookie || "").match(/(?:^|;\s*)sid=([a-f0-9]{64})/) || [])[1] || "";
 function userOf(req){
   const s = SESS[sidOf(req)]; if (!s || s.exp < Date.now()) return null;
@@ -113,9 +114,163 @@ const validEmail = e => /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/.test(e);
 const OWNED = ["controles","cours","feuilles","bilans","quizzes","quizrep"];
 function ownerOf(p){ const [col, id] = p.split("/"); if (col === "feuilles") return DOCS.get("controles/" + id)?.owner || DOCS.get(p)?.owner || null; return DOCS.get(p)?.owner || null; }
 function espaceFor(p, u){ const [col, id] = p.split("/"); const cur = DOCS.get(p); if (cur?.espace) return cur.espace; if (col === "feuilles") return DOCS.get("controles/" + id)?.espace || u.espace; return u.espace; }
-const visible = (u, v) => u.role === "admin" || (isObj(v) && (v.espace === u.espace || v.owner === u.id));
+const dirSees = (u, esp) => { const g = esp && dirGroup(u); if (!g) return false; return [g.directeur, ...(g.membres || [])].some(id => USERS.find(x => x.id === id)?.espace === esp); };
+const visible = (u, v) => u.role === "admin" || (isObj(v) && (v.espace === u.espace || v.owner === u.id || dirSees(u, v.espace)));
 const canWrite = (u, p) => { if (u.role === "admin") return true; const cur = DOCS.get(p); if (cur && cur.espace && cur.espace !== u.espace) return false; const o = ownerOf(p); return !o || o === u.id || !OWNED.includes(p.split("/")[0]); };
 const docsFor = u => Object.fromEntries([...DOCS].filter(([k, v]) => visible(u, v)));
+
+/* ---------- Abonnements, essai gratuit, parrainage, forfait établissement (Stripe) ----------
+   Sans STRIPE_SECRET_KEY : mode bêta, tout est gratuit (comportement d'avant).
+   Avec : chaque prof inscrit a un essai (TRIAL_DAYS, 30 j par défaut, +30 j s'il vient d'un parrain), puis choisit un abonnement.
+   Les comptes créés par l'administrateur et l'administrateur lui-même restent inclus (établissement fondateur). */
+const BILLING = () => !!env("STRIPE_SECRET_KEY");
+const DAY = 864e5, TRIAL_DAYS = () => Number(env("TRIAL_DAYS")) || 30;
+const PRICE = () => ({essentiel_mois:env("STRIPE_PRICE_ESSENTIEL_MOIS"), essentiel_an:env("STRIPE_PRICE_ESSENTIEL_AN"), pro_mois:env("STRIPE_PRICE_PRO_MOIS"), pro_an:env("STRIPE_PRICE_PRO_AN"),
+  ecole:env("STRIPE_PRICE_ECOLE"), prof_ecole:env("STRIPE_PRICE_PROF_ECOLE") || env("STRIPE_PRICE_PRO_MOIS")});
+const planOfPrice = id => { const P = PRICE(); return id && (id === P.pro_mois || id === P.pro_an || id === P.prof_ecole) ? "pro" : id && (id === P.essentiel_mois || id === P.essentiel_an) ? "essentiel" : null; };
+const LIVE = s => !!s && ["active", "trialing", "past_due"].includes(s.status);
+const GROUPES_F = path.join(DATA, "etablissements.json"); let GROUPES = readJ(GROUPES_F, []);
+const saveGroupes = () => writeAtomic(GROUPES_F, GROUPES);
+const groupOf = u => u && GROUPES.find(g => g.directeur === u.id || (g.membres || []).includes(u.id)) || null;
+const groupLive = g => !!g && (!BILLING() || LIVE(g.sub));
+const dirGroup = u => { const g = u && GROUPES.find(x => x.directeur === u.id); return groupLive(g) ? g : null; };
+const refCode = u => { if (!u.ref){ const a = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; do { u.ref = [...crypto.randomBytes(7)].map(b => a[b % a.length]).join(""); } while (USERS.some(v => v !== u && v.ref === u.ref)); saveUsers(); } return u.ref; };
+function access(u){
+  if (!u) return {ok:false, mode:"aucun"};
+  if (!BILLING()) return {ok:true, mode:"beta"};
+  if (u.role === "admin" || u.inscription !== "libre") return {ok:true, mode:"inclus"};
+  const g = groupOf(u); if (g && g.payeProfs && LIVE(g.sub)) return {ok:true, mode:"ecole", plan:"pro", ecole:g.nom};
+  if (LIVE(u.sub)) return {ok:true, mode:"abonne", plan:u.sub.plan || "essentiel", status:u.sub.status, fin:u.sub.fin || null, annule:!!u.sub.annule};
+  if (!u.trialEnd && (u.statut || "valide") === "valide"){ u.trialEnd = new Date(Date.now() + (TRIAL_DAYS() + (u.referredBy ? 30 : 0)) * DAY).toISOString(); saveUsers(); }
+  const fin = Math.max(Date.parse(u.trialEnd || 0) || 0, Date.parse(u.freeUntil || 0) || 0);
+  if (fin > Date.now()) return {ok:true, mode:"essai", plan:"pro", fin:new Date(fin).toISOString()};
+  return {ok:false, mode:"expire", fin:new Date(fin).toISOString()};
+}
+const refStats = u => { const f = USERS.filter(v => v.referredBy === u.id); return {filleuls:f.length, payants:f.filter(v => v.refRewarded).length, mois:(u.refMonths || []).length}; };
+const NO_ACCESS = "Ton essai gratuit est terminé : choisis un abonnement dans Mon compte pour continuer.";
+
+/* Appels à l'API Stripe (sans dépendance : formulaire encodé) */
+function formEnc(o, pre = "", out = []){
+  for (const [k, v] of Object.entries(o)){ if (v === undefined || v === null) continue; const key = pre ? `${pre}[${k}]` : k;
+    if (typeof v === "object") formEnc(v, key, out); else out.push(encodeURIComponent(key) + "=" + encodeURIComponent(String(v))); }
+  return out.join("&");
+}
+async function stripe(method, p, body){
+  const r = await fetch((env("STRIPE_API_BASE") || "https://api.stripe.com/v1") + p, {method, headers:{"Authorization":"Bearer " + env("STRIPE_SECRET_KEY"), "Content-Type":"application/x-www-form-urlencoded", "Stripe-Version":"2024-06-20"},
+    body:body ? formEnc(body) : undefined, signal:AbortSignal.timeout(20000)});
+  const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j?.error?.message || "Stripe " + r.status); return j;
+}
+const baseUrl = req => (String(req.headers["x-forwarded-proto"] || "").includes("https") ? "https://" : "http://") + (req.headers["x-forwarded-host"] || req.headers.host);
+function applySub(s){
+  const meta = s.metadata || {}, st = {id:s.id, status:s.status, customer:s.customer, fin:s.current_period_end ? new Date(s.current_period_end * 1000).toISOString() : null, annule:!!s.cancel_at_period_end};
+  if (meta.kind === "ecole"){ const g = GROUPES.find(x => x.id === meta.gid || x.sub?.id === s.id); if (!g) return; g.sub = st; saveGroupes(); if (LIVE(st) && g.payeProfs) stopOwnSubs(g); return; }
+  const u = USERS.find(x => x.id === meta.uid || x.sub?.id === s.id); if (!u) return;
+  u.sub = {...st, plan:planOfPrice(s.items?.data?.[0]?.price?.id) || meta.plan || "essentiel"};
+  if (LIVE(u.sub)){ u.plan = u.sub.plan; u.options = {...(u.options || {}), exercices:u.plan === "pro"}; }
+  saveUsers();
+}
+/* L'établissement paie pour tous ses profs : les abonnements personnels s'arrêtent à la fin de la période en cours */
+function stopOwnSubs(g){ for (const id of [g.directeur, ...(g.membres || [])]){ const u = USERS.find(x => x.id === id);
+  if (u && LIVE(u.sub) && !u.sub.annule) stripe("POST", "/subscriptions/" + u.sub.id, {cancel_at_period_end:true}).then(s => { u.sub.annule = !!s.cancel_at_period_end; saveUsers(); }).catch(e => console.warn("Stripe annulation", e.message)); } }
+/* Parrainage : quand un filleul paie sa première facture, le parrain gagne 1 mois (12 au plus par an) */
+async function rewardReferral(u){
+  if (!u || u.refRewarded || !u.referredBy) return; const par = USERS.find(x => x.id === u.referredBy); u.refRewarded = new Date().toISOString(); saveUsers(); if (!par) return;
+  par.refMonths = (par.refMonths || []).filter(t => Date.now() - Date.parse(t) < 365 * DAY); if (par.refMonths.length >= 12) return saveUsers();
+  par.refMonths.push(new Date().toISOString());
+  if (LIVE(par.sub) && par.sub.customer){ try { const pr = await stripe("GET", "/prices/" + (par.sub.plan === "pro" ? PRICE().pro_mois : PRICE().essentiel_mois));
+      await stripe("POST", `/customers/${par.sub.customer}/balance_transactions`, {amount:-(pr.unit_amount || 0), currency:pr.currency || "eur", description:"Parrainage Mastery : 1 mois offert"}); }
+    catch(e){ console.warn("Parrainage (crédit Stripe)", e.message); } }
+  else { const base = Math.max(Date.now(), Date.parse(par.trialEnd || 0) || 0, Date.parse(par.freeUntil || 0) || 0); par.freeUntil = new Date(base + 30 * DAY).toISOString(); }
+  saveUsers(); console.log(`Parrainage : 1 mois offert à ${par.email} (filleul ${u.email})`);
+}
+async function stripeWebhook(req, res){
+  const raw = await readBody(req, 1e6), sig = String(req.headers["stripe-signature"] || ""), secret = env("STRIPE_WEBHOOK_SECRET");
+  const t = (sig.match(/t=(\d+)/) || [])[1], v1 = [...sig.matchAll(/v1=([a-f0-9]+)/g)].map(m => m[1]);
+  const want = secret && t ? crypto.createHmac("sha256", secret).update(t + "." + raw.toString("utf8")).digest("hex") : "";
+  if (!want || !v1.some(x => same(x, want)) || Math.abs(Date.now() / 1000 - Number(t)) > 600) return send(res, 400, "Signature invalide");
+  let ev; try { ev = JSON.parse(raw.toString("utf8")); } catch(e){ return send(res, 400, "JSON invalide"); }
+  const o = ev.data?.object || {};
+  try {
+    if (ev.type === "checkout.session.completed" && o.subscription) applySub(await stripe("GET", "/subscriptions/" + o.subscription));
+    else if (/^customer\.subscription\./.test(ev.type)) applySub(o);
+    else if (ev.type === "invoice.paid" && o.amount_paid > 0){ const u = USERS.find(x => x.sub?.customer === o.customer); if (u) await rewardReferral(u); }
+  } catch(e){ console.warn("Webhook Stripe", ev.type, e.message); }
+  return sendJ(res, 200, {received:true});
+}
+function etabPub(g, u){
+  if (!g) return null; const dir = g.directeur === u.id;
+  return {id:g.id, nom:g.nom, role:dir ? "direction" : "membre", payeProfs:!!g.payeProfs, actif:groupLive(g), ...(dir ? {code:g.code, eleves:g.eleves || 0, abonnement:g.sub ? {status:g.sub.status, fin:g.sub.fin, annule:g.sub.annule} : null,
+    membres:(g.membres || []).map(id => USERS.find(x => x.id === id)).filter(Boolean).map(x => ({id:x.id, nom:x.nom, email:x.email}))} : {})};
+}
+async function billingApi(req, res, url, p, u){
+  if (!u) return sendJ(res, 401, {error:{message:"Connexion requise"}});
+  const b = req.method === "POST" ? await readJSON(req, 2e4) || {} : {};
+  if (p === "/api/etab" && req.method === "GET") return sendJ(res, 200, {etab:etabPub(groupOf(u), u)});
+  if (p === "/api/etab/creer" && req.method === "POST"){
+    if (groupOf(u)) return sendJ(res, 409, {error:{message:"Tu fais déjà partie d'un établissement"}});
+    const nom = String(b.nom || u.ecole?.nom || "").trim().slice(0, 120); if (!nom) return sendJ(res, 400, {error:{message:"Indique le nom de l'établissement"}});
+    const a = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; let code; do { code = [...crypto.randomBytes(8)].map(x => a[x % a.length]).join(""); } while (GROUPES.some(g => g.code === code));
+    const g = {id:crypto.randomBytes(8).toString("hex"), nom, code, directeur:u.id, membres:[], eleves:Math.max(0, Math.min(20000, +b.eleves || 0)), payeProfs:!!b.payeProfs, createdAt:new Date().toISOString()};
+    GROUPES.push(g); saveGroupes(); return sendJ(res, 200, {etab:etabPub(g, u)});
+  }
+  if (p === "/api/etab/rejoindre" && req.method === "POST"){
+    if (groupOf(u)) return sendJ(res, 409, {error:{message:"Tu fais déjà partie d'un établissement"}});
+    if (tooMany("etab:" + u.id)) return sendJ(res, 429, {error:{message:"Trop d'essais, réessaie dans 15 minutes"}});
+    const g = GROUPES.find(x => x.code === String(b.code || "").trim().toUpperCase()); if (!g) return sendJ(res, 404, {error:{message:"Code d'établissement inconnu"}});
+    g.membres = [...new Set([...(g.membres || []), u.id])]; saveGroupes(); if (LIVE(g.sub) && g.payeProfs) stopOwnSubs(g); return sendJ(res, 200, {etab:etabPub(g, u)});
+  }
+  if (p === "/api/etab/quitter" && req.method === "POST"){
+    const g = groupOf(u); if (!g) return sendJ(res, 200, {etab:null});
+    if (g.directeur === u.id){ if (LIVE(g.sub)) return sendJ(res, 400, {error:{message:"Résilie d'abord l'abonnement de l'établissement"}}); GROUPES = GROUPES.filter(x => x !== g); }
+    else g.membres = g.membres.filter(id => id !== u.id);
+    saveGroupes(); return sendJ(res, 200, {etab:null});
+  }
+  const dg = GROUPES.find(x => x.directeur === u.id);
+  if (p === "/api/etab/reglages" && req.method === "POST"){
+    if (!dg) return sendJ(res, 403, {error:{message:"Réservé à la direction de l'établissement"}});
+    if (b.nom) dg.nom = String(b.nom).trim().slice(0, 120); if (b.eleves != null) dg.eleves = Math.max(0, Math.min(20000, +b.eleves || 0)); if (typeof b.payeProfs === "boolean") dg.payeProfs = b.payeProfs;
+    if (b.retirer) dg.membres = (dg.membres || []).filter(id => id !== b.retirer);
+    saveGroupes(); if (BILLING() && LIVE(dg.sub)) await syncEtab(dg).catch(e => console.warn("Stripe sync", e.message)); return sendJ(res, 200, {etab:etabPub(dg, u)});
+  }
+  if (!BILLING()) return sendJ(res, 400, {error:{message:"Le paiement n'est pas encore ouvert : la bêta est gratuite"}});
+  if (p === "/api/billing/checkout" && req.method === "POST"){
+    const plan = b.plan === "pro" ? "pro" : "essentiel", per = b.periode === "an" ? "an" : "mois", price = PRICE()[plan + "_" + per];
+    if (!price) return sendJ(res, 503, {error:{message:"Tarif non configuré sur le serveur"}});
+    if (LIVE(u.sub)) return sendJ(res, 409, {error:{message:"Tu as déjà un abonnement : gère-le avec « Gérer mon abonnement »"}});
+    const a = access(u), fin = a.mode === "essai" ? Date.parse(a.fin) : 0;
+    const s = await stripe("POST", "/checkout/sessions", {mode:"subscription", client_reference_id:u.id, customer_email:u.sub?.customer ? undefined : u.email, customer:u.sub?.customer || undefined,
+      line_items:[{price, quantity:1}], allow_promotion_codes:true, locale:res._lang === "en" ? "en" : res._lang === "pt" ? "pt-BR" : "fr",
+      subscription_data:{metadata:{kind:"prof", uid:u.id, plan}, trial_end:fin > Date.now() + 2 * DAY ? Math.floor(fin / 1000) : undefined},
+      success_url:baseUrl(req) + "/app#/compte?paiement=ok", cancel_url:baseUrl(req) + "/app#/compte"});
+    return sendJ(res, 200, {url:s.url});
+  }
+  if (p === "/api/billing/etab" && req.method === "POST"){
+    if (!dg) return sendJ(res, 403, {error:{message:"Réservé à la direction de l'établissement"}});
+    if (LIVE(dg.sub)) return sendJ(res, 409, {error:{message:"L'établissement a déjà un abonnement"}});
+    if (!PRICE().ecole || !(dg.eleves > 0)) return sendJ(res, 400, {error:{message:"Indique le nombre d'élèves de l'établissement"}});
+    const items = [{price:PRICE().ecole, quantity:dg.eleves}]; if (dg.payeProfs && PRICE().prof_ecole) items.push({price:PRICE().prof_ecole, quantity:1 + (dg.membres || []).length});
+    const s = await stripe("POST", "/checkout/sessions", {mode:"subscription", client_reference_id:dg.id, customer_email:u.email, line_items:items, allow_promotion_codes:true, locale:res._lang === "en" ? "en" : res._lang === "pt" ? "pt-BR" : "fr",
+      billing_address_collection:"required", tax_id_collection:{enabled:true}, subscription_data:{metadata:{kind:"ecole", gid:dg.id}},
+      success_url:baseUrl(req) + "/app#/compte?paiement=ok", cancel_url:baseUrl(req) + "/app#/compte"});
+    return sendJ(res, 200, {url:s.url});
+  }
+  if (p === "/api/billing/portal" && req.method === "POST"){
+    const cust = b.etab ? dg?.sub?.customer : u.sub?.customer; if (!cust) return sendJ(res, 404, {error:{message:"Aucun abonnement à gérer"}});
+    const s = await stripe("POST", "/billing_portal/sessions", {customer:cust, return_url:baseUrl(req) + "/app#/compte"}); return sendJ(res, 200, {url:s.url});
+  }
+  return sendJ(res, 404, {error:{message:"Route inconnue"}});
+}
+/* Met à jour les quantités (élèves, profs) de l'abonnement de l'établissement */
+async function syncEtab(g){
+  const s = await stripe("GET", "/subscriptions/" + g.sub.id), P = PRICE();
+  for (const it of s.items?.data || []){
+    const q = it.price?.id === P.ecole ? g.eleves : it.price?.id === P.prof_ecole ? (g.payeProfs ? 1 + (g.membres || []).length : 0) : null;
+    if (q == null || q === it.quantity) continue;
+    if (q === 0) await stripe("DELETE", "/subscription_items/" + it.id); else await stripe("POST", "/subscription_items/" + it.id, {quantity:q});
+  }
+  if (g.payeProfs && P.prof_ecole && !(s.items?.data || []).some(it => it.price?.id === P.prof_ecole)) await stripe("POST", "/subscription_items", {subscription:s.id, price:P.prof_ecole, quantity:1 + (g.membres || []).length});
+}
+
 
 /* ---------- Annuaire officiel des établissements (data.education.gouv.fr, données ouvertes) ---------- */
 const ANNU = env("ANNUAIRE_URL") || "https://data.education.gouv.fr/api/explore/v2.1/catalog/datasets/fr-en-annuaire-education/records";
@@ -143,8 +298,8 @@ async function checkEcole(e){
     try { const hit = (await annuaire(`identifiant_de_l_etablissement="${uai}"`))[0]; if (hit) return {...hit, verifiee:true, source:"annuaire", at:new Date().toISOString()}; }
     catch(err){ console.warn("Annuaire injoignable :", err.message); }
   }
-  const nom = String(e.nom || "").trim().slice(0, 120), cp = String(e.cp || "").replace(/\s/g, "").slice(0, 5), ville = String(e.ville || "").trim().slice(0, 80);
-  if (!nom || !/^\d{5}$/.test(cp) || !ville) return {error:"Indique le nom de l'école, son code postal (5 chiffres) et sa ville"};
+  const nom = String(e.nom || "").trim().slice(0, 120), cp = String(e.cp || "").trim().slice(0, 10), ville = String(e.ville || "").trim().slice(0, 80);
+  if (!nom || !/^[0-9A-Za-z][0-9A-Za-z\- ]{2,9}$/.test(cp) || !ville) return {error:"Indique le nom de l'école, son code postal (5 chiffres) et sa ville"};
   return {uai:"", nom, adresse:String(e.adresse || "").trim().slice(0, 160), cp, ville, type:"", statut:"", verifiee:false, source:uai ? "a_verifier" : "manuel", at:new Date().toISOString()};
 }
 const signupOpen = () => env("SIGNUP").toLowerCase() !== "off";
@@ -168,6 +323,8 @@ async function accounts(req, res, url, p, u){
     const id = crypto.randomBytes(8).toString("hex");
     const planDemande = PLANS.includes(b.plan) ? b.plan : "essentiel";
     const n = {id, email, nom:String(b.nom).trim().slice(0, 80), role:"prof", plan:"essentiel", planDemande, statut:"en_attente", options:{exercices:false}, espace:id, ecole, affichage:AFF.includes(b.affichage) ? b.affichage : "les2", pw:hashPw(b.password), createdAt:new Date().toISOString(), cguAt:new Date().toISOString(), inscription:"libre"};
+    const rc = String(b.ref || ((req.headers.cookie || "").match(/(?:^|;\s*)mref=([A-Z0-9]{7})/) || [])[1] || "").toUpperCase(), par = rc && USERS.find(v => v.ref === rc);
+    if (par) n.referredBy = par.id;
     USERS.push(n); saveUsers(); console.log(`Inscription à valider · ${email} · ${planDemande} · ${ecole.nom} (${ecole.verifiee ? "vérifiée " + ecole.uai : "non vérifiée"})`);
     return sendJ(res, 200, {pending:true, user:{nom:n.nom, email:n.email, ecole:n.ecole, planDemande}});
   }
@@ -206,6 +363,7 @@ async function accounts(req, res, url, p, u){
     const b = await readJSON(req, 2e4) || {};
     if (b.nom && String(b.nom).trim()) u.nom = String(b.nom).trim().slice(0, 80);
     if (AFF.includes(b.affichage)) u.affichage = b.affichage;
+    if (["20", "10", "100", "AF"].includes(b.bareme)) u.bareme = b.bareme;
     if (Array.isArray(b.matieres)) u.matieres = [...new Set(b.matieres.map(x => String(x).trim().slice(0, 40)).filter(Boolean))].slice(0, 40);
     if (b.ecole){ const e = await checkEcole(b.ecole); if (!e || e.error) return sendJ(res, 400, {error:{message:e?.error || "École invalide"}}); u.ecole = e; }
     saveUsers(); return sendJ(res, 200, {user:pub(u)});
@@ -230,6 +388,7 @@ async function accounts(req, res, url, p, u){
       if (b.nom) x.nom = String(b.nom).slice(0, 80);
       if (b.role === "admin" || b.role === "prof") x.role = b.role;
       if (typeof b.actif === "boolean") x.actif = b.actif;
+      if (b.offrirMois){ const base = Math.max(Date.now(), Date.parse(x.trialEnd || 0) || 0, Date.parse(x.freeUntil || 0) || 0); x.freeUntil = new Date(base + 30 * DAY * Math.min(12, Math.max(1, +b.offrirMois || 1))).toISOString(); }
       if (b.statut === "valide" && x.statut !== "valide"){ x.statut = "valide"; x.valideAt = new Date().toISOString(); x.validePar = u.id;
         if (!b.plan){ x.plan = x.planDemande || x.plan || "essentiel"; x.options = {...(x.options || {}), exercices:x.plan === "pro"}; } }
       if (b.statut === "refuse"){ if (x.id === u.id) return sendJ(res, 400, {error:{message:"Impossible sur ton propre compte"}}); x.statut = "refuse"; for (const [k, v] of Object.entries(SESS)) if (v.uid === x.id) delete SESS[k]; }
@@ -250,10 +409,11 @@ async function storage(req, res, url, p, u){
     if (p === "/api/db/changes" && req.method === "GET"){
       const since = Number(url.searchParams.get("since")) || 0, ep = url.searchParams.get("epoch");
       if (ep !== EPOCH || (LOG.length && since < LOG[0].seq - 1)) return sendJ(res, 200, {reset:true, epoch:EPOCH, seq:SEQ, docs:docsFor(u)});
-      const changed = [...new Set(LOG.filter(l => l.seq > since && (u.role === "admin" || l.esp === u.espace || l.own === u.id)).map(l => l.path))];
+      const changed = [...new Set(LOG.filter(l => l.seq > since && (u.role === "admin" || l.esp === u.espace || l.own === u.id || dirSees(u, l.esp))).map(l => l.path))];
       return sendJ(res, 200, {epoch:EPOCH, seq:SEQ, changes:changed.map(k => ({path:k, data:DOCS.has(k) ? DOCS.get(k) : null}))});
     }
     if (p === "/api/db/doc"){
+      if (req.method !== "GET" && !access(u).ok) return sendJ(res, 402, {error:{message:NO_ACCESS, code:"no_access"}});
       const dp = url.searchParams.get("path") || ""; if (!PATH_OK(dp)) return sendJ(res, 400, {error:{message:"Chemin invalide"}});
       if (!canWrite(u, dp)) return sendJ(res, 403, {error:{message:"Ce document appartient à un autre professeur"}});
       if (req.method === "DELETE"){ persist(dp, null); return sendJ(res, 200, {seq:SEQ}); }
@@ -272,6 +432,7 @@ async function storage(req, res, url, p, u){
       if (req.method === "PATCH"){ if (!cur) return sendJ(res, 404, {error:{message:"Document introuvable"}}); const {owner, espace, ...rest} = body; persist(dp, merge(cur, rest)); return sendJ(res, 200, {seq:SEQ}); }
     }
     if (p === "/api/files" && req.method === "POST"){
+      if (!access(u).ok) return sendJ(res, 402, {error:{message:NO_ACCESS, code:"no_access"}});
       const want = url.searchParams.get("id") || "", id = /^[a-z0-9]{8,40}$/.test(want) ? want : crypto.randomBytes(10).toString("hex");
       fs.writeFileSync(path.join(FILEDIR, id + ".jpg"), await readBody(req, 15e6)); return sendJ(res, 200, {id});
     }
@@ -405,6 +566,7 @@ async function aiProxy(req, res, u){
   if (!u) return sendJ(res, 401, {error:{message:"Connexion requise"}});
   let body; try { body = await readJSON(req, 40e6); } catch(e){ return sendJ(res, e.message === "too_large" ? 413 : 400, {error:{message:"Requête invalide"}}); }
   if (body?.feature === "exercices" && !entitled(u)) return sendJ(res, 403, {error:{message:"Option Exercices non activée pour ce compte (abonnement Pro)"}});
+  if (!access(u).ok) return sendJ(res, 402, {error:{message:NO_ACCESS, code:"no_access"}});
   const stop = allowCall(ipOf(req), u.id); if (stop) return sendJ(res, 429, {error:{message:stop}});
   scrubNames(body, u);
   const M = MODELS(), model = M[body?.tier] || M.default;
@@ -455,30 +617,38 @@ http.createServer(async (req, res) => {
     const url = new URL(req.url, "http://x"); let p = decodeURIComponent(url.pathname);
     res._lang = langOf(req);
     const wantLang = url.searchParams.get("lang");
-    if (/^(fr|en)$/.test(wantLang || "") && !p.startsWith("/api/")){ url.searchParams.delete("lang"); const q = url.searchParams.toString();
+    if (/^(fr|en|pt)$/.test(wantLang || "") && !p.startsWith("/api/")){ url.searchParams.delete("lang"); const q = url.searchParams.toString();
       res.writeHead(302, {"Location":p + (q ? "?" + q : ""), "Set-Cookie":`lang=${wantLang}; Path=/; SameSite=Lax; Max-Age=${365 * 86400}`}); return res.end(); }
     if (p === "/health") return send(res, 200, "ok");
+    const wantRef = url.searchParams.get("ref");
+    if (/^[A-Za-z0-9]{7}$/.test(wantRef || "") && !p.startsWith("/api/")){ url.searchParams.delete("ref"); const q = url.searchParams.toString();
+      res.writeHead(302, {"Location":p + (q ? "?" + q : ""), "Set-Cookie":`mref=${wantRef.toUpperCase()}; Path=/; SameSite=Lax; Max-Age=${60 * 86400}`}); return res.end(); }
+    if (p === "/api/stripe/webhook" && req.method === "POST") return await stripeWebhook(req, res);
     const u = userOf(req);
     if (p.startsWith("/api/eleve/")) return await eleveApi(req, res, url, p);
     if (p === "/eleve" || p === "/eleve/") p = "/eleve.html";
     if (p.startsWith("/api/")){
       if (req.method === "POST" && p === "/api/ai") return await aiProxy(req, res, u);
       if (p.startsWith("/api/backups")) return backups(req, res, p, u);
+      if (p === "/api/etab" || p.startsWith("/api/etab/") || p.startsWith("/api/billing/")){ try { return await billingApi(req, res, url, p, u); } catch(e){ console.warn("Abonnement :", e.message); return sendJ(res, 502, {error:{message:"Paiement indisponible pour le moment : réessaie dans un instant."}}); } }
       if (p.startsWith("/api/db") || p.startsWith("/api/files") || p === "/api/export") return await storage(req, res, url, p, u);
       return await accounts(req, res, url, p, u);
     }
     if (req.method !== "GET" && req.method !== "HEAD") return send(res, 405, "Méthode non autorisée");
     if (p === "/config.js")
-      return send(res, 200, "window.TIKOUN_CONFIG = " + JSON.stringify({aiEndpoint:env("ANTHROPIC_API_KEY") ? "/api/ai" : "", storage:"server", accounts:true, signup:signupOpen(), persistent:PERSISTENT}) + ";\n", TYPES[".js"], {"Cache-Control":"no-store"});
+      return send(res, 200, "window.TIKOUN_CONFIG = " + JSON.stringify({aiEndpoint:env("ANTHROPIC_API_KEY") ? "/api/ai" : "", storage:"server", accounts:true, signup:signupOpen(), persistent:PERSISTENT, billing:BILLING(), trialDays:TRIAL_DAYS(),
+        prix:res._lang === "pt" ? {essentiel:env("PRICE_LABEL_ESSENTIEL_PT") || "US$ 14/mês", pro:env("PRICE_LABEL_PRO_PT") || "US$ 22/mês", essentielAn:env("PRICE_LABEL_ESSENTIEL_AN_PT") || "US$ 119/ano", proAn:env("PRICE_LABEL_PRO_AN_PT") || "US$ 189/ano", ecole:env("PRICE_LABEL_ECOLE_PT") || "Sob consulta"}
+          : res._lang === "en" ? {essentiel:env("PRICE_LABEL_ESSENTIEL_EN") || "$14/month", pro:env("PRICE_LABEL_PRO_EN") || "$22/month", essentielAn:env("PRICE_LABEL_ESSENTIEL_AN_EN") || "$119/year", proAn:env("PRICE_LABEL_PRO_AN_EN") || "$189/year", ecole:env("PRICE_LABEL_ECOLE_EN") || "Custom quote"}
+          : {essentiel:env("PRICE_LABEL_ESSENTIEL") || "12 €/mois", pro:env("PRICE_LABEL_PRO") || "19 €/mois", essentielAn:env("PRICE_LABEL_ESSENTIEL_AN") || "99 €/an", proAn:env("PRICE_LABEL_PRO_AN") || "159 €/an", ecole:env("PRICE_LABEL_ECOLE") || "Sur devis"}}) + ";\n", TYPES[".js"], {"Cache-Control":"no-store"});
     if (p === "/" || p === "") p = u ? "/index.html" : "/landing.html";
     if (p === "/app" || p === "/app/") p = "/index.html";
     const LEGAL = {"/cgu":"cgu", "/terms":"cgu", "/confidentialite":"confidentialite", "/privacy":"confidentialite"}[p.replace(/\/$/, "")];
-    if (LEGAL){ const f = path.join(ROOT, LEGAL + (res._lang === "en" ? ".en" : "") + ".html"); const en = res._lang === "en";
+    if (LEGAL){ const f = path.join(ROOT, LEGAL + (res._lang === "en" ? ".en" : res._lang === "pt" ? ".pt" : "") + ".html"); const en = res._lang === "en";
       const V = {EDITEUR:env("LEGAL_NAME") || "Mastery", ADRESSE:env("LEGAL_ADDRESS") || (en ? "France" : "France"), CONTACT:env("LEGAL_EMAIL") || env("ADMIN_EMAIL") || "contact",
-        HEBERGEUR:env("LEGAL_HOST") || "Railway Corporation (railway.com), 548 Market St, San Francisco, CA 94104, " + (en ? "USA" : "États-Unis")};
+        HEBERGEUR:env("LEGAL_HOST") || "Railway Corporation (railway.com), 548 Market St, San Francisco, CA 94104, " + (en ? "USA" : res._lang === "pt" ? "EUA" : "États-Unis")};
       const html = fs.readFileSync(f, "utf8").replace(/\{\{(EDITEUR|ADRESSE|CONTACT|HEBERGEUR)\}\}/g, (m, k) => V[k].replace(/[<>&"]/g, c => ({"<":"&lt;", ">":"&gt;", "&":"&amp;", '"':"&quot;"}[c])));
       return send(res, 200, html, TYPES[".html"], {"Cache-Control":"no-cache"}); }
-    if (res._lang === "en" && /\.html$/.test(p) && fs.existsSync(path.join(ROOT, p.replace(/\.html$/, ".en.html")))) p = p.replace(/\.html$/, ".en.html");
+    if (res._lang !== "fr" && /\.html$/.test(p) && fs.existsSync(path.join(ROOT, p.replace(/\.html$/, "." + res._lang + ".html")))) p = p.replace(/\.html$/, "." + res._lang + ".html");
     const file = path.normalize(path.join(ROOT, p));
     if (!file.startsWith(ROOT + path.sep) || file.startsWith(path.resolve(DATA)) || /^\/(data|src)(\/|$)/.test(p) || p.split("/").some(s => s.startsWith(".")) || /server\.js$|package(-lock)?\.json$|railway\.json$/.test(file)) return send(res, 404, "Introuvable");
     fs.stat(file, (err, st) => {

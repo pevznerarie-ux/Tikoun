@@ -122,3 +122,46 @@ Variables à ajouter (Railway → service → Variables) :
   Elles sont sur le même Volume : télécharge-en une de temps en temps sur ton ordinateur.
 - Région : pour le RGPD, choisis la région **EU West (Amsterdam)** dans Railway → service → Settings → Region.
 - IA : le nom des élèves est retiré des textes et l'en-tête des copies est masqué avant tout envoi à l'IA.
+
+## Paiement (Stripe) : essai gratuit, abonnements, parrainage, forfait établissement
+
+Tant que `STRIPE_SECRET_KEY` n'est pas défini, Mastery reste en **bêta gratuite** (rien ne change).
+Pour ouvrir le paiement :
+
+1. Crée un compte sur stripe.com (commence en **mode test**).
+2. Produits → crée les prix **récurrents** :
+   - Essentiel : 12 €/mois et 99 €/an
+   - Pro : 19 €/mois et 159 €/an
+   - Établissement : prix **par élève** (quantité = nombre d'élèves), par mois ou par an
+   - (facultatif) Prof payé par l'établissement : prix par professeur ; sinon le Pro mensuel est utilisé
+3. Développeurs → Webhooks → ajoute l'URL `https://TON-DOMAINE/api/stripe/webhook` avec les événements
+   `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`,
+   `customer.subscription.deleted`, `invoice.paid`.
+4. Paramètres → Portail client : active-le (changer de carte, factures, résiliation).
+5. Variables Railway :
+
+| Variable | Valeur |
+|---|---|
+| `STRIPE_SECRET_KEY` | `sk_test_…` puis `sk_live_…` |
+| `STRIPE_WEBHOOK_SECRET` | `whsec_…` (page du webhook) |
+| `STRIPE_PRICE_ESSENTIEL_MOIS`, `STRIPE_PRICE_ESSENTIEL_AN` | `price_…` |
+| `STRIPE_PRICE_PRO_MOIS`, `STRIPE_PRICE_PRO_AN` | `price_…` |
+| `STRIPE_PRICE_ECOLE` | `price_…` (par élève) |
+| `STRIPE_PRICE_PROF_ECOLE` | facultatif |
+| `TRIAL_DAYS` | facultatif, 30 par défaut |
+| `PRICE_LABEL_ESSENTIEL`, `PRICE_LABEL_PRO`, `PRICE_LABEL_ESSENTIEL_AN`, `PRICE_LABEL_PRO_AN`, `PRICE_LABEL_ECOLE` (+ `_EN`) | textes affichés, ex. `12 €/mois` |
+
+Règles appliquées :
+- Chaque prof inscrit seul a **30 jours d'essai** avec tout le Pro, sans carte. Venu par un lien de parrainage : **60 jours**.
+- Essai fini sans abonnement : ses données restent consultables, mais il ne peut plus créer, scanner ni utiliser l'IA.
+- S'il s'abonne pendant l'essai, le premier paiement a lieu à la fin de l'essai.
+- Parrainage : quand le filleul paie sa première facture, le parrain gagne 1 mois (crédit sur sa prochaine facture, ou essai prolongé), 12 mois max par an.
+- Établissement : la direction crée le forfait dans Mon compte, donne le code aux profs, paie par élève. Option « payer le Pro de tous les profs » : leurs abonnements perso s'arrêtent à la fin de la période.
+- Les comptes créés par l'administrateur (ton école) restent inclus, sans paiement.
+- Dans Comptes, le bouton « +1 mois » prolonge l'essai d'un prof.
+
+## Langues et barèmes
+
+- Le site existe en **français**, **anglais (US)** et **portugais (Brésil)**. La langue suit le navigateur ; liens FR · EN · PT en haut de page (`?lang=pt`).
+- Chaque prof choisit dans Mon compte comment ses notes s'affichent : sur 20 (France), sur 10 (Brésil), en pourcentage ou en lettres A–F (États-Unis). Par défaut : sur 20 en français, sur 10 en portugais, A–F en anglais.
+- Prix affichés en portugais : variables `PRICE_LABEL_*_PT` (par défaut en dollars US). Pour faire payer en réais, ajoute une devise BRL aux prix Stripe (« currency options »).

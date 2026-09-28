@@ -328,8 +328,8 @@ textarea,input{text-align:start}
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const fmt = n => n == null || isNaN(n) ? "—" : (Math.round(n * 10) / 10).toString().replace(".", ",");
-const pct = n => Math.round(n * 100) + " %";
+const fmt = n => n == null || isNaN(n) ? "—" : (Math.round(n * 10) / 10).toString().replace(".", document.documentElement.lang === "en" ? "." : ",");
+const pct = n => Math.round(n * 100) + (document.documentElement.lang === "en" ? "%" : " %");
 const tone = r => r == null ? "none" : r >= 0.7 ? "ok" : r >= 0.5 ? "warn" : "bad";
 const uid = (n = 10) => { const a = "abcdefghijkmnpqrstuvwxyz23456789"; let s = ""; const b = crypto.getRandomValues(new Uint8Array(n)); for (const x of b) s += a[x % a.length]; return s; };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -367,6 +367,7 @@ const enteteOf = c => { const t = c?.mise?.entete; return t && t !== OLD_ENTETE 
 const STATUT = {brouillon:["Draft",""], imprime:["Printed","blue"], correction:["Grading in progress","warn"], corrige:["Graded","ok"]};
 
 const aiErr = c => ({
+  no_access:"Your free trial has ended: choose a plan in My account to continue.",
   not_granted:"AI hasn't been enabled for this page.", sampling_disabled:"AI isn't available for this account.",
   rate_limited:"Too many requests at once: wait a minute, then try again.", session_expired:"Session expired: reconnect to Claude.",
   image_rejected:"Image rejected: try a clearer JPG or PNG photo.", invalid_json:"AI response unreadable: try again.",
@@ -427,12 +428,21 @@ function bonusOf(c, cp){
   return out;
 }
 const final20 = (c, cp) => { const b = bonusOf(c, cp); return Math.min(20, on20(copyTotal(c, cp), maxOf(c)) + b.proprete + b.orthographe); };
+/* Barème affiché : sur 20 (France), sur 10 (Brésil), pourcentage, lettres A–F (États-Unis). Les calculs restent sur 20. */
+const BAREMES = ["20","10","100","AF"];
+const bareme = () => BAREMES.includes(S.me?.bareme) ? S.me.bareme : ({en:"AF", "pt-BR":"10"})[document.documentElement.lang] || "20";
+const letterOf = p => p >= 90 ? "A" : p >= 80 ? "B" : p >= 70 ? "C" : p >= 60 ? "D" : "F";
+const nv = n => { if (n == null || isNaN(n)) return "—"; const b = bareme(); return b === "10" ? fmt(n / 2) : b === "100" ? String(Math.round(n * 5)) : b === "AF" ? letterOf(n * 5) : fmt(n); };
+const PCT = () => document.documentElement.lang === "en" ? "%" : " %";
+const sfx = () => ({"10":"/10", "100":PCT(), "AF":""})[bareme()] ?? "/20";
+const sfxN = n => bareme() === "AF" ? (n == null || isNaN(n) ? "" : ` ${Math.round(n * 5)}${PCT()}`) : sfx();
+const noteS = n => n == null || isNaN(n) ? "—" : nv(n) + sfx() + (bareme() === "AF" ? ` (${Math.round(n * 5)}${PCT()})` : "");
 
 /* Serialized writes: one at a time */
 let wq = Promise.resolve();
 function write(path, data, mode = "set"){
   wq = wq.then(() => mode === "update" ? DB.doc(path).update(data) : mode === "delete" ? DB.doc(path).delete() : DB.doc(path).set(data))
-    .catch(e => { console.error(e); toast(e?.code === "quota_exceeded" ? "Database full: delete some old tests." : "Couldn't save (" + (e?.code || "erreur") + ")."); });
+    .catch(e => { console.error(e); toast(e?.code === "no_access" ? aiErr("no_access") : e?.code === "quota_exceeded" ? "Database full: delete some old tests." : "Couldn't save (" + (e?.code || "erreur") + ")."); });
   return wq;
 }
 const saveCtrl = c => { const {id, ...d} = c; return write("controles/" + id, d); };
@@ -447,8 +457,8 @@ async function aiText(prompt, opts = {}){
   return (await AI(prompt, {cache:false, ...opts})).text;
 }
 const NOSRC = "Do not invent any source, reference or quotation: rely only on the lesson and the answer key provided. Copy any Hebrew text exactly as it appears in the lesson.\nHebrew: write it in Hebrew characters, in logical reading order (right to left), without transliterating, reversing or translating it; keep nikud (vowels) and te'amim only if they are in the source; respect final letters (ך ם ן ף ץ).";
-const LANGUES = ["French","Hebrew","Hebrew and English","English"];
-const langueDef = texte => hebRatio(texte || "") > .3 ? "Hebrew" : document.documentElement.lang === "en" ? "English" : "French";
+const LANGUES = ["French","Hebrew","Hebrew and English","English","Portuguese"];
+const langueDef = texte => hebRatio(texte || "") > .3 ? "Hebrew" : document.documentElement.lang === "en" ? "English" : document.documentElement.lang === "pt-BR" ? "Portuguese" : "French";
 const langueRule = l => !l ? "" : l === "Hebrew" ? "Language: write everything (title, questions, choices, answer keys, criteria, explanations) in Hebrew." : l === "Hebrew and English" ? "Language: instructions and explanations in English, quotations and studied texts in Hebrew (answers expected in Hebrew when the question is about the text)." : `Language: write everything in ${l.toLowerCase()}.`;
 /* Hébreu : détection et remise à l'endroit des lignes extraites de PDF en ordre visuel */
 const hebRatio = t => { const h = (t.match(/[\u05D0-\u05EA]/g) || []).length, l = (t.match(/[A-Za-zÀ-ÿ]/g) || []).length; return h / Math.max(1, h + l); };
@@ -488,14 +498,14 @@ function render(){
   const V = S.auth ? vAuth : (typeof SB !== "undefined" && SB && !SB_USER) ? vLogin : (typeof NEED_CODE !== "undefined" && NEED_CODE) ? vCode : {home:vHome, classes:vClasses, new:vNew, edit:vEdit, scan:vScan, correct:vCorrect, analyse:vAnalyse, suivi:vSuivi, banque:vBanque, direction:vDirection, reglages:vReglages, controles:vControles, exercices:vExercices, quiznew:vQuizNew, quiz:vQuiz, compte:vCompte, comptes:vComptes}[S.view] || vHome;
   $("#tabs").hidden = V === vLogin || V === vCode || V === vAuth;
   { const acc = !!window.TIKOUN_CONFIG?.accounts; const tg = (id, h) => { const e = document.getElementById(id); if (e) e.hidden = h; };
-    tg("tabComptes", !isAdmin()); { const n = (S.users || []).filter(u => u.statut === "en_attente").length, tc = document.getElementById("tabComptes"); if (tc) tc.textContent = n ? `Accounts (${n})` : "Accounts"; } tg("tabCompte", !(acc && S.me)); tg("tabReglages", acc || !STANDALONE); tg("tabDir", acc && !isAdmin()); }
+    tg("tabComptes", !isAdmin()); { const n = (S.users || []).filter(u => u.statut === "en_attente").length, tc = document.getElementById("tabComptes"); if (tc) tc.textContent = n ? `Accounts (${n})` : "Accounts"; } tg("tabCompte", !(acc && S.me)); tg("tabReglages", acc || !STANDALONE); tg("tabDir", acc && !isBoss()); }
   let html = V();
   const fc = S.inCtrl && ["edit","scan","correct","analyse"].includes(S.view) && V !== vLogin && ctrl(S.inCtrl);
   if (fc){
     if (S.view === "correct" && fc.statut === "brouillon") html = `<section class="panel empty">The sheets haven't been printed yet. Go through the "Print" step.</section>`;
     html = ctrlFrame(fc, html.replace(/<select id="(corrSel|anSel)"[\s\S]*?<\/select>/, "").replace(/<h2>(Correction|Classe & rattrapage|Scanner les copies)<\/h2>/, "<h3>$1</h3>"));
   }
-  $("#view").innerHTML = `<div class="view">${LOCAL ? `<p class="banner">Database unavailable in this view: nothing is being saved. Open the app from claude.ai.</p>` : ""}${html}</div>`;
+  $("#view").innerHTML = `<div class="view">${LOCAL ? `<p class="banner">Database unavailable in this view: nothing is being saved. Open the app from claude.ai.</p>` : ""}${typeof billBanner === "function" ? billBanner() : ""}${html}</div>`;
   if (keep){ const el = document.getElementById(keep.id); if (el){ el.focus(); try { el.setSelectionRange(keep.s, keep.e); } catch(e){} } }
   if (S.view === "edit" && S.step === "mise-en-page") drawPreview();
   { const sp = $(".stepper"), on = $(".st.on"); if (sp && on) sp.scrollLeft = on.offsetLeft - sp.clientWidth / 2 + on.clientWidth / 2; }
@@ -564,11 +574,11 @@ function vClasses(){
       <div class="row between"><h3 style="font-size:20px">${esc(cl.nom)} <span class="muted small">· ${esc(cl.niveau)}</span></h3>
         <div class="row"><select id="lvlMat" style="width:auto" aria-label="Subject">${matOpts(S.levelMat)}</select>
         <button class="btn sm" id="sugg">Suggest levels</button></div></div>
-      ${sug ? `<div class="banner">Suggestions based on the last 3 approved tests in ${esc(S.levelMat)} (below 10/20: foundational · 10 to 15: standard · above 15: advanced). <button class="btn sm" id="applySug">Apply</button></div>` : ""}
+      ${sug ? `<div class="banner">Suggestions based on the last 3 approved tests in ${esc(S.levelMat)} (foundational: below ${noteS(10)} · standard: ${nv(10)}–${noteS(15)} · advanced: above ${noteS(15)}). <button class="btn sm" id="applySug">Apply</button></div>` : ""}
       <div class="tbl-wrap"><table><thead><tr><th>Student</th><th>Level · ${esc(S.levelMat)}</th>${sug ? "<th>Suggestion</th>" : ""}<th>Handwriting</th><th></th></tr></thead><tbody>
       ${(cl.eleves || []).map(e => `<tr><td><b>${esc(e.prenom)} ${esc(e.nom)}</b></td>
         <td><select data-lvl="${e.id}" style="width:auto" aria-label="Niveau de ${esc(e.prenom)}">${selOpts(LEVELS, levelOf(e, S.levelMat), l => LVL[l])}</select></td>
-        ${sug ? `<td>${sug[e.id] ? `<span class="lvl ${sug[e.id].lvl}">${LVL[sug[e.id].lvl]}</span> <span class="muted small num">${fmt(sug[e.id].avg)}/20</span>` : `<span class="muted small">no grade</span>`}</td>` : ""}
+        ${sug ? `<td>${sug[e.id] ? `<span class="lvl ${sug[e.id].lvl}">${LVL[sug[e.id].lvl]}</span> <span class="muted small num">${noteS(sug[e.id].avg)}</span>` : `<span class="muted small">no grade</span>`}</td>` : ""}
         <td>${(() => { const w = store.ecritures[e.id]; const sc = w?.parUsage?.[usageOf(S.levelMat)] ?? w?.score; return w ? (sc != null ? `<span class="chip ${tone(sc >= .9 ? 1 : sc >= .75 ? .6 : 0)}" title="Legibility measured on the handwriting sample">${pct(sc)}</span>` : `<span class="chip">sample received</span>`) : `<span class="muted small">—</span>`; })()}</td>
         <td><button class="btn sm ghost" data-rmel="${e.id}" aria-label="Remove">Remove</button></td></tr>`).join("") || `<tr><td colspan="4" class="muted">No students.</td></tr>`}
       </tbody></table></div>
@@ -655,7 +665,7 @@ function vEdit(){
     </div>
     <label class="row small" style="gap:6px"><input type="checkbox" id="e-diff"${c.differencie ? " checked" : ""}> Differentiated sheets based on each student's level</label>
   </section>
-  <div class="head"><h3>Questions <span class="muted num" style="font-weight:500">· total ${fmt(tot)} pts${tot !== 20 ? " (scaled to 20)" : ""}</span></h3>
+  <div class="head"><h3>Questions <span class="muted num" style="font-weight:500">· total ${fmt(tot)} pts${tot !== 20 && bareme() === "20" ? " (scaled to 20)" : ""}</span></h3>
     <div class="row">${c.type === "exercices" ? (canEx() ? `<button class="btn sm primary" id="regenEx">↻ Regenerate exercises (AI)</button>` : lockChip()) : (!c.type || c.type === "controle") && c.coursId ? (canEx() ? `<button class="btn sm" data-exfrom="${c.id}">+ Practice quiz on this lesson</button>` : lockChip()) : ""}<button class="btn sm" id="addQ">+ Blank question</button><button class="btn sm" id="addQcm">+ MCQ</button><button class="btn sm" id="addQai">+ Question (AI)</button><button class="btn sm" id="bankOpen">${S.bankOpen ? "Close the question bank" : "+ From the question bank"}</button></div></div>
   ${S.bankOpen ? bankPanel(c) : ""}
   ${(c.questions || []).map((q, i) => qEditor(c, q, i)).join("") || `<div class="panel empty">No questions.</div>`}`;
@@ -1072,21 +1082,21 @@ function vCorrect(){
         ${nAlert ? `<button class="btn sm" id="valAll">Approve the ${nAlert} no alerts</button>` : ""}</div>
       ${studs.map(x => { const k = f.copies[x.id]; const n = k ? Object.keys(k.answers || {}).length : 0; const done = copyDone(c, k); const warn = k && Object.values(k.answers || {}).some(a => !a.lisible);
         return `<button class="stu" data-cel="${x.id}" aria-current="${x.id === S.corrEleve}"><span>${esc(x.prenom)} ${esc(x.nom)}</span><span class="row" style="gap:6px">
-        ${!n ? `<span class="chip">not scanned</span>` : done ? `<span class="num">${fmt(final20(c, k))}</span>${k.validee ? `<span class="chip ok">✓</span>` : `<span class="chip ${warn ? "bad" : "warn"}">${warn ? "to review" : "to approve"}</span>`}` : `<span class="chip warn">${n}/${c.questions.length} q.</span>`}</span></button>`; }).join("")}
+        ${!n ? `<span class="chip">not scanned</span>` : done ? `<span class="num">${noteS(final20(c, k))}</span>${k.validee ? `<span class="chip ok">✓</span>` : `<span class="chip ${warn ? "bad" : "warn"}">${warn ? "to review" : "to approve"}</span>`}` : `<span class="chip warn">${n}/${c.questions.length} q.</span>`}</span></button>`; }).join("")}
       <div style="padding:10px 8px 4px;border-top:1px solid var(--line);margin-top:6px" class="row"><button class="btn sm" id="csv">Export grades (CSV)</button><button class="btn sm" id="renduAll">Class's completed papers (PDF)</button></div>
     </aside>
     ${e ? copyView(c, e, cp) : `<div class="panel empty">No students.</div>`}
   </div>`;
 }
 function renderAnnot(s){
-  return esc(s).replace(/⟦([\s\S]*?)⟧/g, "<mark>$1</mark>").replace(/\[illisible\]/g, '<span class="illisible">[illisible]</span>');
+  return esc(s).replace(/⟦([\s\S]*?)⟧/g, "<mark>$1</mark>").replace(/\[(?:illisible|illegible|ilegível)\]/g, m => `<span class="illisible">${m}</span>`);
 }
 function copyView(c, e, cp){
   const max = maxOf(c), has = cp && Object.keys(cp.answers || {}).length, done = copyDone(c, cp);
   const scans = cp?.scans ? Object.entries(cp.scans).sort((a, b) => a[0] - b[0]) : [];
   return `<article class="copy">
     <div class="copy-h"><div><div class="label">Paper${c.differencie ? ` · <span class="lvl ${versionFor(c, e)}">${LVL[versionFor(c, e)]}</span>` : ""}</div><h3 style="font-size:20px">${esc(e.prenom)} ${esc(e.nom)}</h3></div>
-      <div class="row">${done ? `<div><div class="total num">${fmt(final20(c, cp))}<small>/20</small></div>${bonusMax(c) ? `<div class="small muted num">brute ${fmt(on20(copyTotal(c, cp), max))} + bonus ${fmt(bonusOf(c, cp).proprete + bonusOf(c, cp).orthographe)}</div>` : ""}</div>` : ""}
+      <div class="row">${done ? `<div><div class="total num">${nv(final20(c, cp))}<small>${sfxN(final20(c, cp))}</small></div>${bonusMax(c) ? `<div class="small muted num">brute ${fmt(on20(copyTotal(c, cp), max))} + bonus ${fmt(bonusOf(c, cp).proprete + bonusOf(c, cp).orthographe)}</div>` : ""}</div>` : ""}
       <button class="btn ${cp?.validee ? "" : "pen"}" id="validate" ${has || done ? "" : "disabled"}>${cp?.validee ? "Approved ✓" : "Approve the paper"}</button>
       ${done && final20(c, cp) < SEUIL ? `<button class="btn sm" id="mkRatt">Remediation</button>` : ""}${done ? `<button class="btn sm" id="rendu1">Completed paper (PDF)</button>` : ""}</div><div class="status" id="rd-st" style="width:100%"></div></div>
     ${scans.length ? `<div class="scans">${scans.map(([p, s]) => `<img alt="Page ${p}" src="${esc(s.asset ? blobSrc(s.asset) : s.url)}" data-zoom="${esc(s.asset ? blobSrc(s.asset) : s.url)}">`).join("")}</div>` : ""}
@@ -1131,9 +1141,9 @@ function vAnalyse(){
   <div class="head"><div><h2>Class & remediation</h2><p>${rows.length} paper(s) graded out of ${studs.length}${unval ? ` · <span style="color:var(--warn)">${unval} not yet approved</span>` : ""}</p></div>
     <select id="anSel" style="max-width:440px" aria-label="Test">${selOpts(list, c.id, x => (x.type === "rattrapage" ? "Remediation · " : x.type === "exercices" ? "Practice · " : "") + x.titre + " · " + (classe(x.classeId)?.nom || ""), x => x.id)}</select></div>
   <div class="grid g3">
-    <div class="panel"><div class="label">Average</div><div class="total num" style="color:var(--ink)">${fmt(avg)}<small>/20</small></div></div>
-    <div class="panel"><div class="label">Min – max</div><div class="total num" style="color:var(--ink)">${fmt(Math.min(...notes))} – ${fmt(Math.max(...notes))}</div></div>
-    <div class="panel"><div class="label">Below 10/20</div><div class="total num" style="color:var(--ink)">${notes.filter(n => n < 10).length}<small>/${notes.length}</small></div></div>
+    <div class="panel"><div class="label">Average</div><div class="total num" style="color:var(--ink)">${nv(avg)}<small>${sfxN(avg)}</small></div></div>
+    <div class="panel"><div class="label">Min – max</div><div class="total num" style="color:var(--ink)">${nv(Math.min(...notes))} – ${nv(Math.max(...notes))}</div></div>
+    <div class="panel"><div class="label">Below ${noteS(10)}</div><div class="total num" style="color:var(--ink)">${notes.filter(n => n < 10).length}<small>/${notes.length}</small></div></div>
   </div>
   <section class="panel"><h3>Success and mistakes by question</h3>
     <div class="bars" style="margin-top:12px">${qs.map(x => `<div>
@@ -1143,13 +1153,13 @@ function vAnalyse(){
   <section class="panel grid"><div class="row between"><h3>Teaching summary</h3><button class="btn sm" id="synth">${c.analyse ? "Refresh" : "Draft"} (IA)</button></div>
     <div class="status" id="syn-st"></div>
     ${c.analyse ? `<div style="white-space:pre-wrap">${esc(c.analyse)}</div>` : `<p class="muted small">AI identifies skills that weren't understood and suggests what to review in class.</p>`}</section>
-  <section class="panel"><div class="row between"><h3>Students</h3><span class="small muted">Individual remediation available for each student below ${SEUIL}/20</span></div>
+  <section class="panel"><div class="row between"><h3>Students</h3><span class="small muted">Individual remediation available for each student below ${noteS(SEUIL)}</span></div>
     <div class="status" id="ra-st"></div>
-    <div class="tbl-wrap" style="margin-top:6px"><table><thead><tr><th>Student</th>${c.questions.map((q, k) => `<th class="c">Q${k + 1}</th>`).join("")}<th class="c">/20</th><th>Remediation</th></tr></thead><tbody>
+    <div class="tbl-wrap" style="margin-top:6px"><table><thead><tr><th>Student</th>${c.questions.map((q, k) => `<th class="c">Q${k + 1}</th>`).join("")}<th class="c">${bareme() === "AF" ? "A–F" : sfx().trim()}</th><th>Remediation</th></tr></thead><tbody>
     ${studs.map(e => { const cp = f.copies[e.id]; const ok = copyDone(c, cp); const r = ratts.find(x => x.eleves?.includes(e.id));
       return `<tr><td><b>${esc(e.prenom)} ${esc(e.nom)}</b>${c.differencie ? ` <span class="lvl ${versionFor(c, e)}">${LVL[versionFor(c, e)][0]}</span>` : ""}</td>
       ${c.questions.map(q => { const n = noteOf(cp?.answers?.[q.id]); return `<td class="c"><span class="cell ${n == null ? "none" : tone(n / q.points)}">${fmt(n)}</span></td>`; }).join("")}
-      <td class="c num"><b>${ok ? fmt(final20(c, cp)) : "—"}</b></td>
+      <td class="c num"><b>${ok ? noteS(final20(c, cp)) : "—"}</b></td>
       <td>${r ? `<button class="btn sm" data-edit="${r.id}">${STATUT[r.statut]?.[0] || "View"}</button>` : ok && final20(c, cp) < SEUIL ? `<button class="btn sm" data-ratt="${e.id}">Create</button>` : ok ? `<span class="small muted">—</span>` : ""}</td></tr>`; }).join("")}
     </tbody></table></div></section>`;
 }
@@ -1612,7 +1622,7 @@ function apiSample(){
     if (!r.ok){
       if (r.status === 401 && window.TIKOUN_CONFIG?.accounts){ S.auth = "login"; scheduleRender(); }
       else if (r.status === 401 && !SB){ NEED_CODE = true; try { localStorage.removeItem("tikoun.code"); } catch(e){} scheduleRender(); }
-      const code = r.status === 403 ? "no_option" : r.status === 401 ? "need_code" : r.status === 429 ? "rate_limited" : r.status === 400 || r.status === 413 ? "api_400" : r.status === 503 ? "no_ai" : "upstream_error";
+      const code = r.status === 402 ? "no_access" : r.status === 403 ? "no_option" : r.status === 401 ? "need_code" : r.status === 429 ? "rate_limited" : r.status === 400 || r.status === 413 ? "api_400" : r.status === 503 ? "no_ai" : "upstream_error";
       let msg = ""; try { msg = (await r.json())?.error?.message || ""; } catch(e){} throw {code, message:msg}; }
     const j = await r.json(); const text = (j.content || []).filter(b => b.type === "text").map(b => b.text).join("");
     if (!text.trim()) throw {code:"empty_completion"};
@@ -1774,7 +1784,7 @@ async function serverDB(){
     const u = "/api/db/doc?path=" + encodeURIComponent(p);
     const res = op === "delete" ? await fetch(u, {method:"DELETE", credentials:"same-origin"})
       : await fetch(u, {method:op === "update" ? "PATCH" : "PUT", credentials:"same-origin", headers:{"content-type":"application/json"}, body:JSON.stringify(op === "update" ? patch : val)});
-    if (!res.ok) throw {code:res.status === 401 ? "need_code" : "cloud_write", message:"serveur " + res.status};
+    if (!res.ok) throw {code:res.status === 401 ? "need_code" : res.status === 402 ? "no_access" : "cloud_write", message:"serveur " + res.status};
   });
   let busy = false;
   const pull = async () => {
@@ -1791,9 +1801,9 @@ async function serverDB(){
 }
 const serverAssets = { upload: async (blob, want) => {
   const r = await fetch("/api/files" + (want ? "?id=" + want : ""), {method:"POST", credentials:"same-origin", headers:{"content-type":blob.type || "image/jpeg"}, body:blob});
-  if (!r.ok) throw {code:"cloud_write"}; const {id} = await r.json(); return {id, url:"/api/files/" + id}; } };
+  if (!r.ok) throw {code:r.status === 402 ? "no_access" : "cloud_write"}; const {id} = await r.json(); return {id, url:"/api/files/" + id}; } };
 function subscribeStore(){
-  DB.collection("classes").onSnapshot(s => { store.classes = s.docs.map(x => ({id:x.id, ...structuredClone(x.data())})); scheduleRender(); });
+  DB.collection("classes").onSnapshot(s => { store.allClasses = s.docs.map(x => ({id:x.id, ...structuredClone(x.data())})); applyScope(); scheduleRender(); });
   DB.collection("controles").onSnapshot(s => { store.allCtrl = s.docs.map(x => ({id:x.id, ...structuredClone(x.data())})); applyScope(); scheduleRender(); });
   DB.collection("cours").onSnapshot(s => { store.allCours = s.docs.map(x => ({id:x.id, ...structuredClone(x.data())})); applyScope(); scheduleRender(); });
   for (const col of ["ecritures","bilans"]) DB.collection(col).onSnapshot(s => { const m = {}; s.docs.forEach(x => m[x.id] = structuredClone(x.data())); store[col] = m; scheduleRender(); });
@@ -1915,7 +1925,7 @@ function vControles(){
       <div class="row">${chipStatut(c)}<span class="muted">›</span></div></a>`; };
   const sum = cl => { const cs = of(cl), todo = cs.filter(c => c.statut === "correction").length; return `${cs.length} test(s)${todo ? ` · <b style="color:var(--warn)">${todo} being graded</b>` : ""}${cl.eleves ? " · " + cl.eleves.length + " students" : ""}`; };
   return `<div class="head"><div><h2>${S.me && S.scope !== "ecole" ? "My tests" : "Tests"}</h2><p>Class by class: open a class to see its tests, collapse it when you're done.</p></div>
-    <div class="row">${isAdmin() ? `<select id="scope-sel" style="width:auto" aria-label="Scope">${selOpts(["moi","ecole"], S.scope, x => x === "moi" ? "My tests" : "Whole school")}</select>` : ""}<a class="btn primary" href="#/nouveau">+ New test</a></div></div>
+    <div class="row">${isBoss() ? `<select id="scope-sel" style="width:auto" aria-label="Scope">${selOpts(["moi","ecole"], S.scope, x => x === "moi" ? "My tests" : "Whole school")}</select>` : ""}<a class="btn primary" href="#/nouveau">+ New test</a></div></div>
   <div class="row">${F.map(([k, l]) => `<button class="fchip ${f.st === k ? "on" : ""}" data-cf="${k}">${l} <span class="num">${cnt(k)}</span></button>`).join("")}
     ${mats.length > 1 ? `<select id="cf-mat" style="width:auto;margin-left:auto" aria-label="Subject"><option value="">All subjects</option>${selOpts(mats, f.mat)}</select>` : ""}</div>
   ${list.length ? classAcc("ctrl", ctrlClasses(), sum, cl => `<div>${of(cl).map(line).join("")}</div>`) : `<section class="panel empty">No tests ${f.st !== "tous" ? "in this category" : "for now"}.</section>`}`;
@@ -1950,9 +1960,11 @@ const isAdmin = () => S.me?.role === "admin";
 const canEx = () => !window.TIKOUN_CONFIG?.accounts || !!S.me?.can?.exercices;
 const lockChip = () => `<span class="chip" title="Regenerable, scannable practice sheets: Pro plan + add-on enabled by administration">🔒 Practice add-on</span>`;
 const PLAN = {essentiel:"Essential", pro:"Pro"};
-function scopeCtrls(all){ if (!S.me || (isAdmin() && S.scope === "ecole")) return all; return all.filter(c => !c.owner || c.owner === S.me.id); }
-function applyScope(){ store.controles = scopeCtrls(store.allCtrl || []); store.cours = scopeCours(store.allCours || store.cours); }
-function scopeCours(all){ if (!S.me || (isAdmin() && S.scope === "ecole")) return all; return all.filter(c => !c.owner || c.owner === S.me.id); }
+const isBoss = () => isAdmin() || (S.me?.etab?.role === "direction" && S.me?.etab?.actif);
+function scopeCtrls(all){ if (!S.me || (isBoss() && S.scope === "ecole")) return all; return all.filter(c => !c.owner || c.owner === S.me.id); }
+function applyScope(){ store.controles = scopeCtrls(store.allCtrl || []); store.cours = scopeCours(store.allCours || store.cours); store.classes = scopeClasses(store.allClasses || store.classes || []); }
+function scopeClasses(all){ if (!S.me || isAdmin() || (isBoss() && S.scope === "ecole")) return all; return all.filter(c => !c.espace || c.espace === S.me.espace); }
+function scopeCours(all){ if (!S.me || (isBoss() && S.scope === "ecole")) return all; return all.filter(c => !c.owner || c.owner === S.me.id); }
 const userName = id => S.users.find(u => u.id === id)?.nom || "";
 async function api(path, opts = {}){
   const r = await fetch(path, {credentials:"same-origin", ...opts, headers:{"content-type":"application/json", ...(opts.headers || {})}});
@@ -1965,14 +1977,14 @@ S.ec = {q:"", cp:"", res:null, sel:null, manual:false, busy:false, err:""};
 const ecLine = e => `${esc(e.nom)}<div class="small muted">${esc([e.adresse, [e.cp, e.ville].filter(Boolean).join(" ")].filter(Boolean).join(" · "))}${e.type ? " · " + esc(e.type) + (e.statut ? " " + esc(e.statut.toLowerCase()) : "") : ""}</div>`;
 const ecBadge = e => !e ? `<span class="chip">no school</span>` : e.verifiee ? `<span class="chip ok" title="Retrouvée dans l'annuaire officiel de l'Éducation nationale${e.uai ? " (UAI " + esc(e.uai) + ")" : ""}">✓ verified</span>` : `<span class="chip warn" title="Entered manually: not found in the official school directory">unverified</span>`;
 function ecoleWidget(){
-  const E = S.ec, EN_UI = document.documentElement.lang === "en";
+  const E = S.ec, EN_UI = document.documentElement.lang !== "fr";
   if (EN_UI && !E.sel) E.manual = true;
   if (E.sel) return `<div class="panel" style="padding:12px;background:var(--surface-2)"><div class="row between"><div>${ecLine(E.sel)}<div style="margin-top:6px">${ecBadge(E.sel)}</div></div><button class="btn sm" id="ec-change">Change</button></div></div>`;
   if (E.manual) return `<div class="grid" style="gap:10px">
     <p class="small muted" style="margin:0">Your school will be saved as <b>unverified</b>. You can use Mastery normally.</p>
     <div class="field"><label for="ec-nom">School name</label><input id="ec-nom" value="${esc(E.q)}"></div>
     <div class="field"><label for="ec-adr">Mailing address</label><input id="ec-adr" placeholder="e.g. 125 Main Street" value="${esc(S.form["ec-adr"] || "")}"></div>
-    <div class="form-row"><div class="field"><label for="ec-cp2">ZIP code</label><input id="ec-cp2" inputmode="numeric" maxlength="5" value="${esc(E.cp)}"></div><div class="field"><label for="ec-ville">City</label><input id="ec-ville" value="${esc(S.form["ec-ville"] || "")}"></div></div>
+    <div class="form-row"><div class="field"><label for="ec-cp2">ZIP code</label><input id="ec-cp2" maxlength="10" value="${esc(E.cp)}"></div><div class="field"><label for="ec-ville">City</label><input id="ec-ville" value="${esc(S.form["ec-ville"] || "")}"></div></div>
     <div class="row"><button class="btn sm primary" id="ec-mok">Confirm this school</button>${EN_UI ? "" : `<button class="btn sm ghost" id="ec-back">← Back to search</button>`}</div></div>`;
   return `<div class="grid" style="gap:10px">
     <div class="form-row"><div class="field"><label for="ec-q">School name</label><input id="ec-q" value="${esc(E.q)}" placeholder="e.g. Lincoln High School"></div>
@@ -2024,10 +2036,11 @@ function vAuth(){
     <div class="row"><button class="btn primary" id="lg-go2">Sign in</button></div>
     ${window.TIKOUN_CONFIG?.signup ? `<div class="row" style="border-top:1px solid var(--line);padding-top:12px"><span class="small muted">Don't have an account yet?</span><button class="btn sm" id="rg-open">Create my teacher account</button></div>` : ""}
     <p class="small muted">Forgot your password: email the Mastery administrator to reset it.</p><div class="status" id="au-st"></div>
-    <p class="small muted" style="margin:0"><a href="?lang=fr">French</a> · <a href="?lang=en">English</a></p></section>`;
+    <p class="small muted" style="margin:0"><a href="?lang=fr">French</a> · <a href="?lang=en">English</a> · <a href="?lang=pt">Português</a></p></section>`;
 }
 const KEEP = ["rg-nom","rg-mail","rg-pw","me-nom","ec-adr","ec-ville","ec-q","ec-cp"]; let kept = {}; S.form = {};
-document.addEventListener("change", ev => { if (ev.target.id === "rg-cgu") S.regCgu = ev.target.checked; });
+document.addEventListener("change", async ev => { if (ev.target.id === "rg-cgu") S.regCgu = ev.target.checked;
+  if (ev.target.id === "me-bareme"){ try { const j = await api("/api/me", {method:"PATCH", body:JSON.stringify({bareme:ev.target.value})}); S.me = j.user; toast("Saved"); render(); } catch(e){ toast(e.message); } } });
 document.addEventListener("input", ev => { const el = ev.target; if (KEEP.includes(el.id)) S.form[el.id] = el.value; if (el.id === "ec-q") S.ec.q = el.value; if (el.id === "ec-cp") S.ec.cp = el.value; });
 const keepForm = () => { kept = {}; for (const id of KEEP){ const el = $("#" + id); if (el) kept[id] = el.value; } const a = document.querySelector('input[name="aff"]:checked'); if (a) kept.aff = a.dataset.aff; };
 const restoreForm = () => { for (const [id, v] of Object.entries(kept)){ if (id === "aff"){ const r = document.querySelector(`input[data-aff="${v}"]`); if (r) r.checked = true; continue; } const el = $("#" + id); if (el) el.value = v; } };
@@ -2043,8 +2056,9 @@ async function bootAccounts(){
 /* Mon compte */
 function vCompte(){
   if (S.ecFor !== "me"){ S.ec = {q:"", cp:"", res:null, sel:S.me?.ecole || null, manual:false, busy:false, err:""}; S.ecFor = "me"; }
-  return `<div class="head"><div><h2>My account</h2><p>${esc(S.me?.nom || "")} · ${esc(S.me?.email || "")} · ${isAdmin() ? "Administrator" : "Teacher"} · Plan ${PLAN[S.me?.plan] || "Essential"} · Practice add-on ${S.me?.can?.exercices ? "✓" : "✗"}</p></div>
+  return `<div class="head"><div><h2>My account</h2><p>${esc(S.me?.nom || "")} · ${esc(S.me?.email || "")} · ${isAdmin() ? "Administrator" : isDir() ? "Administration" : "Teacher"} · ${S.me?.billing && S.me?.acces?.mode !== "inclus" ? esc(accesLabel(S.me)) : `Plan ${PLAN[S.me?.plan] || "Essential"} · Practice add-on ${S.me?.can?.exercices ? "✓" : "✗"}`}</p></div>
     <button class="btn" id="out-go">Sign out</button></div>
+  ${abonnementPanel()}${etabPanel()}${parrainagePanel()}
   <section class="panel grid" style="max-width:560px"><h3>My school and sheet header</h3>
     <div class="field"><label for="me-nom">My name</label><input id="me-nom" value="${esc(S.form["me-nom"] ?? S.me?.nom ?? "")}"></div>
     ${ecoleWidget()}
@@ -2056,7 +2070,10 @@ function vCompte(){
     <div class="row">${(S.me?.matieres || []).map(m => `<span class="chip">${esc(m)} <button class="btn sm ghost" style="padding:0 4px" data-matdel="${esc(m)}" aria-label="Remove">×</button></span>`).join("") || `<span class="small muted">No custom subjects yet.</span>`}</div>
     <div class="row">${MAT_SUGG.filter(m => !(S.me?.matieres || []).includes(m)).map(m => `<button class="btn sm" data-matadd="${esc(m)}">+ ${esc(m)}</button>`).join("")}</div>
     <div class="row"><input id="mat-new" placeholder="Other subject" style="max-width:260px"><button class="btn sm primary" id="mat-go">Add</button></div></section>
-  <section class="panel grid" style="max-width:520px"><h3>Language</h3><p class="row"><a class="btn sm" href="?lang=fr">French</a><a class="btn sm" href="?lang=en">English (US)</a></p></section>
+  <section class="panel grid" style="max-width:520px"><h3>Grade display</h3>
+    <p class="small muted" style="margin:0">Calculations stay the same; only how grades are displayed changes.</p>
+    <select id="me-bareme" style="max-width:320px">${[["20","Out of 20 (France)"],["10","Out of 10 (Brazil)"],["100","Percentage (%)"],["AF","Letters A to F (US)"]].map(([k, t]) => `<option value="${k}"${bareme() === k ? " selected" : ""}>${t}</option>`).join("")}</select></section>
+  <section class="panel grid" style="max-width:520px"><h3>Language</h3><p class="row"><a class="btn sm" href="?lang=fr">French</a><a class="btn sm" href="?lang=en">English (US)</a><a class="btn sm" href="?lang=pt">Português (BR)</a></p></section>
   <section class="panel grid" style="max-width:520px"><h3>Change password</h3>
     <div class="field"><label for="mc-old">Current password</label><input id="mc-old" type="password" autocomplete="current-password"></div>
     <div class="field"><label for="mc-new">New password (8 characters minimum)</label><input id="mc-new" type="password" autocomplete="new-password"></div>
@@ -2075,10 +2092,11 @@ function vComptes(){
       <div class="row"><button class="btn sm primary" data-uval="${u.id}">Submit</button><button class="btn sm ghost" data-uref="${u.id}">Decline</button></div></div>`).join("")}</div></section>` : "";
   return `<div class="head"><div><h2>Teacher accounts</h2><p>Teachers who register themselves have a private space. Those you create here share your classes.</p></div></div>
   ${pendHtml}
-  <section class="panel"><div class="tbl-wrap"><table><thead><tr><th>Name</th><th>E-mail</th><th>School</th><th>Role</th><th>Plan</th><th>Practice add-on</th><th class="c">Tests</th><th></th></tr></thead><tbody>
+  <section class="panel"><div class="tbl-wrap"><table><thead><tr><th>Name</th><th>E-mail</th><th>School</th><th>Role</th><th>Access</th><th>Plan</th><th>Practice add-on</th><th class="c">Tests</th><th></th></tr></thead><tbody>
   ${ok.map(u => `<tr><td><b>${esc(u.nom)}</b>${u.statut === "refuse" ? ' <span class="chip bad">declined</span>' : u.actif ? "" : ' <span class="chip bad">disabled</span>'}</td><td>${esc(u.email)}</td>
     <td>${u.ecole ? `<div class="small"><b>${esc(u.ecole.nom)}</b> ${ecBadge(u.ecole)}<div class="muted">${esc([u.ecole.cp, u.ecole.ville].filter(Boolean).join(" "))}${u.ecole.uai ? " · school ID " + esc(u.ecole.uai) : ""}</div></div>` : `<span class="muted small">—</span>`}</td>
     <td><select data-urole="${u.id}" style="width:auto" aria-label="Role">${selOpts(["prof","admin"], u.role, x => x === "admin" ? "Administrator" : "Teacher")}</select></td>
+    <td class="small">${esc(accesLabel(u))}${S.me?.billing && u.inscription === "libre" && u.acces?.mode !== "abonne" ? ` <button class="btn sm ghost" data-ugift="${u.id}" title="Extend the trial by one month">+1 month</button>` : ""}</td>
     <td><select data-uplan="${u.id}" style="width:auto" aria-label="Plan">${selOpts(["essentiel","pro"], u.plan || "essentiel", x => PLAN[x])}</select></td>
     <td>${(u.plan || "essentiel") === "pro" ? `<label class="row small" style="gap:6px"><input type="checkbox" data-uex="${u.id}"${u.options?.exercices ? " checked" : ""}> ${u.options?.exercices ? "Enabled" : "Disabled"}</label>` : `<span class="muted small">Pro required</span>`}</td>
     <td class="c num">${nb(u.id)}</td>
@@ -2115,7 +2133,7 @@ document.addEventListener("click", async ev => {
     if (t.id === "ec-manual"){ keepForm(); S.ec.q = $("#ec-q")?.value.trim() || S.ec.q; S.ec.cp = $("#ec-cp")?.value.trim() || S.ec.cp; S.ec.manual = true; render(); restoreForm(); return; }
     if (t.id === "ec-back"){ keepForm(); S.ec.manual = false; render(); restoreForm(); return; }
     if (t.id === "ec-mok"){ const e = {nom:$("#ec-nom").value.trim(), adresse:$("#ec-adr").value.trim(), cp:$("#ec-cp2").value.trim(), ville:$("#ec-ville").value.trim(), verifiee:false};
-      if (!e.nom || !/^\d{5}$/.test(e.cp) || !e.ville){ toast("Name, zip code (5 digits), and city are required."); return; }
+      if (!e.nom || !/^[0-9A-Za-z][0-9A-Za-z\- ]{2,9}$/.test(e.cp) || !e.ville){ toast("Name, zip code (5 digits), and city are required."); return; }
       keepForm(); S.ec.sel = e; S.ec.manual = false; render(); restoreForm(); return; }
     if (t.id === "rg-go"){ if (!S.ec.sel){ st().textContent = "Choose your school (or enter it manually)."; return; }
       if (!$("#rg-cgu")?.checked){ st().textContent = "Check the box to accept the terms of use."; return; }
@@ -2148,6 +2166,84 @@ document.addEventListener("change", async ev => {
   if (el.dataset.plan && S.auth === "register"){ S.regPlan = el.dataset.plan; keepForm(); render(); restoreForm(); }
   if (el.id === "scope-sel"){ S.scope = el.value; applyScope(); render(); }
 });
+
+/* ================= Abonnement, parrainage, établissement ================= */
+const CFG = () => window.TIKOUN_CONFIG || {};
+const isDir = () => S.me?.etab?.role === "direction" && S.me?.etab?.actif;
+const JRS = "day(s) left";
+const joursRest = iso => Math.max(0, Math.ceil((Date.parse(iso) - Date.now()) / 864e5));
+function billBanner(){
+  const a = S.me?.acces; if (!a || !S.me?.billing || S.view === "compte") return "";
+  if (a.mode === "expire") return `<p class="banner">Your free trial has ended: your data is still viewable, but to create, scan and grade, choose a plan. <a href="#/compte" class="btn sm gold">Choose my plan</a></p>`;
+  if (a.mode === "essai" && joursRest(a.fin) <= 7) return `<p class="banner">Free trial: ${joursRest(a.fin)} ${JRS}. <a href="#/compte" class="btn sm">See plans</a></p>`;
+  return "";
+}
+function abonnementPanel(){
+  const a = S.me?.acces || {}, P = CFG().prix || {};
+  if (!S.me?.billing || a.mode === "beta") return `<section class="panel grid" style="max-width:640px"><h3>My plan <span class="chip ok" style="vertical-align:middle">Free beta</span></h3><p class="small muted" style="margin:0">During the beta, everything is free. You'll be notified before plans open.</p></section>`;
+  if (a.mode === "inclus") return `<section class="panel grid" style="max-width:640px"><h3>My plan</h3><p class="small muted" style="margin:0">Your account is included in your school's access.</p></section>`;
+  if (a.mode === "ecole") return `<section class="panel grid" style="max-width:640px"><h3>My plan <span class="chip ok" style="vertical-align:middle">Pro</span></h3><p class="small muted" style="margin:0">Paid by your school: ${esc(a.ecole || "")}.</p></section>`;
+  if (a.mode === "abonne") return `<section class="panel grid" style="max-width:640px"><h3>My plan <span class="chip ok" style="vertical-align:middle">${PLAN[a.plan] || ""}</span></h3>
+    <p class="small muted" style="margin:0">${a.status === "past_due" ? "⚠ The last payment failed: update your card. " : ""}${a.annule ? "Ends on " : "Renews on "}${a.fin ? frDate(a.fin.slice(0, 10)) : "—"}.</p>
+    <div class="row"><button class="btn" id="bil-portal">Manage my plan (card, invoices, cancel)</button></div><div class="status" id="bil-st"></div></section>`;
+  const card = (k, t, d, m, an) => `<div class="panel" style="padding:14px;display:grid;gap:6px"><div class="row" style="justify-content:space-between"><b>${t}</b><span class="small muted">${esc(m)} · or ${esc(an)}</span></div>
+    <div class="small muted">${d}</div><div class="row"><button class="btn sm primary" data-buy="${k}" data-per="mois">${esc(m)}</button><button class="btn sm" data-buy="${k}" data-per="an">${esc(an)}</button></div></div>`;
+  return `<section class="panel grid" style="max-width:640px"><h3>My plan ${a.mode === "essai" ? `<span class="chip ok" style="vertical-align:middle">Free trial · ${joursRest(a.fin)} ${JRS}</span>` : `<span class="chip bad" style="vertical-align:middle">Trial ended</span>`}</h3>
+    <p class="small muted" style="margin:0">${a.mode === "essai" ? `During the trial, the full Pro plan is open, until ${frDate(a.fin.slice(0, 10))}. If you subscribe now, you're only charged when the trial ends.` : "Your data is kept. Choose a plan to keep creating, scanning and grading."}</p>
+    <div class="form-row">${card("essentiel", "Essential", "AI-built tests, QR-coded answer sheets, scanning and grading, retakes, tracking.", P.essentiel || "", P.essentielAn || "")}
+      ${card("pro", "Pro", "Everything in Essential + online quizzes for students, code access, tracking by topic.", P.pro || "", P.proAn || "")}</div>
+    <p class="small muted" style="margin:0">Secure payment by Stripe. Cancel anytime.</p><div class="status" id="bil-st"></div></section>`;
+}
+function parrainagePanel(){
+  if (!S.me?.ref) return ""; const link = location.origin + "/?ref=" + S.me.ref, st = S.me.parrainage || {};
+  return `<section class="panel grid" style="max-width:640px"><h3>Referrals</h3>
+    <p class="small muted" style="margin:0">Share your link with colleagues. They get an extra month of trial, and you get a free month as soon as they pay their first month (up to 12 months a year).</p>
+    <div class="row"><input id="ref-link" readonly value="${esc(link)}" style="flex:1;min-width:220px"><button class="btn sm primary" id="ref-copy">Copy</button><a class="btn sm" href="https://wa.me/?text=${encodeURIComponent("I grade my tests with Mastery, try it: " + link)}" target="_blank" rel="noopener">WhatsApp</a></div>
+    <p class="small" style="margin:0"><b>${st.filleuls || 0}</b> colleague(s) signed up · <b>${st.payants || 0}</b> subscribed · <b>${st.mois || 0}</b> month(s) earned this year</p></section>`;
+}
+function etabPanel(){
+  const e = S.me?.etab, P = CFG().prix || {};
+  if (!e) return `<section class="panel grid" style="max-width:640px"><h3>School plan</h3>
+    <p class="small muted" style="margin:0">Did your school give you a code? Join your school: its leadership will be able to follow your classes' results${S.me?.billing ? ", and can cover your plan" : ""}.</p>
+    <div class="row"><input id="et-code" placeholder="School code" style="max-width:220px;text-transform:uppercase"><button class="btn sm primary" id="et-join">Join</button></div>
+    <details><summary class="small" style="cursor:pointer">School leadership? Create the school plan</summary>
+      <div class="grid" style="margin-top:10px"><div class="form-row"><div class="field"><label for="et-nom">School name</label><input id="et-nom" value="${esc(S.me?.ecole?.nom || "")}"></div>
+        <div class="field"><label for="et-el">Number of students</label><input id="et-el" type="number" min="1" inputmode="numeric"></div></div>
+      <label class="row small" style="gap:6px"><input type="checkbox" id="et-pay" style="width:auto"> The school also pays the Pro plan for all its teachers</label>
+      <p class="small muted" style="margin:0">The school plan opens a leadership view of all classes of the teachers who join it${S.me?.billing && P.ecole ? ` (${esc(P.ecole)})` : ""}. It's separate from the teachers' own plans.</p>
+      <div class="row"><button class="btn sm primary" id="et-new">Create</button></div></div></details><div class="status" id="et-st"></div></section>`;
+  if (e.role === "membre") return `<section class="panel grid" style="max-width:640px"><h3>School plan</h3>
+    <p class="small" style="margin:0"><b>${esc(e.nom)}</b>${e.payeProfs && e.actif ? " · your Pro plan is covered" : ""}</p><p class="small muted" style="margin:0">School leadership can view the classes, tests and results in your workspace.</p>
+    <div class="row"><button class="btn sm ghost" id="et-quit">Leave the school</button></div><div class="status" id="et-st"></div></section>`;
+  const ab = e.abonnement;
+  return `<section class="panel grid" style="max-width:640px"><h3>School plan · leadership ${e.actif ? `<span class="chip ok" style="vertical-align:middle">Active</span>` : `<span class="chip warn" style="vertical-align:middle">Unpaid</span>`}</h3>
+    <p class="small" style="margin:0"><b>${esc(e.nom)}</b> · code to give teachers: <b style="font-family:var(--mono,monospace);letter-spacing:.08em">${esc(e.code)}</b></p>
+    <div class="form-row"><div class="field"><label for="et-el">Number of students</label><input id="et-el" type="number" min="1" value="${e.eleves || ""}"></div>
+      <label class="row small" style="gap:6px;align-self:end"><input type="checkbox" id="et-pay" style="width:auto"${e.payeProfs ? " checked" : ""}> Pay Pro for all teachers</label></div>
+    <div class="row"><button class="btn sm" id="et-save">Save</button>${S.me?.billing ? (ab && ["active","trialing","past_due"].includes(ab.status) ? `<button class="btn sm" id="et-portal">Manage the school plan</button>` : `<button class="btn sm primary" id="et-pay-go">Pay for the school plan</button>`) : ""}</div>
+    ${ab?.fin ? `<p class="small muted" style="margin:0">${ab.annule ? "Ends" : "Renews"} le ${frDate(ab.fin.slice(0, 10))}.</p>` : ""}
+    <div><b class="small">Teachers (${(e.membres || []).length})</b>${(e.membres || []).map(m => `<div class="item"><div><div class="t">${esc(m.nom)}</div><div class="s">${esc(m.email)}</div></div><button class="btn sm ghost" data-etout="${m.id}">Remove</button></div>`).join("") || `<p class="small muted">No teachers yet: give them the code.</p>`}</div>
+    ${(e.membres || []).length ? "" : `<div class="row"><button class="btn sm ghost" id="et-quit">Delete this school</button></div>`}<div class="status" id="et-st"></div></section>`;
+}
+async function refreshMe(){ try { const j = await api("/api/me"); S.me = j.user; } catch(e){} render(); }
+document.addEventListener("click", async ev => {
+  const t = ev.target.closest("button"); if (!t) return; const d = t.dataset;
+  const say = (id, m) => { const el = $("#" + id); if (el) el.textContent = m; else toast(m); };
+  try {
+    if (d.buy){ t.disabled = true; say("bil-st", "Opening secure checkout…"); const j = await api("/api/billing/checkout", {method:"POST", body:JSON.stringify({plan:d.buy, periode:d.per})}); location.href = j.url; return; }
+    if (t.id === "bil-portal" || t.id === "et-portal"){ t.disabled = true; const j = await api("/api/billing/portal", {method:"POST", body:JSON.stringify({etab:t.id === "et-portal"})}); location.href = j.url; return; }
+    if (t.id === "ref-copy"){ const v = $("#ref-link").value; try { await navigator.clipboard.writeText(v); } catch(e){ $("#ref-link").select(); document.execCommand("copy"); } toast("Link copied"); return; }
+    if (t.id === "et-join"){ const code = $("#et-code").value.trim(); if (!code) return; await api("/api/etab/rejoindre", {method:"POST", body:JSON.stringify({code})}); toast("Joined the school"); return refreshMe(); }
+    if (t.id === "et-new"){ await api("/api/etab/creer", {method:"POST", body:JSON.stringify({nom:$("#et-nom").value, eleves:+$("#et-el").value || 0, payeProfs:$("#et-pay").checked})}); toast("School created: give the code to your teachers"); return refreshMe(); }
+    if (t.id === "et-save"){ await api("/api/etab/reglages", {method:"POST", body:JSON.stringify({eleves:+$("#et-el").value || 0, payeProfs:$("#et-pay").checked})}); toast("Saved"); return refreshMe(); }
+    if (d.etout){ if (!confirm("Remove this teacher from the school?")) return; await api("/api/etab/reglages", {method:"POST", body:JSON.stringify({retirer:d.etout})}); return refreshMe(); }
+    if (t.id === "et-quit"){ if (!confirm(S.me?.etab?.role === "direction" ? "Delete this school?" : "Leave the school?")) return; await api("/api/etab/quitter", {method:"POST"}); return refreshMe(); }
+    if (t.id === "et-pay-go"){ t.disabled = true; await api("/api/etab/reglages", {method:"POST", body:JSON.stringify({eleves:+$("#et-el").value || 0, payeProfs:$("#et-pay").checked})}); const j = await api("/api/billing/etab", {method:"POST"}); location.href = j.url; return; }
+    if (d.ugift){ await api("/api/users/" + d.ugift, {method:"PATCH", body:JSON.stringify({offrirMois:1})}); await loadUsers(); toast("1 free month added"); return render(); }
+  } catch(e){ t.disabled = false; say(t.id?.startsWith("et") || d.etout ? "et-st" : "bil-st", e.message || "Error"); }
+});
+if (/paiement=ok/.test(location.hash)) setTimeout(() => { toast("Thank you! Your plan is being activated."); history.replaceState(null, "", "#/compte"); setTimeout(refreshMe, 2500); }, 1500);
+const accesLabel = u => { const a = u.acces || {}; return a.mode === "essai" ? `Trial · ${joursRest(a.fin)} ${JRS}` : a.mode === "abonne" ? `Subscribed ${PLAN[a.plan] || ""}` : a.mode === "ecole" ? "Paid by school" : a.mode === "expire" ? "Trial ended" : a.mode === "inclus" ? "Included" : "Beta"; };
 
 
 /* ================= Shared: document pages → PDF ================= */
@@ -2197,8 +2293,8 @@ function renduPages(c, e){
     <div class="sh-title" dir="auto">Paper graded · ${esc(c.titre)}</div>
     <div class="sh-meta">${esc(c.matiere)} · ${esc(cl?.nom || "")}${c.date ? " · " + esc(frDate(c.date)) : ""}</div>
     <div class="sh-name">Student: <b>${esc(e.prenom)} ${esc(e.nom)}</b></div></div></div>
-    <div class="rd-note"><span class="rd-big">${fmt(final20(c, cp))}</span><span> / 20</span>
-      <span class="rd-sub">${[bonusMax(c) ? `raw score ${fmt(on20(copyTotal(c, cp), max))} · neatness bonus ${fmt(b.proprete)} · spelling bonus ${fmt(b.orthographe)}` : "", moy != null ? `class average ${fmt(moy)}` : ""].filter(Boolean).join(" · ")}</span></div>`;
+    <div class="rd-note"><span class="rd-big">${nv(final20(c, cp))}</span><span>${sfxN(final20(c, cp))}</span>
+      <span class="rd-sub">${[bonusMax(c) ? `raw score ${fmt(on20(copyTotal(c, cp), max))} · neatness bonus ${fmt(b.proprete)} · spelling bonus ${fmt(b.orthographe)}` : "", moy != null ? `class average ${noteS(moy)}` : ""].filter(Boolean).join(" · ")}</span></div>`;
   const blocks = c.questions.map((q, k) => { const a = cp?.answers?.[q.id], v = vOf(q, cp?.version?.[q.id] || "standard");
     return `<div class="sh-qh"><span>Question ${k + 1}${q.notion ? " · " + esc(q.notion) : ""}</span><span class="rd-q">${fmt(noteOf(a))} / ${fmt(+q.points)}</span></div>
       <div class="sh-qt" dir="auto">${esc(v.enonce)}</div>
@@ -2253,11 +2349,11 @@ function vSuiviBase(){
     const nl = st.notions.map(k => ({k, r:ms(e.id, k), n:st.per[e.id]?.[k]?.n || 0})).filter(x => x.r != null).sort((a, b) => a.r - b.r);
     detail = `<section class="panel grid">
       <div class="row between"><div><div class="label">${esc(mat)}</div><h3 style="font-size:20px">${esc(e.prenom)} ${esc(e.nom)}</h3></div>
-        <div class="total num" style="color:var(--ink)">${avg.length ? fmt(avg.reduce((a, b) => a + b, 0) / avg.length) : "—"}<small>/20</small></div></div>
+        <div class="total num" style="color:var(--ink)">${avg.length ? nv(avg.reduce((a, b) => a + b, 0) / avg.length) : "—"}<small>${avg.length ? sfxN(avg.reduce((a, b) => a + b, 0) / avg.length) : ""}</small></div></div>
       <div class="grid g2">
         <div><div class="label" style="margin-bottom:6px">Skills, from weakest to strongest</div>
           <div class="bars">${nl.map(x => `<div class="bar" style="grid-template-columns:1fr 90px 44px"><span class="small">${esc(st.labels[x.k])} <span class="muted">(${x.n})</span></span><div class="track"><div class="fill" style="width:${Math.round(x.r * 100)}%;background:var(--${tone(x.r)})"></div></div><span class="num small" style="text-align:right">${pct(x.r)}</span></div>`).join("") || `<p class="muted small">No papers approved.</p>`}</div></div>
-        <div><div class="label" style="margin-bottom:6px">Tests</div>${hist.map(x => `<div class="item"><div><div class="t small">${x.c.type === "rattrapage" ? "↺ " : ""}${esc(x.c.titre)}</div><div class="s">${esc(frDate(x.c.date) || "")}</div></div><span class="cell ${tone(final20(x.c, x.cp) / 20)}">${fmt(final20(x.c, x.cp))}</span></div>`).join("") || `<p class="muted small">Aucun.</p>`}</div>
+        <div><div class="label" style="margin-bottom:6px">Tests</div>${hist.map(x => `<div class="item"><div><div class="t small">${x.c.type === "rattrapage" ? "↺ " : ""}${esc(x.c.titre)}</div><div class="s">${esc(frDate(x.c.date) || "")}</div></div><span class="cell ${tone(final20(x.c, x.cp) / 20)}">${noteS(final20(x.c, x.cp))}</span></div>`).join("") || `<p class="muted small">Aucun.</p>`}</div>
       </div>
       <div class="grid" style="gap:8px"><div class="row between"><div class="label">Report card comment</div><button class="btn sm" id="appr" data-e="${e.id}">${bil ? "Rewrite" : "Draft"} (IA)</button></div>
         <div class="status" id="appr-st"></div>
@@ -2417,7 +2513,7 @@ document.addEventListener("click", async ev => {
     try{
       const txt = await aiText(`Write the trimester report card comment for a student in ${mat} (grade ${cl.niveau}).
 First name: ${e.prenom}
-Grades: ${hist.map(x => `${x.c.titre} : ${fmt(final20(x.c, x.cp))}/20${x.c.type === "rattrapage" ? " (rattrapage)" : x.c.type === "exercices" ? " (exercices)" : ""}`).join(" ; ")}
+Grades: ${hist.map(x => `${x.c.titre} : ${noteS(final20(x.c, x.cp))}${x.c.type === "rattrapage" ? " (rattrapage)" : x.c.type === "exercices" ? " (exercices)" : ""}`).join(" ; ")}
 Mastery by skill: ${notions}
 Excerpts from grading comments: ${coms}
 US report card style: 2 to 3 sentences, 300 characters maximum, in the third person using the student's first name, fair and encouraging, with one strength and one specific suggestion. Respond in English. Just the comment, no quotation marks. Don't invent anything that isn't in this data.`, {modelTier:"quick"});
@@ -2435,7 +2531,7 @@ document.addEventListener("change", ev => {
   if (el.id === "bkq-search"){ S.bkq = el.value; return render(); }
 });
 
-function vDirection(...a){ const sv = store.controles; store.controles = store.allCtrl || sv; try { return vDirection_0(...a); } finally { store.controles = sv; } }
+function vDirection(...a){ const sv = store.controles, sc = store.classes; store.controles = store.allCtrl || sv; store.classes = store.allClasses || sc; try { return vDirection_0(...a); } finally { store.controles = sv; store.classes = sc; } }
 
 function vBanque(...a){ const sv = store.controles; store.controles = store.allCtrl || sv; try { return vBanque_0(...a); } finally { store.controles = sv; } }
 
@@ -2448,7 +2544,7 @@ S.qz = {id:null, tab:"questions", el:null}; S.qn = {coursId:"", classeId:"", tit
 const QTYPES = {qcm:"QCM", vf:"True / false", num:"Numeric answer", trou:"Fill in the blank", redige:"Written answer (on computer)"};
 const QSTAT = {brouillon:["Draft",""], ouvert:["Open to students","ok"], clos:["Closed","warn"]};
 const quizOf = id => store.quizzes.find(q => q.id === id);
-const myQuizzes = () => store.quizzes.filter(q => !S.me || (isAdmin() && S.scope === "ecole") || !q.owner || q.owner === S.me.id);
+const myQuizzes = () => store.quizzes.filter(q => !S.me || (isBoss() && S.scope === "ecole") || !q.owner || q.owner === S.me.id);
 const repsOf = qid => Object.values(store.quizrep).filter(r => r.quizId === qid);
 const quizNotions = q => [...new Set((q.questions || []).map(x => x.notion).filter(Boolean))];
 const stars = n => "★".repeat(clamp(+n || 1, 1, 3));
