@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="fr">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mastery · laboratoire de lecture manuscrite</title>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<style>
+  :root{font:16px/1.5 system-ui,sans-serif;color:#e9eef8;background:#151c29}
+  *{box-sizing:border-box}body{max-width:1100px;margin:auto;padding:24px 16px 70px}
+  a{color:#9dc9ff}h1{font-size:1.6rem;margin:.5rem 0}.muted{color:#aab5c6}
+  .panel{background:#202a3b;border:1px solid #3b4a62;border-radius:12px;padding:18px;margin:16px 0}
+  .row{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:10px 0}
+  button,select,input,textarea{font:inherit}button{background:#5b91d9;color:white;border:0;border-radius:8px;padding:9px 13px;cursor:pointer}
+  button:disabled{opacity:.5;cursor:not-allowed}input,select,textarea{background:#101725;color:white;border:1px solid #59677b;border-radius:7px;padding:8px}
+  label{display:flex;gap:8px;align-items:center}#pageCanvas{width:100%;height:auto;display:block;touch-action:none;cursor:crosshair}
+  .canvasWrap{position:relative;max-width:760px;margin:auto}#selection{position:absolute;border:3px solid #faad43;background:#faad4326;pointer-events:none;display:none}
+  #cropPreview{display:block;max-width:100%;max-height:340px;border:1px solid #62718b;background:#fff;margin:12px 0}
+  pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#111927;padding:16px;border-radius:8px;min-height:100px}
+  textarea{width:100%;min-height:120px}#history{display:grid;gap:10px}#history article{border:1px solid #3b4a62;border-radius:8px;padding:10px}#history pre{margin:6px 0;min-height:0}
+</style>
+<body>
+  <p><a href="/app">← Retour à Mastery</a></p>
+  <h1>Lecture de l’écriture · essais</h1>
+  <p class="muted">Importe tes feuilles : les documents, les lectures et les transcriptions de référence sont enregistrés dans ton compte Mastery. Aucun essai ne crée de note ou de correction d’élève. Seul le cadre choisi est envoyé à l’IA lorsque tu lances une lecture. Évite d’inclure les noms d’élèves dans ce cadre.</p>
+  <div class="panel">
+    <div class="row"><label>Importer des feuilles PDF ou images <input id="file" type="file" multiple accept="application/pdf,image/png,image/jpeg,image/webp"></label>
+      <label>Document enregistré <select id="documents"><option value="">Aucun document</option></select></label>
+      <label>Page <select id="page" disabled></select></label></div>
+    <div class="row"><button id="remove" disabled>Supprimer ce document et ses essais</button><span id="persist" class="muted"></span></div>
+    <p id="status" role="status">Vérification de la connexion…</p>
+    <p class="muted">Sur la page, glisse le doigt ou la souris autour d’un seul cadre de réponse. Laisse une petite marge. Le contour orange indique exactement ce qui sera envoyé.</p>
+    <div class="canvasWrap"><canvas id="pageCanvas"></canvas><div id="selection"></div></div>
+    <p id="cropInfo" class="muted">Aucun cadre sélectionné.</p>
+    <img id="cropPreview" alt="Aperçu du cadre envoyé à l’IA" hidden>
+    <div class="row"><button id="read" disabled>Lire avec l’IA précise</button><button id="readQuick" disabled>Comparer avec l’IA rapide</button><button id="doubleRead" disabled>Double lecture indépendante</button></div>
+    <p class="muted">Chaque bouton lance un appel IA facturable à ton compte. La comparaison est facultative.</p>
+    <h2>Transcription brute</h2><pre id="result">Sélectionne un cadre pour commencer.</pre>
+    <h2>Comparaison des deux lectures</h2><pre id="comparison">Lance « Double lecture indépendante » pour repérer les lignes qui demandent vérification.</pre>
+    <h2>Transcription de référence</h2>
+    <p class="muted">Relis la photo et saisis ici exactement ce qui est écrit. Cette référence servira à mesurer les erreurs de lecture, y compris les signes et fractions. Elle est attachée au dernier essai.</p>
+    <textarea id="reference" placeholder="Texte vérifié manuellement, ligne par ligne" disabled></textarea>
+    <div class="row"><button id="saveReference" disabled>Enregistrer la référence</button><span id="saveStatus" role="status"></span></div>
+    <h2>Historique enregistré</h2><div id="history" class="muted">Aucun essai pour ce document.</div>
+  </div>
+<script>
+  'use strict';
+  const $ = s => document.querySelector(s);
+  const cv=$('#pageCanvas'), ctx=cv.getContext('2d'), sel=$('#selection');
+  let pages=[], crop=null, rect=null, start=null, busy=false, signedIn=false, documents=[], current=null, latestRun=null;
+  const PROMPT=`Tu es un transcripteur de copie manuscrite. Ta seule tâche est de lire l'image, sans corriger, noter, résoudre ni utiliser une réponse attendue.
+Recopie chaque ligne dans l'ordre. Préserve exactement les signes moins, chiffres, exposants, parenthèses, unités, fractions (a/b), égalités et virgules décimales. Distingue le texte barré du texte final ajouté ; ne le supprime pas de la transcription. N'invente pas les caractères manquants. Pour un signe douteux, mets [?] dans la ligne et indique les lectures possibles et la ligne concernée. N'appelle un cadre "vide" que si tu ne vois aucune écriture ; les traits de la grille imprimée ne comptent pas.
+Réponds uniquement en JSON : {"cadre_vide":false,"lignes":[{"texte":"...","barree":false,"doutes":[{"segment":"...","lectures_possibles":["...","..."]}]}],"commentaire_lecture":""}. Aucun jugement pédagogique.`;
+  function status(t){$('#status').textContent=t}
+  function buttons(){ $('#read').disabled=$('#readQuick').disabled=$('#doubleRead').disabled=!signedIn||!current||!crop||busy;
+    $('#remove').disabled=!current||busy;$('#reference').disabled=$('#saveReference').disabled=!latestRun||busy; }
+  async function auth(){
+    try{const r=await fetch('/api/me',{credentials:'same-origin'});signedIn=r.ok;status(signedIn?'Connecté à Mastery · importe ou ouvre un document.':'Connecte-toi à Mastery dans cet onglet, puis recharge cette page.');if(signedIn)await refreshDocuments()}catch(e){status('Connexion au serveur impossible.')} buttons();
+  }
+  async function api(url,options){const r=await fetch(url,{credentials:'same-origin',...options});if(!r.ok){let j={};try{j=await r.json()}catch(e){}throw Error(j?.error?.message||`Erreur HTTP ${r.status}`)}return r}
+  async function refreshDocuments(selectId){const j=await (await api('/api/ocr-lab')).json();documents=j.documents;
+    $('#persist').textContent=j.persistent?'Documents conservés sur le serveur.':'⚠ Stockage serveur temporaire : demander un volume persistant avant de conserver des copies.';
+    $('#documents').replaceChildren(new Option('Choisir un document',''),...documents.map(d=>new Option(`${d.name} · ${new Date(d.createdAt).toLocaleDateString('fr-FR')}`,d.id)));
+    if(selectId){$('#documents').value=selectId;current=documents.find(d=>d.id===selectId)||null}else if(current){current=documents.find(d=>d.id===current.id)||null;$('#documents').value=current?.id||''}
+    renderHistory();buttons();
+  }
+  function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+  const plain = read => (read?.parsed?.lignes||[]).map(l=>l.texte||'').join('\n');
+  function distance(a,b){let prev=Array.from({length:b.length+1},(_,i)=>i);for(let i=1;i<=a.length;i++){const next=[i];for(let j=1;j<=b.length;j++)next[j]=Math.min(prev[j]+1,next[j-1]+1,prev[j-1]+(a[i-1]===b[j-1]?0:1));prev=next}return prev[b.length]}
+  function score(read,reference){const got=plain(read).replace(/\s+/g,' ').trim(),want=reference.replace(/\s+/g,' ').trim();if(!want||!read?.parsed||got.length>3000||want.length>3000)return '';
+    return ` · caractères exacts estimés : ${Math.max(0,Math.round(100*(1-distance(got,want)/want.length)))} %`;
+  }
+  function renderHistory(){const runs=current?.runs||[];$('#history').innerHTML=runs.length?runs.slice().reverse().map(r=>`<article><b>Page ${r.page} · ${esc(r.mode)} · ${new Date(r.at).toLocaleString('fr-FR')}</b><div class="muted">Cadre : ${r.rect.join(' × ')}</div><pre>${esc(plain(r.first)||r.first?.txt||'Lecture manuelle')}</pre>${r.reference?`<div>Lecture 1${score(r.first,r.reference)}</div>`:''}${r.second?`<details><summary>Deuxième lecture${r.reference?score(r.second,r.reference):''}</summary><pre>${esc(plain(r.second)||r.second?.txt)}</pre></details>`:''}${r.reference?`<details><summary>Référence vérifiée</summary><pre>${esc(r.reference)}</pre></details>`:''}</article>`).join(''):'Aucun essai pour ce document.'}
+  function clearCrop(){crop=null;rect=null;sel.style.display='none';$('#cropInfo').textContent='Aucun cadre sélectionné.';$('#cropPreview').hidden=true;buttons()}
+  async function loadFile(f){
+    pages=[];clearCrop();$('#page').innerHTML='';if(!f)return;
+    try{
+      if(f.type==='application/pdf'||/\.pdf$/i.test(f.name)){
+        if(!window.pdfjsLib)throw Error('La bibliothèque PDF n’a pas chargé. Recharge la page.');
+        const pdf=await pdfjsLib.getDocument({data:await f.arrayBuffer()}).promise;
+        for(let i=1;i<=pdf.numPages;i++){const p=await pdf.getPage(i);const v=p.getViewport({scale:3200/Math.max(p.view[2],p.view[3])});const c=document.createElement('canvas');c.width=Math.ceil(v.width);c.height=Math.ceil(v.height);await p.render({canvasContext:c.getContext('2d'),viewport:v}).promise;pages.push(c)}
+      }else if(f.type.startsWith('image/')){
+        const bmp=await createImageBitmap(f);const c=document.createElement('canvas');c.width=bmp.width;c.height=bmp.height;c.getContext('2d').drawImage(bmp,0,0);pages.push(c);bmp.close();
+      }else throw Error('Choisis un PDF ou une image.');
+      pages.forEach((_,i)=>$('#page').add(new Option('Page '+(i+1),String(i))));$('#page').disabled=false;showPage();status(`${pages.length} page(s) chargée(s). Sélectionne un cadre.`);
+    }catch(e){status(e.message||'Fichier illisible.');$('#page').disabled=true}
+  }
+  function showPage(){const p=pages[Number($('#page').value)||0];if(!p)return;cv.width=p.width;cv.height=p.height;ctx.drawImage(p,0,0);clearCrop()}
+  function point(ev){const r=cv.getBoundingClientRect();return {x:Math.round((ev.clientX-r.left)*cv.width/r.width),y:Math.round((ev.clientY-r.top)*cv.height/r.height)}}
+  function clamp(v,lo,hi){return Math.max(lo,Math.min(hi,v))}
+  function setRect(a,b,finish){
+    let x=clamp(Math.min(a.x,b.x),0,cv.width),y=clamp(Math.min(a.y,b.y),0,cv.height);
+    let w=clamp(Math.abs(a.x-b.x),0,cv.width-x),h=clamp(Math.abs(a.y-b.y),0,cv.height-y);
+    const sx=cv.clientWidth/cv.width,sy=cv.clientHeight/cv.height;
+    Object.assign(sel.style,{display:'block',left:(x*sx)+'px',top:(y*sy)+'px',width:(w*sx)+'px',height:(h*sy)+'px'});
+    if(!finish)return;
+    if(w<80||h<40){clearCrop();return}
+    const out=document.createElement('canvas');out.width=w;out.height=h;out.getContext('2d').drawImage(cv,x,y,w,h,0,0,w,h);
+    crop=out;rect=[x,y,w,h];$('#cropInfo').textContent=`Cadre envoyé : ${w} × ${h} pixels, PNG sans recompression.`;
+    $('#cropPreview').src=out.toDataURL('image/png');$('#cropPreview').hidden=false;buttons();
+  }
+  cv.addEventListener('pointerdown',ev=>{if(!pages.length)return;start=point(ev);cv.setPointerCapture(ev.pointerId);setRect(start,start,false)});
+  cv.addEventListener('pointermove',ev=>{if(start)setRect(start,point(ev),false)});
+  cv.addEventListener('pointerup',ev=>{if(start){setRect(start,point(ev),true);start=null}});
+  cv.addEventListener('pointercancel',()=>{start=null;clearCrop()});
+  async function requestRead(tier,data){
+      const r=await fetch('/api/ai',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify({tier,messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:'image/png',data}},{type:'text',text:PROMPT}]}]})});
+      const j=await r.json();if(!r.ok)throw Error(j?.error?.message||`Erreur HTTP ${r.status}`);
+      const txt=(j.content||[]).filter(x=>x.type==='text').map(x=>x.text).join('\n');
+      let parsed;try{parsed=JSON.parse(txt.replace(/^```json\s*|\s*```$/g,''))}catch(e){}
+      return {tier,parsed,txt,usage:j.usage};
+  }
+  function showRead(r){return `Modèle ${r.tier} · ${r.usage?.input_tokens||'?'} jetons en entrée · ${r.usage?.output_tokens||'?'} en sortie\n\n${r.parsed?JSON.stringify(r.parsed,null,2):r.txt}`}
+  async function saveRun(mode,first,second){const run={page:Number($('#page').value)+1,rect,mode,first,second,reference:''};
+    const j=await (await api('/api/ocr-lab/'+current.id,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({run})})).json();
+    latestRun=j.run;current.runs.push(j.run);$('#reference').value='';$('#saveStatus').textContent='Lecture enregistrée.';renderHistory();buttons();
+  }
+  async function read(tier){
+    if(!crop||busy||!signedIn)return;busy=true;buttons();$('#result').textContent='Lecture en cours…';
+    try{
+      const data=crop.toDataURL('image/png').split(',')[1];
+      const result=await requestRead(tier,data);$('#result').textContent=showRead(result);
+      await saveRun(tier,result,null);
+    }catch(e){$('#result').textContent='Lecture impossible : '+(e.message||String(e))}finally{busy=false;buttons()}
+  }
+  async function doubleRead(){
+    if(!crop||busy||!signedIn)return;busy=true;buttons();$('#comparison').textContent='Deux lectures en cours…';
+    try{
+      const data=crop.toDataURL('image/png').split(',')[1];
+      const first=await requestRead('complex',data);
+      const second=await requestRead('complex',data);
+      $('#result').textContent=showRead(first)+'\n\n--- Deuxième lecture ---\n\n'+showRead(second);
+      if(!first.parsed?.lignes||!second.parsed?.lignes){$('#comparison').textContent='Réponse JSON illisible : compare les sorties brutes.';await saveRun('double',first,second);return}
+      const a=first.parsed.lignes.map(x=>x.texte||''),b=second.parsed.lignes.map(x=>x.texte||'');
+      const differences=[];
+      if(first.parsed.cadre_vide!==second.parsed.cadre_vide)differences.push('DÉSACCORD SUR CADRE VIDE : vérifier la photo.');
+      for(let i=0;i<Math.max(a.length,b.length);i++)if(a[i]!==b[i])differences.push(`Ligne ${i+1}\n  Lecture 1 : ${a[i]??'(absente)'}\n  Lecture 2 : ${b[i]??'(absente)'}`);
+      $('#comparison').textContent=differences.length?differences.join('\n\n'):'Les lectures produisent le même texte. Vérifie tout de même la photo : deux lectures identiques peuvent se tromper ensemble.';
+      await saveRun('double',first,second);
+    }catch(e){$('#comparison').textContent='Comparaison impossible : '+(e.message||String(e))}finally{busy=false;buttons()}
+  }
+  $('#file').addEventListener('change',async e=>{const files=[...e.target.files];e.target.value='';if(!signedIn){status('Connecte-toi à Mastery pour enregistrer les documents.');return}
+    busy=true;buttons();let imported=0,last=null;try{for(const f of files){const mime=f.type||({'pdf':'application/pdf','png':'image/png','jpg':'image/jpeg','jpeg':'image/jpeg','webp':'image/webp'}[f.name.split('.').pop().toLowerCase()]);
+      status(`Enregistrement de ${f.name}…`);const j=await (await api('/api/ocr-lab',{method:'POST',headers:{'content-type':mime,'x-filename':encodeURIComponent(f.name)},body:f})).json();last=j.document;imported++}
+      if(last){await refreshDocuments(last.id);latestRun=null;$('#reference').value='';await loadFile(await (await api('/api/ocr-lab/'+last.id+'/file')).blob());status(`${imported} document(s) enregistrés. Dernier document ouvert : ${last.name}.`)}}
+    catch(err){status(`${imported} document(s) enregistrés. Échec : ${err.message}`);await refreshDocuments(last?.id)}finally{busy=false;buttons()}});
+  $('#documents').addEventListener('change',async e=>{current=documents.find(d=>d.id===e.target.value)||null;latestRun=null;$('#reference').value='';$('#result').textContent='Sélectionne un cadre pour commencer.';$('#comparison').textContent='Aucune comparaison pour ce document.';renderHistory();buttons();
+    if(current){status('Ouverture de '+current.name+'…');try{await loadFile(await (await api('/api/ocr-lab/'+current.id+'/file')).blob())}catch(err){status('Ouverture impossible : '+err.message)}}else{pages=[];cv.width=cv.height=0;clearCrop()}});
+  $('#saveReference').addEventListener('click',async()=>{if(!current||!latestRun)return;$('#saveStatus').textContent='Enregistrement…';try{const j=await (await api('/api/ocr-lab/'+current.id,{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({runId:latestRun.id,reference:$('#reference').value})})).json();
+    Object.assign(latestRun,j.run);$('#saveStatus').textContent='Référence sauvegardée.';renderHistory()}catch(err){$('#saveStatus').textContent='Échec : '+err.message}});
+  $('#remove').addEventListener('click',async()=>{if(!current||!confirm(`Supprimer « ${current.name} » et tous ses essais ?`))return;try{await api('/api/ocr-lab/'+current.id,{method:'DELETE'});current=null;latestRun=null;pages=[];cv.width=cv.height=0;clearCrop();await refreshDocuments();status('Document et essais supprimés.')}catch(err){status('Suppression impossible : '+err.message)}});
+  $('#page').addEventListener('change',showPage);
+  $('#read').addEventListener('click',()=>read('complex'));$('#readQuick').addEventListener('click',()=>read('quick'));
+  $('#doubleRead').addEventListener('click',doubleRead);
+  auth();
+</script>
+</body></html>

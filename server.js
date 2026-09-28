@@ -447,6 +447,65 @@ async function storage(req, res, url, p, u){
   } catch(e){ return sendJ(res, e.message === "too_large" ? 413 : 400, {error:{message:e.message === "too_large" ? "Trop lourd" : "Requête invalide"}}); }
 }
 
+/* ---------- Laboratoire OCR : documents et essais privés, séparés des copies notées ---------- */
+const LABDIR = path.join(DATA, "ocr-lab");
+fs.mkdirSync(LABDIR, {recursive:true});
+async function ocrLab(req, res, url, p, u){
+  if (!u) return sendJ(res, 401, {error:{message:"Connexion requise"}});
+  const dir = path.join(LABDIR, u.id);
+  const list = () => fs.existsSync(dir) ? fs.readdirSync(dir).filter(f => /^[a-f0-9]{24}\.json$/.test(f)).map(f => readJ(path.join(dir, f), null)).filter(Boolean).sort((a,b) => b.createdAt.localeCompare(a.createdAt)) : [];
+  if (p === "/api/ocr-lab" && req.method === "GET") return sendJ(res, 200, {documents:list(), persistent:PERSISTENT}, {"Cache-Control":"no-store"});
+  if (p === "/api/ocr-lab" && req.method === "POST"){
+    if (!access(u).ok) return sendJ(res, 402, {error:{message:NO_ACCESS}});
+    const mime = String(req.headers["content-type"] || "").split(";")[0].toLowerCase();
+    const ext = {"application/pdf":"pdf", "image/png":"png", "image/jpeg":"jpg", "image/webp":"webp"}[mime];
+    if (!ext) return sendJ(res, 415, {error:{message:"PDF, PNG, JPEG ou WebP requis"}});
+    let blob; try { blob = await readBody(req, 20e6); } catch(e){ return sendJ(res, 413, {error:{message:"Document limité à 20 Mo"}}); }
+    const valid = ext === "pdf" ? blob.subarray(0,5).toString() === "%PDF-" : ext === "png" ? blob.subarray(0,8).equals(Buffer.from("89504e470d0a1a0a","hex")) : ext === "jpg" ? blob[0] === 0xff && blob[1] === 0xd8 : blob.subarray(0,4).toString() === "RIFF" && blob.subarray(8,12).toString() === "WEBP";
+    if (!valid || blob.length < 32) return sendJ(res, 400, {error:{message:"Fichier invalide"}});
+    let name; try { name = decodeURIComponent(String(req.headers["x-filename"] || "Document")); } catch(e){ name = "Document"; }
+    name = name.replace(/[\x00-\x1f/\\]/g," ").slice(0,140) || "Document";
+    const id = crypto.randomBytes(12).toString("hex"); fs.mkdirSync(dir, {recursive:true});
+    const doc = {id, name, mime, ext, size:blob.length, createdAt:new Date().toISOString(), runs:[]};
+    fs.writeFileSync(path.join(dir, id + "." + ext), blob, {flag:"wx"}); writeAtomic(path.join(dir, id + ".json"), doc);
+    return sendJ(res, 201, {document:doc}, {"Cache-Control":"no-store"});
+  }
+  const m = p.match(/^\/api\/ocr-lab\/([a-f0-9]{24})(\/file)?$/);
+  if (!m) return sendJ(res, 404, {error:{message:"Document introuvable"}});
+  const doc = readJ(path.join(dir, m[1] + ".json"), null);
+  if (!doc || doc.id !== m[1]) return sendJ(res, 404, {error:{message:"Document introuvable"}});
+  if (m[2] && req.method === "GET"){
+    const f = path.join(dir, doc.id + "." + doc.ext);
+    if (!fs.existsSync(f)) return sendJ(res, 404, {error:{message:"Fichier introuvable"}});
+    res.writeHead(200, {"Content-Type":doc.mime, "X-Content-Type-Options":"nosniff", "Content-Disposition":"inline", "Cache-Control":"private, no-store"});
+    return fs.createReadStream(f).pipe(res);
+  }
+  if (m[2]) return sendJ(res, 405, {error:{message:"Méthode non autorisée"}});
+  if (req.method === "PATCH"){
+    if (!access(u).ok) return sendJ(res, 402, {error:{message:NO_ACCESS}});
+    let body; try { body = await readJSON(req, 300e3); } catch(e){ return sendJ(res, 400, {error:{message:"Données invalides"}}); }
+    if (isObj(body) && /^[a-f0-9]{16}$/.test(body.runId || "") && typeof body.reference === "string"){
+      const entry = doc.runs.find(x => x.id === body.runId);
+      if (!entry) return sendJ(res, 404, {error:{message:"Essai introuvable"}});
+      entry.reference = body.reference.slice(0,20000);
+      writeAtomic(path.join(dir, doc.id + ".json"), doc);
+      return sendJ(res, 200, {run:entry}, {"Cache-Control":"no-store"});
+    }
+    if (!isObj(body) || !isObj(body.run)) return sendJ(res, 400, {error:{message:"Essai invalide"}});
+    const run = body.run;
+    if (!Number.isInteger(run.page) || run.page < 1 || run.page > 500 || !["quick","complex","double","manuel"].includes(run.mode) || !Array.isArray(run.rect) || run.rect.length !== 4 || !run.rect.every(x => Number.isInteger(x) && x >= 0 && x <= 20000)) return sendJ(res, 400, {error:{message:"Essai invalide"}});
+    if (JSON.stringify(run).length > 120000) return sendJ(res, 413, {error:{message:"Essai trop long"}});
+    const entry = {id:crypto.randomBytes(8).toString("hex"), at:new Date().toISOString(), page:run.page, rect:run.rect, mode:run.mode, first:run.first || null, second:run.second || null, reference:typeof run.reference === "string" ? run.reference.slice(0,20000) : ""};
+    doc.runs = [...doc.runs, entry].slice(-200); writeAtomic(path.join(dir, doc.id + ".json"), doc);
+    return sendJ(res, 200, {run:entry}, {"Cache-Control":"no-store"});
+  }
+  if (req.method === "DELETE"){
+    fs.rmSync(path.join(dir, doc.id + ".json"), {force:true}); fs.rmSync(path.join(dir, doc.id + "." + doc.ext), {force:true});
+    return sendJ(res, 200, {ok:true});
+  }
+  return sendJ(res, 405, {error:{message:"Méthode non autorisée"}});
+}
+
 /* ---------- Espace élève : quiz d'exercices en ligne (code personnel, sans e-mail) ---------- */
 const ESESS = new Map();                       // jeton élève → {classeId, eleveId, espace, exp}
 const TIRAGES = new Map();                     // tirage en cours → {quizId, key, qids, used, answered, start, exp}
@@ -629,6 +688,7 @@ http.createServer(async (req, res) => {
     if (p === "/eleve" || p === "/eleve/") p = "/eleve.html";
     if (p.startsWith("/api/")){
       if (req.method === "POST" && p === "/api/ai") return await aiProxy(req, res, u);
+      if (p === "/api/ocr-lab" || p.startsWith("/api/ocr-lab/")) return await ocrLab(req, res, url, p, u);
       if (p.startsWith("/api/backups")) return backups(req, res, p, u);
       if (p === "/api/etab" || p.startsWith("/api/etab/") || p.startsWith("/api/billing/")){ try { return await billingApi(req, res, url, p, u); } catch(e){ console.warn("Abonnement :", e.message); return sendJ(res, 502, {error:{message:"Paiement indisponible pour le moment : réessaie dans un instant."}}); } }
       if (p.startsWith("/api/db") || p.startsWith("/api/files") || p === "/api/export") return await storage(req, res, url, p, u);

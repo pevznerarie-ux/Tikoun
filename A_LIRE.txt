@@ -1,0 +1,9 @@
+Mastery · onglet Lecture IA
+
+Dans le dépôt GitHub pevznerarie-ux/Tikoun, importer les 5 fichiers de cette archive à la racine :
+- ocr-lab.html : nouveau fichier (interface du laboratoire)
+- server.js, index.html, index.en.html, index.pt.html : remplacer les fichiers existants
+
+Ne pas téléverser le ZIP tel quel : décompresse-le puis téléverse les fichiers.
+Cette version stocke les documents et les essais par compte dans le dossier DATA_DIR/ocr-lab sur Railway. Le serveur doit disposer d’un volume persistant.
+Les essais ne modifient aucune note et ne garantissent pas encore 90–95 % de reconnaissance. L’IA est appelée uniquement lorsque tu déclenches une lecture.
