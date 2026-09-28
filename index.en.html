@@ -897,6 +897,14 @@ function warpBox(cv, H, bx, pad = 8){
     const q = (Y * SW + X) * 4; od.data[o] = src[q]; od.data[o + 1] = src[q + 1]; od.data[o + 2] = src[q + 2]; od.data[o + 3] = 255; }
   oc.putImageData(od, 0, 0); return out;
 }
+/* Confidentialité : avant d'envoyer une page entière à l'IA, on masque l'en-tête (nom de l'élève, classe, école) */
+function maskHeader(cv, H, boxes){
+  const top = Math.max(0, Math.min(...boxes.map(b => b.y)) - 6);
+  const o = document.createElement("canvas"); o.width = cv.width; o.height = cv.height; const g = o.getContext("2d"); g.drawImage(cv, 0, 0);
+  if (!isFinite(top) || top <= 0) return o;
+  const pts = [[-40, -40], [834, -40], [834, top], [-40, top]].map(([x, y]) => applyH(H, x, y));
+  g.fillStyle = "#fff"; g.beginPath(); pts.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.closePath(); g.fill(); return o;
+}
 function inkRatio(cv, H, b){ /* part de pixels foncés dans le cadre (lignes grises et bordure exclues) */
   const d = pix(cv), SW = cv.width, SH = cv.height; let dark = 0, n = 0;
   for (let j = 0; j < 24; j++) for (let i = 0; i < 80; i++){
@@ -983,7 +991,7 @@ async function processPage(it){
         const res = await ai(gradePrompt(c, cp, aiQ, "crops"), {images: await Promise.all(aiB2.map(b => toBlob(crops[b.q], .8)))});
         arr = Array.isArray(res?.reponses) ? res.reponses : []; bon = res;
       } else {
-        const big = scaled(it.cv, 1600), W = big.width, H = big.height;
+        const big = scaled(Hm ? maskHeader(it.cv, Hm, boxes) : it.cv, 1600), W = big.width, H = big.height;
         const many = maxImg >= 2;
         const imgs = many ? [await toBlob(crop(big, 0, 0, W, H * 0.56)), await toBlob(crop(big, 0, H * 0.44, W, H * 0.56))] : [await toBlob(big)];
         const res = await ai(gradePrompt(c, cp, aiQ, many ? "halves" : "page"), {images:imgs});
@@ -1629,7 +1637,9 @@ function vReglages(){
   ${SRV_PERSIST ? "" : `<p class="banner">⚠ The server has no Volume: data will be erased on the next deploy. Railway → service → Volume, mounted at /data.</p>`}
   <section class="panel grid"><div class="row"><button class="btn" id="srv-export">Download a backup (data)</button><button class="btn ghost sm" id="srv-out">Sign out of this device</button></div>
     <div class="grid" style="gap:6px;border-top:1px solid var(--line);padding-top:12px"><b>Data entered before on this device?</b><div class="small muted">If you used Mastery in local mode on this browser, transfer it to the server (one time only).</div>
-    <div class="row"><button class="btn" id="srv-migrate">Transfer to the server</button></div><div class="status" id="srv-st"></div></div></section>`;
+    <div class="row"><button class="btn" id="srv-migrate">Transfer to the server</button></div><div class="status" id="srv-st"></div></div></section>
+  ${S.me?.role === "admin" ? `<section class="panel grid"><div class="row" style="justify-content:space-between"><div><b>Automatic backups</b><div class="small muted">A full copy of the whole platform every day, kept for 14 days on the server.</div></div><button class="btn ghost sm" id="bak-now">Back up now</button></div>
+    <div id="bak-list" class="small muted">Loading…</div></section>` : ""}`;
   return `<div class="head"><div><h2>Backup</h2><p>${SB ? "Data is stored online." : "Data is stored in this browser. Export a backup regularly: you can import it on another computer or a colleague's."}</p></div></div>
   ${SB ? `<section class="panel grid"><p class="small">Signed in: <b>${esc(SB_USER?.email || "—")}</b> · <button class="btn sm" id="sb-out">Sign out</button></p>
     ${SB_USER ? `<div class="row"><button class="btn" id="sb-migrate">Transfer this device's data online</button></div><div class="status" id="sb-st"></div>` : ""}</section>` : `
@@ -1800,6 +1810,7 @@ async function startServer(){
 document.addEventListener("click", async ev => {
   const t = ev.target.closest("button"); if (!t) return;
   if (t.id === "srv-export"){ location.href = "/api/export"; return; }
+  if (t.id === "bak-now"){ t.disabled = true; await fetch("/api/backups/now", {method:"POST"}).catch(() => {}); t.disabled = false; loadBackups(); return; }
   if (t.id === "srv-out"){ await fetch("/api/logout", {method:"POST"}); location.reload(); return; }
   if (t.id === "srv-migrate"){ const st = $("#srv-st"); st.innerHTML = `<span class="thinking">Transferring…</span>`;
     try { IDB = IDB || await idbOpen(); const docs = await idbAll("docs"), blobs = await idbAll("blobs"); let n = 0;
@@ -1808,6 +1819,15 @@ document.addEventListener("click", async ev => {
       st.textContent = `${Object.keys(docs).length} item(s) and ${n} photo(s) transferred to the server.`; } catch(e){ console.error(e); st.textContent = "Transfer failed (nothing to transfer on this device?)."; }
   }
 });
+
+/* Liste des sauvegardes automatiques (administrateur) */
+async function loadBackups(){
+  const el = document.getElementById("bak-list"); if (!el) return;
+  try { const j = await (await fetch("/api/backups")).json(); const l = j.backups || [];
+    el.innerHTML = (j.persistent ? "" : `<p class="banner">⚠ Without a Railway Volume, these backups are erased on every deploy.</p>`) + (l.length ? `<table class="tbl"><tbody>${l.map(b => `<tr><td>${new Date(b.nom.slice(8, 18) + "T12:00").toLocaleDateString(document.documentElement.lang === "en" ? "en-US" : "en-US", {day:"numeric", month:"long", year:"numeric"})}</td><td class="muted">${b.taille < 1e6 ? Math.max(1, Math.round(b.taille / 1e3)) + " KB" : (b.taille / 1e6).toFixed(1) + " MB"}</td><td style="text-align:right"><a class="btn ghost sm" style="color:inherit;text-decoration:none" href="/api/backups/${esc(b.nom)}">Download</a></td></tr>`).join("")}</tbody></table>` : "First automatic backup in a few minutes.");
+  } catch(e){ el.textContent = "List unavailable."; }
+}
+new MutationObserver(() => { const el = document.getElementById("bak-list"); if (el && !el.dataset.done){ el.dataset.done = 1; loadBackups(); } }).observe(document.documentElement, {childList:true, subtree:true});
 
 
 /* ================= Navigation : de vraies pages, avec adresse, Précédent / Suivant ================= */
@@ -1995,6 +2015,7 @@ function vAuth(){
     <h3 style="margin-top:6px">Your plan <span class="chip ok" style="vertical-align:middle">Free beta</span></h3>
     <div class="form-row">${[["essentiel","Essential","AI-generated tests, sheets with QR codes, scanning and grading of papers, class view, individual remediation."],["pro","Pro","Everything in Essential + online practice: regenerating quizzes, student access by code, skill-by-skill tracking."]].map(([k, t, d]) => `<label class="panel" style="padding:12px;cursor:pointer;display:grid;gap:4px;${(S.regPlan || "essentiel") === k ? "border-color:var(--blue);box-shadow:0 0 0 2px var(--blue-soft)" : ""}"><span class="row" style="gap:8px"><input type="radio" style="width:auto" name="plan" data-plan="${k}"${(S.regPlan || "essentiel") === k ? " checked" : ""}><b>${t}</b></span><span class="small muted">${d}</span></label>`).join("")}</div>
     <p class="small muted" style="margin:0">During the beta, both plans are free: no payment is required. Your registration will be approved by the Mastery team.</p>
+    <label class="small" style="display:flex;gap:8px;align-items:flex-start;cursor:pointer"><input type="checkbox" id="rg-cgu" style="width:auto;margin-top:3px" ${S.regCgu ? "checked" : ""}><span>I accept the <a href="/cgu" target="_blank" rel="noopener" style="color:var(--gold)">terms of use</a> and the <a href="/confidentialite" target="_blank" rel="noopener" style="color:var(--gold)">privacy policy</a>. I will let families know that I use Mastery with my classes.</span></label>
     <div class="row"><button class="btn primary" id="rg-go">Send my registration request</button><button class="btn ghost" id="rg-back">I already have an account</button></div><div class="status" id="au-st"></div></section>`;
   return `<div class="head"><div><h2>Sign in</h2><p>Create, print, and grade your tests with AI.</p></div></div>
   <section class="panel grid" style="max-width:440px">
@@ -2006,6 +2027,7 @@ function vAuth(){
     <p class="small muted" style="margin:0"><a href="?lang=fr">French</a> · <a href="?lang=en">English</a></p></section>`;
 }
 const KEEP = ["rg-nom","rg-mail","rg-pw","me-nom","ec-adr","ec-ville","ec-q","ec-cp"]; let kept = {}; S.form = {};
+document.addEventListener("change", ev => { if (ev.target.id === "rg-cgu") S.regCgu = ev.target.checked; });
 document.addEventListener("input", ev => { const el = ev.target; if (KEEP.includes(el.id)) S.form[el.id] = el.value; if (el.id === "ec-q") S.ec.q = el.value; if (el.id === "ec-cp") S.ec.cp = el.value; });
 const keepForm = () => { kept = {}; for (const id of KEEP){ const el = $("#" + id); if (el) kept[id] = el.value; } const a = document.querySelector('input[name="aff"]:checked'); if (a) kept.aff = a.dataset.aff; };
 const restoreForm = () => { for (const [id, v] of Object.entries(kept)){ if (id === "aff"){ const r = document.querySelector(`input[data-aff="${v}"]`); if (r) r.checked = true; continue; } const el = $("#" + id); if (el) el.value = v; } };
@@ -2096,8 +2118,9 @@ document.addEventListener("click", async ev => {
       if (!e.nom || !/^\d{5}$/.test(e.cp) || !e.ville){ toast("Name, zip code (5 digits), and city are required."); return; }
       keepForm(); S.ec.sel = e; S.ec.manual = false; render(); restoreForm(); return; }
     if (t.id === "rg-go"){ if (!S.ec.sel){ st().textContent = "Choose your school (or enter it manually)."; return; }
+      if (!$("#rg-cgu")?.checked){ st().textContent = "Check the box to accept the terms of use."; return; }
       st().innerHTML = `<span class="thinking">Creating…</span>`;
-      const j = await api("/api/register", {method:"POST", body:JSON.stringify({nom:$("#rg-nom").value, email:$("#rg-mail").value, password:$("#rg-pw").value, affichage:affValue(), plan:document.querySelector('input[name="plan"]:checked')?.dataset.plan || "essentiel", ecole:S.ec.sel})});
+      const j = await api("/api/register", {method:"POST", body:JSON.stringify({nom:$("#rg-nom").value, email:$("#rg-mail").value, password:$("#rg-pw").value, affichage:affValue(), plan:document.querySelector('input[name="plan"]:checked')?.dataset.plan || "essentiel", ecole:S.ec.sel, cgu:true})});
       S.pend = j.user; S.auth = "pending"; history.replaceState(null, "", "#/connexion"); return render(); }
     if (t.id === "me-save"){ const body = {nom:$("#me-nom").value, affichage:affValue()}; if (S.ec.sel && JSON.stringify(S.ec.sel) !== JSON.stringify(S.me.ecole)) body.ecole = S.ec.sel;
       const j = await api("/api/me", {method:"PATCH", body:JSON.stringify(body)}); S.me = j.user; S.ec.sel = j.user.ecole; render(); toast(j.user.ecole?.verifiee === false && body.ecole ? "Saved · unverified school" : "Saved"); return; }

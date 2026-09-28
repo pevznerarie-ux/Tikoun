@@ -104,3 +104,21 @@ l'administrateur est recréé automatiquement.
 - **Langue du contrôle / du quiz** : Français, Hébreu, Hébreu et français, Anglais (proposée automatiquement selon le cours).
 - Affichage de droite à gauche automatique (écran, feuilles imprimées, espace élève) ; polices Noto Sans Hebrew et Frank Ruhl Libre.
 - Copies manuscrites en hébreu (écriture cursive) : l'IA est prévenue et transcrit en caractères hébreux.
+
+## Pages légales, confidentialité et sauvegardes
+
+Variables à ajouter (Railway → service → Variables) :
+
+| Variable | Exemple | Rôle |
+|---|---|---|
+| `LEGAL_NAME` | `Mastery SAS` (ou ton nom en entreprise individuelle) | Éditeur affiché dans les CGU et la politique de confidentialité |
+| `LEGAL_ADDRESS` | `12 rue …, 92300 Levallois-Perret` | Adresse de l'éditeur (obligatoire en France) |
+| `LEGAL_EMAIL` | `contact@…` | E-mail de contact RGPD |
+| `LEGAL_HOST` | *(facultatif)* | Hébergeur, par défaut Railway Corporation |
+| `BACKUP_KEEP` | `14` *(facultatif)* | Nombre de sauvegardes quotidiennes gardées |
+
+- Pages : `/cgu` et `/confidentialite` (en anglais automatiquement si la langue est EN ; alias `/terms` et `/privacy`).
+- Sauvegardes : une copie complète par jour dans `/data/backups`, visible et téléchargeable par l'admin dans l'onglet Sauvegarde.
+  Elles sont sur le même Volume : télécharge-en une de temps en temps sur ton ordinateur.
+- Région : pour le RGPD, choisis la région **EU West (Amsterdam)** dans Railway → service → Settings → Region.
+- IA : le nom des élèves est retiré des textes et l'en-tête des copies est masqué avant tout envoi à l'IA.

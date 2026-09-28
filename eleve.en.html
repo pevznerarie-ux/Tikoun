@@ -145,5 +145,6 @@ const pre = new URLSearchParams(location.search).get("c");
 if (pre) (async () => { try { await api("/api/eleve/login", {code:pre}); history.replaceState(null, "", "/eleve"); home(); } catch(e){ vLogin(pre, e.message); } })();
 else home();
 </script>
+<p style="text-align:center;font-size:12px;opacity:.6;margin:28px 0 20px"><a href="/confidentialite" style="color:inherit">Privacy</a></p>
 </body>
 </html>

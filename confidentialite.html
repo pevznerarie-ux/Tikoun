@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Confidentialité · Mastery</title>
+<link rel="icon" href="/favicon-64.png">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=Cormorant+Garamond:wght@600&display=swap">
+<style>
+:root{--paper:#FAF8F3;--ink:#15233F;--muted:#5B6478;--gold:#B7862B;--line:#E6E0D2;--card:#fff}
+@media (prefers-color-scheme:dark){:root{--paper:#0F1626;--ink:#EDE8DC;--muted:#A3AABA;--line:#26314A;--card:#151E33}}
+*{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.65 Inter,system-ui,sans-serif}
+header{border-bottom:1px solid var(--line);background:var(--card)}
+.wrap{max-width:780px;margin:0 auto;padding:0 20px}
+header .wrap{display:flex;align-items:center;justify-content:space-between;height:64px}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none}.brand img.mk{height:30px}.brand img.wm{height:18px}
+@media (prefers-color-scheme:dark){.brand img.wm{filter:invert(1) hue-rotate(180deg)}}
+nav a{color:var(--muted);text-decoration:none;font-size:14px;margin-left:16px}nav a:hover{color:var(--ink)}
+h1{font:600 42px/1.1 "Cormorant Garamond",Georgia,serif;margin:48px 0 8px}
+h2{font:600 26px/1.2 "Cormorant Garamond",Georgia,serif;margin:40px 0 8px;padding-top:16px;border-top:1px solid var(--line)}
+h3{font-size:16px;margin:22px 0 4px}
+.lead{color:var(--muted);margin:0 0 24px}
+.box{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--gold);border-radius:10px;padding:14px 18px;margin:20px 0}
+table{width:100%;border-collapse:collapse;font-size:14px;margin:12px 0}td,th{border-bottom:1px solid var(--line);padding:8px 6px;text-align:left;vertical-align:top}th{color:var(--muted);font-weight:600}
+a{color:var(--gold)}ul{padding-left:20px}li{margin:4px 0}
+footer{border-top:1px solid var(--line);margin-top:56px;padding:24px 0 40px;color:var(--muted);font-size:14px}
+footer .wrap{display:flex;gap:16px;flex-wrap:wrap;justify-content:space-between}
+@media (max-width:560px){h1{font-size:34px}nav a.hide{display:none}.wrap{padding:0 16px}table{font-size:13px}}
+</style>
+</head>
+<body>
+<header><div class="wrap"><a class="brand" href="/"><img class="mk" src="/logo-mark.png" alt=""><img class="wm" src="/logo-word.png" alt="Mastery"></a>
+<nav><a class="hide" href="/cgu">Conditions</a><a class="hide" href="/confidentialite">Confidentialité</a><a href="/confidentialite?lang=en">English</a></nav></div></header>
+<main class="wrap">
+<h1>Politique de confidentialité</h1>
+<p class="lead">Dernière mise à jour : 28 septembre 2026</p>
+<div class="box">En bref : Mastery ne vend aucune donnée, n’affiche aucune publicité et n’utilise aucun traceur publicitaire. Les données des élèves servent uniquement à l’enseignant, dans son espace privé. Avant tout envoi à l’intelligence artificielle, le nom des élèves est retiré.</div>
+
+<h2>1. Qui est responsable ?</h2>
+<ul>
+<li><b>Données des enseignants</b> (compte, établissement) : l’éditeur de Mastery, <b>{{EDITEUR}}</b>, est responsable du traitement.</li>
+<li><b>Données des élèves</b> : l’établissement ou l’enseignant qui les saisit est responsable du traitement ; Mastery agit comme <b>sous-traitant</b> au sens de l’article 28 du RGPD et ne traite ces données que sur ses instructions, pour fournir le service. Un accord de sous-traitance est disponible sur demande pour les établissements.</li>
+</ul>
+<p>Contact pour toute question ou demande : <a href="mailto:{{CONTACT}}">{{CONTACT}}</a>.</p>
+
+<h2>2. Données traitées</h2>
+<table>
+<tr><th>Personnes</th><th>Données</th><th>Finalité</th></tr>
+<tr><td>Enseignants</td><td>Nom, e-mail, mot de passe (chiffré, jamais lisible), établissement, préférences, forfait</td><td>Créer et gérer le compte, valider l’inscription, fournir le service</td></tr>
+<tr><td>Élèves</td><td>Prénom, nom, classe, code d’accès, copies scannées, réponses, notes, résultats des quiz</td><td>Corriger les contrôles, proposer des rattrapages et des quiz, suivre la progression</td></tr>
+<tr><td>Tous</td><td>Journaux techniques (date, adresse IP, erreurs)</td><td>Sécurité, prévention des abus, limites d’usage</td></tr>
+</table>
+<p>Aucune adresse e-mail, date de naissance ou donnée sensible n’est demandée pour les élèves. Les élèves ne créent pas de compte eux-mêmes.</p>
+
+<h2>3. Base légale</h2>
+<ul>
+<li>Enseignants : exécution du contrat (conditions d’utilisation).</li>
+<li>Élèves : mission éducative de l’établissement ou intérêt légitime de l’enseignant à évaluer et accompagner ses élèves, selon le statut de l’établissement. L’établissement informe les familles de l’utilisation de l’outil.</li>
+<li>Sécurité et journaux : intérêt légitime.</li>
+</ul>
+
+<h2>4. Intelligence artificielle</h2>
+<p>Pour lire l’écriture manuscrite, corriger et générer des questions, Mastery envoie les éléments nécessaires au service d’intelligence artificielle d’<b>Anthropic</b> (modèles Claude). Pour limiter les données transmises :</p>
+<ul>
+<li>seuls les cadres de réponse sont découpés et envoyés ; quand une page entière doit être envoyée, l’en-tête portant le nom de l’élève est masqué ;</li>
+<li>le prénom et le nom des élèves sont retirés automatiquement des textes envoyés ;</li>
+<li>selon ses conditions commerciales, Anthropic n’utilise pas ces données pour entraîner ses modèles et ne les conserve que pour une durée limitée.</li>
+</ul>
+
+<h2>5. Destinataires et sous-traitants</h2>
+<ul>
+<li>L’enseignant qui a créé les données, et les collègues de son espace si l’établissement a créé des comptes partagés ; l’administrateur de Mastery pour le support et la validation des inscriptions.</li>
+<li>Hébergement : {{HEBERGEUR}}.</li>
+<li>Intelligence artificielle : Anthropic, PBC (États-Unis).</li>
+<li>Annuaire des établissements : recherche dans l’annuaire public de l’Éducation nationale (aucune donnée personnelle transmise).</li>
+</ul>
+<p>Lorsque des données sont traitées hors de l’Union européenne, les transferts sont encadrés par les garanties prévues par le RGPD (clauses contractuelles types de la Commission européenne ou décision d’adéquation).</p>
+
+<h2>6. Durée de conservation</h2>
+<ul>
+<li>Données du compte et données des élèves : tant que le compte est actif, puis suppression dans un délai de 3 mois après la fermeture du compte ou à la demande de l’enseignant.</li>
+<li>Sauvegardes automatiques : 14 jours glissants.</li>
+<li>Journaux techniques : 12 mois au plus.</li>
+<li>Sessions de connexion des élèves : 120 jours au plus.</li>
+</ul>
+
+<h2>7. Sécurité</h2>
+<p>Connexion chiffrée (HTTPS), mots de passe chiffrés, espaces cloisonnés entre enseignants et établissements, limites d’usage contre les abus, sauvegarde quotidienne.</p>
+
+<h2>8. Cookies</h2>
+<p>Mastery n’utilise que des cookies strictement nécessaires : maintien de la connexion de l’enseignant ou de l’élève, et choix de la langue. Aucun cookie publicitaire ou de mesure d’audience ; aucun consentement n’est donc demandé.</p>
+
+<h2>9. Vos droits</h2>
+<p>Vous disposez d’un droit d’accès, de rectification, d’effacement, de limitation, d’opposition et de portabilité. Pour les données d’un élève, la demande est adressée à l’établissement ou à l’enseignant ; Mastery l’aide à y répondre. Écrivez à <a href="mailto:{{CONTACT}}">{{CONTACT}}</a>. Vous pouvez aussi saisir la CNIL (<a href="https://www.cnil.fr">cnil.fr</a>).</p>
+
+<h2>10. Mineurs</h2>
+<p>Les élèves peuvent être mineurs. Leurs données sont saisies par leur enseignant dans le cadre scolaire ; les élèves n’ont accès qu’à leurs propres quiz et résultats, avec le code personnel remis par l’enseignant.</p>
+
+</main>
+<footer><div class="wrap"><span>© 2026 Mastery · {{EDITEUR}}</span><span><a href="/cgu">Conditions d’utilisation</a> · <a href="/confidentialite">Confidentialité</a> · <a href="/">Accueil</a></span></div></footer>
+</body>
+</html>

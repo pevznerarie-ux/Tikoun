@@ -37,7 +37,7 @@ const EN_MSG = {"8 caractères minimum":"8 characters minimum","ANTHROPIC_API_KE
  "Ton inscription n'a pas été acceptée. Contacte l'équipe Mastery.":"Your sign-up was not accepted. Please contact the Mastery team.",
  "Trop d'essais : réessaie dans 15 minutes":"Too many attempts: try again in 15 minutes","Trop d'essais, réessaie dans 15 minutes":"Too many attempts: try again in 15 minutes",
  "Trop de recherches, réessaie dans quelques minutes":"Too many searches: try again in a few minutes","Tu ne peux pas te retirer tes propres droits":"You can't remove your own admin rights",
- "Un compte existe déjà avec cet e-mail":"An account already exists with this email","Indique ton école":"Please enter your school","École invalide":"Invalid school","Trop lourd":"Too large",
+ "Un compte existe déjà avec cet e-mail":"An account already exists with this email","Indique ton école":"Please enter your school","École invalide":"Invalid school","Trop lourd":"Too large","Accepte les conditions d'utilisation et la politique de confidentialité":"Please accept the terms of use and the privacy policy",
  "Indique le nom de l'école, son code postal (5 chiffres) et sa ville":"Enter the school's name, ZIP code (5 digits) and city",
  "Plafond quotidien d'appels IA atteint.":"Daily AI limit reached.","Plafond quotidien d'appels IA atteint pour ton compte : réessaie demain.":"Your daily AI limit is reached: try again tomorrow.",
  "Trop d'appels IA depuis cet appareil : réessaie dans une heure.":"Too many AI requests from this device: try again in an hour."};
@@ -163,10 +163,11 @@ async function accounts(req, res, url, p, u){
     if (USERS.some(v => v.email === email)) return sendJ(res, 409, {error:{message:"Un compte existe déjà avec cet e-mail"}});
     if (String(b.password || "").length < 8) return sendJ(res, 400, {error:{message:"Mot de passe : 8 caractères minimum"}});
     if (!String(b.nom || "").trim()) return sendJ(res, 400, {error:{message:"Indique ton nom"}});
+    if (!b.cgu) return sendJ(res, 400, {error:{message:"Accepte les conditions d'utilisation et la politique de confidentialité"}});
     const ecole = await checkEcole(b.ecole); if (!ecole || ecole.error) return sendJ(res, 400, {error:{message:ecole?.error || "Indique ton école"}});
     const id = crypto.randomBytes(8).toString("hex");
     const planDemande = PLANS.includes(b.plan) ? b.plan : "essentiel";
-    const n = {id, email, nom:String(b.nom).trim().slice(0, 80), role:"prof", plan:"essentiel", planDemande, statut:"en_attente", options:{exercices:false}, espace:id, ecole, affichage:AFF.includes(b.affichage) ? b.affichage : "les2", pw:hashPw(b.password), createdAt:new Date().toISOString(), inscription:"libre"};
+    const n = {id, email, nom:String(b.nom).trim().slice(0, 80), role:"prof", plan:"essentiel", planDemande, statut:"en_attente", options:{exercices:false}, espace:id, ecole, affichage:AFF.includes(b.affichage) ? b.affichage : "les2", pw:hashPw(b.password), createdAt:new Date().toISOString(), cguAt:new Date().toISOString(), inscription:"libre"};
     USERS.push(n); saveUsers(); console.log(`Inscription à valider · ${email} · ${planDemande} · ${ecole.nom} (${ecole.verifiee ? "vérifiée " + ecole.uai : "non vérifiée"})`);
     return sendJ(res, 200, {pending:true, user:{nom:n.nom, email:n.email, ecole:n.ecole, planDemande}});
   }
@@ -384,12 +385,28 @@ function allowCall(ip, uid){
   if (list.length >= 120) return "Trop d'appels IA depuis cet appareil : réessaie dans une heure.";
   list.push(now); perIp.set(ip, list); counter.n++; perUser.set(k, nu + 1); return null;
 }
+/* Confidentialité : les noms complets des élèves de l'espace ne partent jamais vers l'IA (remplacés par « l'élève »). */
+const reEsc = x => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+function scrubNames(body, u){
+  const names = new Set();
+  for (const [k, v] of DOCS) if (k.startsWith("classes/") && isObj(v) && (u.role === "admin" || v.espace === u.espace))
+    for (const e of v.eleves || []){ const a = String(e.prenom || "").trim(), b = String(e.nom || "").trim(); if (a && b){ names.add(a + " " + b); names.add(b + " " + a); } }
+  if (!names.size || !Array.isArray(body?.messages)) return;
+  const list = [...names].sort((x, y) => y.length - x.length).slice(0, 4000);
+  const res = []; for (let i = 0; i < list.length; i += 300) res.push(new RegExp("(^|[^\\p{L}])(" + list.slice(i, i + 300).map(reEsc).join("|") + ")(?![\\p{L}])", "giu"));
+  const clean = t => res.reduce((acc, re) => acc.replace(re, (m, pre) => pre + "l'élève"), t);
+  for (const m of body.messages){
+    if (typeof m.content === "string") m.content = clean(m.content);
+    else if (Array.isArray(m.content)) for (const c of m.content) if (c && c.type === "text" && typeof c.text === "string") c.text = clean(c.text);
+  }
+}
 async function aiProxy(req, res, u){
   if (!env("ANTHROPIC_API_KEY")) return sendJ(res, 503, {error:{message:"ANTHROPIC_API_KEY manquante sur le serveur"}});
   if (!u) return sendJ(res, 401, {error:{message:"Connexion requise"}});
   let body; try { body = await readJSON(req, 40e6); } catch(e){ return sendJ(res, e.message === "too_large" ? 413 : 400, {error:{message:"Requête invalide"}}); }
   if (body?.feature === "exercices" && !entitled(u)) return sendJ(res, 403, {error:{message:"Option Exercices non activée pour ce compte (abonnement Pro)"}});
   const stop = allowCall(ipOf(req), u.id); if (stop) return sendJ(res, 429, {error:{message:stop}});
+  scrubNames(body, u);
   const M = MODELS(), model = M[body?.tier] || M.default;
   const r = await fetch((env("ANTHROPIC_BASE_URL") || "https://api.anthropic.com") + "/v1/messages", {method:"POST",
     headers:{"content-type":"application/json", "x-api-key":env("ANTHROPIC_API_KEY"), "anthropic-version":"2023-06-01"},
@@ -409,6 +426,30 @@ if (!USERS.length && validEmail(env("ADMIN_EMAIL").toLowerCase()) && env("ADMIN_
   saveUsers(); console.log("Compte administrateur créé depuis ADMIN_EMAIL");
 }
 migrateEspaces();
+/* ---------- Sauvegardes automatiques : une copie complète par jour sur le Volume, 14 jours gardés ---------- */
+const BAKDIR = path.join(DATA, "backups"); fs.mkdirSync(BAKDIR, {recursive:true});
+function autoBackup(){
+  try {
+    const f = path.join(BAKDIR, "mastery-" + new Date().toISOString().slice(0, 10) + ".json");
+    if (fs.existsSync(f) || (!USERS.length && !DOCS.size)) return;
+    writeAtomic(f, {mastery:1, at:new Date().toISOString(), users:USERS, docs:Object.fromEntries(DOCS)});
+    const all = fs.readdirSync(BAKDIR).filter(x => /^mastery-\d{4}-\d{2}-\d{2}\.json$/.test(x)).sort();
+    for (const x of all.slice(0, Math.max(0, all.length - (Number(env("BACKUP_KEEP")) || 14)))) fs.rmSync(path.join(BAKDIR, x), {force:true});
+    console.log("Sauvegarde automatique :", path.basename(f));
+  } catch(e){ console.warn("Sauvegarde automatique impossible :", e.message); }
+}
+setTimeout(autoBackup, 60e3); setInterval(autoBackup, 3600e3);
+function backups(req, res, p, u){
+  if (!u) return sendJ(res, 401, {error:{message:"Connexion requise"}});
+  if (u.role !== "admin") return sendJ(res, 403, {error:{message:"Réservé à l'administrateur"}});
+  if (p === "/api/backups" && req.method === "GET")
+    return sendJ(res, 200, {persistent:PERSISTENT, backups:fs.readdirSync(BAKDIR).filter(x => /^mastery-[\d-]+\.json$/.test(x)).sort().reverse().map(x => ({nom:x, taille:fs.statSync(path.join(BAKDIR, x)).size}))});
+  if (p === "/api/backups/now" && req.method === "POST"){ fs.rmSync(path.join(BAKDIR, "mastery-" + new Date().toISOString().slice(0, 10) + ".json"), {force:true}); autoBackup(); return sendJ(res, 200, {ok:true}); }
+  const m = p.match(/^\/api\/backups\/(mastery-\d{4}-\d{2}-\d{2}\.json)$/);
+  if (m && req.method === "GET"){ const f = path.join(BAKDIR, m[1]); if (!fs.existsSync(f)) return sendJ(res, 404, {error:{message:"Document introuvable"}});
+    res.writeHead(200, {"Content-Type":TYPES[".json"], "Content-Disposition":`attachment; filename="${m[1]}"`, "Cache-Control":"no-store"}); return fs.createReadStream(f).pipe(res); }
+  return sendJ(res, 404, {error:{message:"Route inconnue"}});
+}
 http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, "http://x"); let p = decodeURIComponent(url.pathname);
@@ -422,6 +463,7 @@ http.createServer(async (req, res) => {
     if (p === "/eleve" || p === "/eleve/") p = "/eleve.html";
     if (p.startsWith("/api/")){
       if (req.method === "POST" && p === "/api/ai") return await aiProxy(req, res, u);
+      if (p.startsWith("/api/backups")) return backups(req, res, p, u);
       if (p.startsWith("/api/db") || p.startsWith("/api/files") || p === "/api/export") return await storage(req, res, url, p, u);
       return await accounts(req, res, url, p, u);
     }
@@ -430,6 +472,12 @@ http.createServer(async (req, res) => {
       return send(res, 200, "window.TIKOUN_CONFIG = " + JSON.stringify({aiEndpoint:env("ANTHROPIC_API_KEY") ? "/api/ai" : "", storage:"server", accounts:true, signup:signupOpen(), persistent:PERSISTENT}) + ";\n", TYPES[".js"], {"Cache-Control":"no-store"});
     if (p === "/" || p === "") p = u ? "/index.html" : "/landing.html";
     if (p === "/app" || p === "/app/") p = "/index.html";
+    const LEGAL = {"/cgu":"cgu", "/terms":"cgu", "/confidentialite":"confidentialite", "/privacy":"confidentialite"}[p.replace(/\/$/, "")];
+    if (LEGAL){ const f = path.join(ROOT, LEGAL + (res._lang === "en" ? ".en" : "") + ".html"); const en = res._lang === "en";
+      const V = {EDITEUR:env("LEGAL_NAME") || "Mastery", ADRESSE:env("LEGAL_ADDRESS") || (en ? "France" : "France"), CONTACT:env("LEGAL_EMAIL") || env("ADMIN_EMAIL") || "contact",
+        HEBERGEUR:env("LEGAL_HOST") || "Railway Corporation (railway.com), 548 Market St, San Francisco, CA 94104, " + (en ? "USA" : "États-Unis")};
+      const html = fs.readFileSync(f, "utf8").replace(/\{\{(EDITEUR|ADRESSE|CONTACT|HEBERGEUR)\}\}/g, (m, k) => V[k].replace(/[<>&"]/g, c => ({"<":"&lt;", ">":"&gt;", "&":"&amp;", '"':"&quot;"}[c])));
+      return send(res, 200, html, TYPES[".html"], {"Cache-Control":"no-cache"}); }
     if (res._lang === "en" && /\.html$/.test(p) && fs.existsSync(path.join(ROOT, p.replace(/\.html$/, ".en.html")))) p = p.replace(/\.html$/, ".en.html");
     const file = path.normalize(path.join(ROOT, p));
     if (!file.startsWith(ROOT + path.sep) || file.startsWith(path.resolve(DATA)) || /^\/(data|src)(\/|$)/.test(p) || p.split("/").some(s => s.startsWith(".")) || /server\.js$|package(-lock)?\.json$|railway\.json$/.test(file)) return send(res, 404, "Introuvable");

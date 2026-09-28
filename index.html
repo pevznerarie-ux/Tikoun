@@ -897,6 +897,14 @@ function warpBox(cv, H, bx, pad = 8){
     const q = (Y * SW + X) * 4; od.data[o] = src[q]; od.data[o + 1] = src[q + 1]; od.data[o + 2] = src[q + 2]; od.data[o + 3] = 255; }
   oc.putImageData(od, 0, 0); return out;
 }
+/* Confidentialité : avant d'envoyer une page entière à l'IA, on masque l'en-tête (nom de l'élève, classe, école) */
+function maskHeader(cv, H, boxes){
+  const top = Math.max(0, Math.min(...boxes.map(b => b.y)) - 6);
+  const o = document.createElement("canvas"); o.width = cv.width; o.height = cv.height; const g = o.getContext("2d"); g.drawImage(cv, 0, 0);
+  if (!isFinite(top) || top <= 0) return o;
+  const pts = [[-40, -40], [834, -40], [834, top], [-40, top]].map(([x, y]) => applyH(H, x, y));
+  g.fillStyle = "#fff"; g.beginPath(); pts.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.closePath(); g.fill(); return o;
+}
 function inkRatio(cv, H, b){ /* part de pixels foncés dans le cadre (lignes grises et bordure exclues) */
   const d = pix(cv), SW = cv.width, SH = cv.height; let dark = 0, n = 0;
   for (let j = 0; j < 24; j++) for (let i = 0; i < 80; i++){
@@ -983,7 +991,7 @@ async function processPage(it){
         const res = await ai(gradePrompt(c, cp, aiQ, "crops"), {images: await Promise.all(aiB2.map(b => toBlob(crops[b.q], .8)))});
         arr = Array.isArray(res?.reponses) ? res.reponses : []; bon = res;
       } else {
-        const big = scaled(it.cv, 1600), W = big.width, H = big.height;
+        const big = scaled(Hm ? maskHeader(it.cv, Hm, boxes) : it.cv, 1600), W = big.width, H = big.height;
         const many = maxImg >= 2;
         const imgs = many ? [await toBlob(crop(big, 0, 0, W, H * 0.56)), await toBlob(crop(big, 0, H * 0.44, W, H * 0.56))] : [await toBlob(big)];
         const res = await ai(gradePrompt(c, cp, aiQ, many ? "halves" : "page"), {images:imgs});
@@ -1624,7 +1632,9 @@ function vReglages(){
   ${SRV_PERSIST ? "" : `<p class="banner">⚠ Le serveur n'a pas de Volume : les données seront effacées au prochain déploiement. Railway → service → Volume, monté sur /data.</p>`}
   <section class="panel grid"><div class="row"><button class="btn" id="srv-export">Télécharger une sauvegarde (données)</button><button class="btn ghost sm" id="srv-out">Se déconnecter de cet appareil</button></div>
     <div class="grid" style="gap:6px;border-top:1px solid var(--line);padding-top:12px"><b>Données saisies avant sur cet appareil ?</b><div class="small muted">Si tu avais utilisé Mastery en mode local sur ce navigateur, transfère-les sur le serveur (une seule fois).</div>
-    <div class="row"><button class="btn" id="srv-migrate">Transférer vers le serveur</button></div><div class="status" id="srv-st"></div></div></section>`;
+    <div class="row"><button class="btn" id="srv-migrate">Transférer vers le serveur</button></div><div class="status" id="srv-st"></div></div></section>
+  ${S.me?.role === "admin" ? `<section class="panel grid"><div class="row" style="justify-content:space-between"><div><b>Sauvegardes automatiques</b><div class="small muted">Une copie complète de toute la plateforme chaque jour, gardée 14 jours sur le serveur.</div></div><button class="btn ghost sm" id="bak-now">Sauvegarder maintenant</button></div>
+    <div id="bak-list" class="small muted">Chargement…</div></section>` : ""}`;
   return `<div class="head"><div><h2>Sauvegarde</h2><p>${SB ? "Les données sont stockées en ligne." : "Les données sont stockées dans ce navigateur. Exporte régulièrement une sauvegarde : tu peux l'importer sur un autre ordinateur ou chez un collègue."}</p></div></div>
   ${SB ? `<section class="panel grid"><p class="small">Connecté : <b>${esc(SB_USER?.email || "—")}</b> · <button class="btn sm" id="sb-out">Se déconnecter</button></p>
     ${SB_USER ? `<div class="row"><button class="btn" id="sb-migrate">Transférer les données de cet appareil en ligne</button></div><div class="status" id="sb-st"></div>` : ""}</section>` : `
@@ -1795,6 +1805,7 @@ async function startServer(){
 document.addEventListener("click", async ev => {
   const t = ev.target.closest("button"); if (!t) return;
   if (t.id === "srv-export"){ location.href = "/api/export"; return; }
+  if (t.id === "bak-now"){ t.disabled = true; await fetch("/api/backups/now", {method:"POST"}).catch(() => {}); t.disabled = false; loadBackups(); return; }
   if (t.id === "srv-out"){ await fetch("/api/logout", {method:"POST"}); location.reload(); return; }
   if (t.id === "srv-migrate"){ const st = $("#srv-st"); st.innerHTML = `<span class="thinking">Transfert…</span>`;
     try { IDB = IDB || await idbOpen(); const docs = await idbAll("docs"), blobs = await idbAll("blobs"); let n = 0;
@@ -1803,6 +1814,15 @@ document.addEventListener("click", async ev => {
       st.textContent = `${Object.keys(docs).length} élément(s) et ${n} photo(s) transférés sur le serveur.`; } catch(e){ console.error(e); st.textContent = "Transfert impossible (rien à transférer sur cet appareil ?)."; }
   }
 });
+
+/* Liste des sauvegardes automatiques (administrateur) */
+async function loadBackups(){
+  const el = document.getElementById("bak-list"); if (!el) return;
+  try { const j = await (await fetch("/api/backups")).json(); const l = j.backups || [];
+    el.innerHTML = (j.persistent ? "" : `<p class="banner">⚠ Sans Volume Railway, ces sauvegardes sont effacées à chaque déploiement.</p>`) + (l.length ? `<table class="tbl"><tbody>${l.map(b => `<tr><td>${new Date(b.nom.slice(8, 18) + "T12:00").toLocaleDateString(document.documentElement.lang === "en" ? "en-US" : "fr-FR", {day:"numeric", month:"long", year:"numeric"})}</td><td class="muted">${b.taille < 1e6 ? Math.max(1, Math.round(b.taille / 1e3)) + " Ko" : (b.taille / 1e6).toFixed(1) + " Mo"}</td><td style="text-align:right"><a class="btn ghost sm" style="color:inherit;text-decoration:none" href="/api/backups/${esc(b.nom)}">Télécharger</a></td></tr>`).join("")}</tbody></table>` : "Première sauvegarde automatique dans quelques minutes.");
+  } catch(e){ el.textContent = "Liste indisponible."; }
+}
+new MutationObserver(() => { const el = document.getElementById("bak-list"); if (el && !el.dataset.done){ el.dataset.done = 1; loadBackups(); } }).observe(document.documentElement, {childList:true, subtree:true});
 
 
 /* ================= Navigation : de vraies pages, avec adresse, Précédent / Suivant ================= */
@@ -1990,6 +2010,7 @@ function vAuth(){
     <h3 style="margin-top:6px">Ton forfait <span class="chip ok" style="vertical-align:middle">Bêta gratuite</span></h3>
     <div class="form-row">${[["essentiel","Essentiel","Contrôles générés par l'IA, feuilles avec QR code, scan et correction des copies, vue classe, rattrapages individuels."],["pro","Pro","Tout Essentiel + exercices en ligne : quiz régénérables, accès élève par code, suivi par notion."]].map(([k, t, d]) => `<label class="panel" style="padding:12px;cursor:pointer;display:grid;gap:4px;${(S.regPlan || "essentiel") === k ? "border-color:var(--blue);box-shadow:0 0 0 2px var(--blue-soft)" : ""}"><span class="row" style="gap:8px"><input type="radio" style="width:auto" name="plan" data-plan="${k}"${(S.regPlan || "essentiel") === k ? " checked" : ""}><b>${t}</b></span><span class="small muted">${d}</span></label>`).join("")}</div>
     <p class="small muted" style="margin:0">Pendant la bêta, les deux forfaits sont gratuits : aucun paiement n'est demandé. Ton inscription sera validée par l'équipe Mastery.</p>
+    <label class="small" style="display:flex;gap:8px;align-items:flex-start;cursor:pointer"><input type="checkbox" id="rg-cgu" style="width:auto;margin-top:3px" ${S.regCgu ? "checked" : ""}><span>J'accepte les <a href="/cgu" target="_blank" rel="noopener" style="color:var(--gold)">conditions d'utilisation</a> et la <a href="/confidentialite" target="_blank" rel="noopener" style="color:var(--gold)">politique de confidentialité</a>. Je m'engage à informer les familles de l'utilisation de Mastery pour mes classes.</span></label>
     <div class="row"><button class="btn primary" id="rg-go">Envoyer ma demande d'inscription</button><button class="btn ghost" id="rg-back">J'ai déjà un compte</button></div><div class="status" id="au-st"></div></section>`;
   return `<div class="head"><div><h2>Connexion</h2><p>Crée, imprime et corrige tes contrôles avec l'IA.</p></div></div>
   <section class="panel grid" style="max-width:440px">
@@ -2001,6 +2022,7 @@ function vAuth(){
     <p class="small muted" style="margin:0"><a href="?lang=fr">Français</a> · <a href="?lang=en">English</a></p></section>`;
 }
 const KEEP = ["rg-nom","rg-mail","rg-pw","me-nom","ec-adr","ec-ville","ec-q","ec-cp"]; let kept = {}; S.form = {};
+document.addEventListener("change", ev => { if (ev.target.id === "rg-cgu") S.regCgu = ev.target.checked; });
 document.addEventListener("input", ev => { const el = ev.target; if (KEEP.includes(el.id)) S.form[el.id] = el.value; if (el.id === "ec-q") S.ec.q = el.value; if (el.id === "ec-cp") S.ec.cp = el.value; });
 const keepForm = () => { kept = {}; for (const id of KEEP){ const el = $("#" + id); if (el) kept[id] = el.value; } const a = document.querySelector('input[name="aff"]:checked'); if (a) kept.aff = a.dataset.aff; };
 const restoreForm = () => { for (const [id, v] of Object.entries(kept)){ if (id === "aff"){ const r = document.querySelector(`input[data-aff="${v}"]`); if (r) r.checked = true; continue; } const el = $("#" + id); if (el) el.value = v; } };
@@ -2091,8 +2113,9 @@ document.addEventListener("click", async ev => {
       if (!e.nom || !/^\d{5}$/.test(e.cp) || !e.ville){ toast("Nom, code postal (5 chiffres) et ville sont nécessaires."); return; }
       keepForm(); S.ec.sel = e; S.ec.manual = false; render(); restoreForm(); return; }
     if (t.id === "rg-go"){ if (!S.ec.sel){ st().textContent = "Choisis ton établissement (ou saisis-le manuellement)."; return; }
+      if (!$("#rg-cgu")?.checked){ st().textContent = "Coche la case pour accepter les conditions d'utilisation."; return; }
       st().innerHTML = `<span class="thinking">Création…</span>`;
-      const j = await api("/api/register", {method:"POST", body:JSON.stringify({nom:$("#rg-nom").value, email:$("#rg-mail").value, password:$("#rg-pw").value, affichage:affValue(), plan:document.querySelector('input[name="plan"]:checked')?.dataset.plan || "essentiel", ecole:S.ec.sel})});
+      const j = await api("/api/register", {method:"POST", body:JSON.stringify({nom:$("#rg-nom").value, email:$("#rg-mail").value, password:$("#rg-pw").value, affichage:affValue(), plan:document.querySelector('input[name="plan"]:checked')?.dataset.plan || "essentiel", ecole:S.ec.sel, cgu:true})});
       S.pend = j.user; S.auth = "pending"; history.replaceState(null, "", "#/connexion"); return render(); }
     if (t.id === "me-save"){ const body = {nom:$("#me-nom").value, affichage:affValue()}; if (S.ec.sel && JSON.stringify(S.ec.sel) !== JSON.stringify(S.me.ecole)) body.ecole = S.ec.sel;
       const j = await api("/api/me", {method:"PATCH", body:JSON.stringify(body)}); S.me = j.user; S.ec.sel = j.user.ecole; render(); toast(j.user.ecole?.verifiee === false && body.ecole ? "Enregistré · école non vérifiée" : "Enregistré"); return; }
