@@ -620,8 +620,10 @@ function confusions(ia, vrai){
 }
 function conseils(){
   const cnt = new Map();
-  for (const s of BANQUE) if (s.texteIA && s.texte && s.texteIA !== s.texte) for (const [a, v] of confusions(s.texteIA, s.texte)){ const k = a + "→" + v; const c = cnt.get(k) || {ia:a, vrai:v, n:0, langues:new Set()}; c.n++; c.langues.add(s.langue || ""); cnt.set(k, c); }
-  const auto = [...cnt.entries()].filter(([k, c]) => c.n >= 2 && !REGLES.off.includes(k)).sort((x, y) => y[1].n - x[1].n).slice(0, 60).map(([k, c]) => ({k, ia:c.ia, vrai:c.vrai, n:c.n, langues:[...c.langues].filter(Boolean)}));
+  for (const s of BANQUE){
+    const pairs = Array.isArray(s.corrections) ? s.corrections.map(x => [x.ia, x.vrai]) : s.texteIA && s.texte && s.texteIA !== s.texte ? confusions(s.texteIA, s.texte) : [];
+    for (const [a, v] of pairs){ if (!a || a === v) continue; const k = a + "→" + v; const c = cnt.get(k) || {ia:a, vrai:v, n:0, langues:new Set(), explicite:false}; c.n++; c.langues.add(s.langue || ""); if (Array.isArray(s.corrections)) c.explicite = true; cnt.set(k, c); } }
+  const auto = [...cnt.entries()].filter(([k, c]) => (c.n >= 2 || c.explicite) && !REGLES.off.includes(k)).sort((x, y) => y[1].n - x[1].n).slice(0, 60).map(([k, c]) => ({k, ia:c.ia, vrai:c.vrai, n:c.n, langues:[...c.langues].filter(Boolean)}));
   return {regles:REGLES.texte || "", ajouts:REGLES.ajouts || [], off:REGLES.off || [], confusions:auto};
 }
 function banqueStats(){
@@ -636,7 +638,8 @@ function addSample(u, b){
   if (!asset || !normTxt(texte)) return null;
   const sc = b.texteIA != null ? scoreOf(texteIA, texte) : {cer:null, wer:null};
   const s = {id:crypto.randomBytes(8).toString("hex"), asset, texte, texteIA, ...sc, matiere:String(b.matiere || "").slice(0, 60), langue:String(b.langue || "").slice(0, 40), niveau:String(b.niveau || "").slice(0, 30),
-    source:SRC_OK.includes(b.source) ? b.source : "correction", par:u.id, at:new Date().toISOString()};
+    source:SRC_OK.includes(b.source) ? b.source : "correction", par:u.id, at:new Date().toISOString(),
+    ...(Array.isArray(b.corrections) ? {corrections:b.corrections.filter(x => x && typeof x.ia === "string" && typeof x.vrai === "string").map(x => ({ia:x.ia.slice(0, 80), vrai:x.vrai.slice(0, 80)})).slice(0, 100)} : {})};
   const i = BANQUE.findIndex(x => x.asset === asset);
   if (i >= 0) BANQUE[i] = {...BANQUE[i], ...s, id:BANQUE[i].id, texteIA:BANQUE[i].texteIA || s.texteIA, ...(BANQUE[i].texteIA ? scoreOf(BANQUE[i].texteIA, texte) : sc)}; else BANQUE.push(s);
   if (BANQUE.length > 60000) BANQUE.splice(0, BANQUE.length - 60000);

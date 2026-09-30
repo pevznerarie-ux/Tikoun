@@ -397,6 +397,9 @@ function memDB(init = {}, persist = null){
     onSnapshot: (fn) => { const s = {col, fn}; subs.push(s); setTimeout(() => fn(snapOf(col))); return () => subs.splice(subs.indexOf(s), 1); } }) };
 }
 
+/* Écran de chargement : rien n'est affiché tant que les données du serveur ne sont pas arrivées (évite l'accueil vide qui « saute ») */
+let DATA_READY = false;
+const vLoading = () => `<div style="min-height:55vh;display:grid;place-items:center"><div style="display:grid;justify-items:center;gap:14px;color:var(--muted)"><div class="spin" aria-hidden="true" style="width:28px;height:28px;border:2px solid var(--line);border-top-color:var(--gold);border-radius:50%;animation:spin .8s linear infinite"></div><span class="small">Loading your classes…</span></div></div><style>@keyframes spin{to{transform:rotate(360deg)}}</style>`;
 /* ================= Store ================= */
 const store = {classes:[], cours:[], controles:[], feuilles:{}, ecritures:{}, bilans:{}};
 const S = {
@@ -496,8 +499,9 @@ function render(){
   if (keep?.typing && a.dataset.live !== undefined){ skipped = true; return; } // don't clobber a field being typed
   skipped = false;
   $$(".tab").forEach(t => t.setAttribute("aria-selected", t.dataset.r === navKey()));
-  const V = S.auth ? vAuth : (typeof SB !== "undefined" && SB && !SB_USER) ? vLogin : (typeof NEED_CODE !== "undefined" && NEED_CODE) ? vCode : {home:vHome, classes:vClasses, new:vNew, edit:vEdit, scan:vScan, correct:vCorrect, analyse:vAnalyse, suivi:vSuivi, banque:vBanque, direction:vDirection, reglages:vReglages, controles:vControles, exercices:vExercices, quiznew:vQuizNew, quiz:vQuiz, compte:vCompte, comptes:vComptes, entrainement:vEntrainement}[S.view] || vHome;
-  $("#tabs").hidden = V === vLogin || V === vCode || V === vAuth;
+  const LOADING = window.TIKOUN_CONFIG?.storage === "server" && !S.auth && (!S.me || typeof DATA_READY === "undefined" || !DATA_READY);
+  const V = LOADING ? vLoading : S.auth ? vAuth : (typeof SB !== "undefined" && SB && !SB_USER) ? vLogin : (typeof NEED_CODE !== "undefined" && NEED_CODE) ? vCode : {home:vHome, classes:vClasses, new:vNew, edit:vEdit, scan:vScan, correct:vCorrect, analyse:vAnalyse, suivi:vSuivi, banque:vBanque, direction:vDirection, reglages:vReglages, controles:vControles, exercices:vExercices, quiznew:vQuizNew, quiz:vQuiz, compte:vCompte, comptes:vComptes, entrainement:vEntrainement}[S.view] || vHome;
+  $("#tabs").hidden = V === vLogin || V === vCode || V === vAuth || V === vLoading;
   { const acc = !!window.TIKOUN_CONFIG?.accounts; const tg = (id, h) => { const e = document.getElementById(id); if (e) e.hidden = h; };
     tg("tabComptes", !isAdmin()); tg("tabIA", !isAdmin()); { const n = (S.users || []).filter(u => u.statut === "en_attente").length, tc = document.getElementById("tabComptes"); if (tc) tc.textContent = n ? `Accounts (${n})` : "Accounts"; } tg("tabCompte", !(acc && S.me)); tg("tabReglages", acc || !STANDALONE); tg("tabDir", acc && !isBoss()); }
   let html = V();
@@ -1818,7 +1822,7 @@ async function startServer(){
   $("#caps").textContent = "Connecting to server…";
   try { DB = await serverDB(); ASSETS = serverAssets; SERVERSTORE = true; LOCAL = false; subscribeStore(); }
   catch(e){ if (e?.code !== "need_code"){ console.error(e); toast("Server unreachable: try again in a moment.", 6000); } }
-  refreshCaps(); render();
+  refreshCaps(); setTimeout(() => { DATA_READY = true; render(); }, 0);
 }
 document.addEventListener("click", async ev => {
   const t = ev.target.closest("button"); if (!t) return;
@@ -2852,7 +2856,7 @@ function vEntrainement(){
   ${months.length > 1 ? `<section class="panel"><h3>Accuracy over time (correct words)</h3><div class="row" style="align-items:flex-end;gap:10px;height:120px;margin-top:8px">${months.slice(-12).map(m => `<div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:1"><span class="small num">${pctS(m.mots)}</span><div style="width:100%;max-width:36px;height:${Math.max(4, Math.round((m.mots || 0) * 80))}px;background:var(--gold);border-radius:3px"></div><span class="small muted">${esc(m.k.slice(5))}/${esc(m.k.slice(2, 4))}</span></div>`).join("")}</div></section>` : ""}
 
   <section class="panel grid"><div class="row between"><h3>Add papers</h3><label class="btn primary" for="tr-files">Choose photos or PDFs</label><input id="tr-files" type="file" accept="image/*,application/pdf" multiple hidden></div>
-    <p class="small muted" style="margin:0">Hide or crop out the student's name before saving: drag on the image to keep only the handwriting. One answer box or a few lines works better than a full page.</p>
+    <p class="small muted" style="margin:0">For each photo: box a passage, the AI reads it, you correct only the wrong words. You can save several passages from the same paper.</p>
     ${it ? trItem(it) : `<p class="small muted" style="margin:0">No papers waiting.</p>`}</section>
 
   <section class="panel grid"><h3>Reading hints sent to the AI</h3>
@@ -2872,24 +2876,33 @@ function vEntrainement(){
       <div class="row"><button class="btn sm ghost" data-tred="${s.id}">Edit</button><button class="btn sm ghost" data-trdel="${s.id}">Delete</button></div></div>`).join("") || `<p class="small muted">The bank is empty for now.</p>`}</section>`;
 }
 function trItem(it){
-  const n = S.tr.queue.length, m = S.tr.meta;
-  return `<div class="grid" style="grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:18px;align-items:start">
-    <div class="grid" style="gap:8px"><div class="small muted">Paper ${S.tr.cur + 1} sur ${n} · ${esc(it.name)}</div>
-      <div id="tr-stage" style="position:relative;background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden;touch-action:none;cursor:crosshair"><canvas id="tr-cv" style="width:100%;display:block"></canvas><div id="tr-box" style="position:absolute;border:2px solid var(--gold);background:rgba(183,134,43,.12);display:none;pointer-events:none"></div></div>
-      <div class="row"><button class="btn sm" id="tr-crop">Keep selection</button><button class="btn sm ghost" id="tr-rot">Rotate</button><button class="btn sm ghost" id="tr-reset">Original image</button></div></div>
-    <div class="grid" style="gap:10px">
-      <div class="form-row"><div class="field"><label for="tr-mat">Subject</label><select id="tr-mat">${matOpts(m.matiere || myMatieres()[0])}</select></div><div class="field"><label for="tr-lang">Language</label><select id="tr-lang">${selOpts(LANGUES, m.langue || langueDef(""))}</select></div></div>
-      <div class="field"><label for="tr-niv">Level</label><select id="tr-niv">${selOpts(NIVEAUX, m.niveau || NIVEAUX[3])}</select></div>
-      <div class="row"><button class="btn" id="tr-read" ${it.reading ? "disabled" : ""}>${it.texteIA != null ? "Re-read with AI" : "Read with AI"}</button><span class="small muted" id="tr-rst">${it.reading ? `<span class="thinking">Reading…</span>` : it.texteIA != null ? "Correct the text below: it must be exactly what is written, mistakes included." : ""}</span></div>
-      <div class="field"><label for="tr-txt">Exact handwritten text</label><textarea id="tr-txt" dir="auto" rows="9" data-live>${esc(it.texte ?? it.texteIA ?? "")}</textarea></div>
-      <div class="row"><button class="btn primary" id="tr-save">Save and next</button><button class="btn ghost" id="tr-skip">Skip</button></div></div></div>`;
+  const n = S.tr.queue.length, m = S.tr.meta, P = it.passage;
+  const meta = `<div class="form-row" style="grid-template-columns:repeat(3,minmax(0,1fr))"><div class="field"><label for="tr-mat">Subject</label><select id="tr-mat">${matOpts(m.matiere || myMatieres()[0])}</select></div><div class="field"><label for="tr-lang">Language</label><select id="tr-lang">${selOpts(LANGUES, m.langue || langueDef(""))}</select></div><div class="field"><label for="tr-niv">Level</label><select id="tr-niv">${selOpts(NIVEAUX, m.niveau || NIVEAUX[3])}</select></div></div>`;
+  const head = `<div class="row between"><span class="small muted">Paper ${S.tr.cur + 1} sur ${n} · ${esc(it.name)}${it.faits ? ` · <b>${it.faits}</b> passage(s) saved` : ""}</span><div class="row"><button class="btn sm ghost" id="tr-skip">${it.faits ? "Next paper" : "Skip this paper"}</button></div></div>`;
+  if (!P) return `<div class="grid" style="gap:12px">${head}${meta}
+    <p style="margin:0"><b>1.</b> Draw a box around handwritten text: a few words or a few lines, without the student's name.</p>
+    <div id="tr-stage" style="position:relative;background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden;touch-action:none;cursor:crosshair;max-width:900px"><canvas id="tr-cv" style="width:100%;display:block"></canvas><div id="tr-box" style="position:absolute;border:2px solid var(--gold);background:rgba(183,134,43,.12);display:none;pointer-events:none"></div></div>
+    <div class="row"><button class="btn primary" id="tr-go">Read this passage</button><button class="btn sm ghost" id="tr-rot">Rotate photo</button></div></div>`;
+  const lines = P.words || [], ne = Object.keys(P.edits || {}).length;
+  const word = (w, key) => { const e = P.edits?.[key];
+    if (S.tr.editing === key) return `<span class="row" style="gap:4px"><input id="tr-wed" dir="auto" value="${esc(e ?? w)}" style="width:${Math.max(6, (e ?? w).length + 3)}ch;padding:6px 8px"><button class="btn sm primary" data-wok="${key}" aria-label="Submit">✓</button></span>`;
+    return e != null ? `<button class="btn sm" data-w="${key}" style="border-color:var(--gold);background:#FBF3E2" title="Click to edit"><s class="muted">${esc(w)}</s>&nbsp;${e ? esc(e) : "<i>deleted</i>"}</button>`
+      : `<button class="btn sm ghost" data-w="${key}" style="border:1px solid var(--line)">${esc(w)}</button>`; };
+  return `<div class="grid" style="gap:12px">${head}${meta}
+    <div style="background:#fff;border:1px solid var(--line);border-radius:8px;padding:10px;display:grid;place-items:center"><img src="${P.url}" alt="Selected passage" style="max-width:100%;max-height:260px"></div>
+    ${P.reading ? `<p class="small"><span class="thinking">The AI is reading the passage…</span></p>` : `
+    <p style="margin:0"><b>2.</b> Here's what the AI read. Click each wrong word and type the right one (empty = extra word; several words allowed for a missing word).</p>
+    <div class="grid" style="gap:8px;padding:12px;background:var(--paper);border:1px solid var(--line);border-radius:8px">${lines.length ? lines.map((l, li) => `<div dir="auto" class="row" style="gap:6px;flex-wrap:wrap">${l.map((w, wi) => word(w, li + ":" + wi)).join("")}<button class="btn sm ghost" data-wadd="${li}" style="border:1px dashed var(--gold);color:var(--muted)" title="Missing word at end of line">+ missing word</button>${(P.adds?.[li] || []).map((a, ai) => `<span class="chip" style="background:#FBF3E2">+ ${esc(a)} <button class="btn sm ghost" style="padding:0 4px" data-wadx="${li}:${ai}" aria-label="Remove">×</button></span>`).join("")}</div>`).join("") : `<span class="small muted">The AI read nothing: type the text with the + below.</span><div><button class="btn sm ghost" data-wadd="0">+ Add the text</button></div>`}</div>
+    <div class="row"><button class="btn primary" id="tr-save">${ne || Object.values(P.adds || {}).some(a => a.length) ? `Save corrections` : "All correct: save"}</button><button class="btn ghost" id="tr-redo">Choose another passage</button></div>`}</div>`;
 }
-/* Image courante : dessin, sélection, recadrage */
+const trTokens = t => String(t || "").split(/\n/).map(l => l.trim().split(/\s+/).filter(Boolean)).filter(l => l.length);
+function trFinal(P){ return (P.words.length ? P.words : [[]]).map((l, li) => [...l.map((w, wi) => P.edits?.[li + ":" + wi] ?? w), ...(P.adds?.[li] || [])].filter(Boolean).join(" ")).filter(Boolean).join("\n"); }
+function trPairs(P){ const out = []; P.words.forEach((l, li) => l.forEach((w, wi) => { const e = P.edits?.[li + ":" + wi]; if (e != null && e !== w) out.push({ia:w, vrai:e}); })); return out; }
 function trDraw(){
   const it = S.tr.queue[S.tr.cur], cv = $("#tr-cv"); if (!it || !cv) return;
   cv.width = it.cv.width; cv.height = it.cv.height; cv.getContext("2d").drawImage(it.cv, 0, 0);
 }
-new MutationObserver(() => { const cv = document.getElementById("tr-cv"); if (cv && !cv.dataset.done){ cv.dataset.done = 1; trDraw(); } }).observe(document.documentElement, {childList:true, subtree:true});
+new MutationObserver(() => { const cv = document.getElementById("tr-cv"); if (cv && !cv.dataset.done){ cv.dataset.done = 1; trDraw(); } const w = document.getElementById("tr-wed"); if (w && !w.dataset.f){ w.dataset.f = 1; w.focus(); w.select(); } }).observe(document.documentElement, {childList:true, subtree:true});
 document.addEventListener("pointerdown", ev => {
   const st = ev.target.closest?.("#tr-stage"); if (!st) return; const r = st.getBoundingClientRect(), box = $("#tr-box");
   const x0 = ev.clientX - r.left, y0 = ev.clientY - r.top; S.tr.sel = null; st.setPointerCapture(ev.pointerId);
@@ -2899,33 +2912,43 @@ document.addEventListener("pointerdown", ev => {
   st.addEventListener("pointermove", move); st.addEventListener("pointerup", up);
 });
 async function trAddFiles(files){
-  for (const f of files){ try { const cvs = await fileToCanvases(f); cvs.forEach((cv, i) => S.tr.queue.push({id:uid(8), name:f.name + (cvs.length > 1 ? " · p. " + (i + 1) : ""), cv, orig:cv})); } catch(e){ toast("Unreadable file: " + f.name); } }
+  for (const f of files){ try { const cvs = await fileToCanvases(f); cvs.forEach((cv, i) => S.tr.queue.push({id:uid(8), name:f.name + (cvs.length > 1 ? " · p. " + (i + 1) : ""), cv, faits:0})); } catch(e){ toast("Unreadable file: " + f.name); } }
   render(); setTimeout(() => $("#tr-stage")?.scrollIntoView({block:"center", behavior:"smooth"}), 60);
 }
 async function trRead(it){
-  it.reading = true; render();
-  try { const r = await ai(`Transcribe exactly what is handwritten on this image, line by line, character by character, without correcting spelling. ${MATH_RULE} Hebrew in square Hebrew letters, in reading order. Truly illegible passage: [illisible]. Ignore printed text (instructions, headers, boxes): handwriting only.${lectureTips()}\nReply only in JSON: {"texte":"…"}`, {images:[await toBlob(scaled(it.cv, 1800), .85)]});
-    it.texteIA = String(r?.texte ?? ""); it.texte = it.texteIA; }
-  catch(e){ toast(aiErr(e?.code)); }
-  it.reading = false; render();
+  const P = it.passage; P.reading = true; render();
+  try { const r = await ai(`Transcribe exactly what is handwritten on this image, line by line, character by character, without correcting spelling. ${MATH_RULE} Hebrew in square Hebrew letters, in reading order. Truly illegible passage: [illisible]. Ignore printed text (instructions, headers, boxes): handwriting only.${lectureTips()}\nReply only in JSON: {"texte":"…"}`, {images:[P.blob]});
+    P.texteIA = String(r?.texte ?? ""); P.words = trTokens(P.texteIA); P.edits = {}; P.adds = {}; }
+  catch(e){ toast(aiErr(e?.code)); P.texteIA = ""; P.words = []; P.edits = {}; P.adds = {}; }
+  P.reading = false; render();
 }
 document.addEventListener("change", ev => { if (ev.target.id === "tr-files"){ const fs = [...ev.target.files]; ev.target.value = ""; trAddFiles(fs); }
   if (["tr-mat", "tr-lang", "tr-niv"].includes(ev.target.id) && ev.target.value !== "__add") S.tr.meta[{"tr-mat":"matiere", "tr-lang":"langue", "tr-niv":"niveau"}[ev.target.id]] = ev.target.value; });
-document.addEventListener("input", ev => { if (ev.target.id === "tr-txt"){ const it = S.tr.queue[S.tr.cur]; if (it) it.texte = ev.target.value; } });
+document.addEventListener("keydown", ev => { if (ev.target.id !== "tr-wed") return;
+  if (ev.key === "Enter"){ ev.preventDefault(); document.querySelector("[data-wok]")?.click(); }
+  if (ev.key === "Escape"){ S.tr.editing = null; render(); } });
 document.addEventListener("click", async ev => {
-  const t = ev.target.closest("button"); if (!t || S.view !== "entrainement") return; const d = t.dataset, it = S.tr.queue[S.tr.cur];
+  const t = ev.target.closest("button"); if (!t || S.view !== "entrainement") return; const d = t.dataset, it = S.tr.queue[S.tr.cur], P = it?.passage;
   try {
-    if (t.id === "tr-read" && it) return trRead(it);
-    if (t.id === "tr-crop" && it && S.tr.sel){ const s = S.tr.sel, k = it.cv.width / s.W; it.cv = crop(it.cv, s.x * k, s.y * k, s.w * k, s.h * k); S.tr.sel = null; return render(); }
+    if (t.id === "tr-go" && it){ if (!S.tr.sel) return toast("First draw a box around a passage by dragging on the photo.");
+      const s = S.tr.sel, k = it.cv.width / s.W, c = crop(it.cv, s.x * k, s.y * k, s.w * k, s.h * k); S.tr.sel = null;
+      const blob = await toBlob(scaled(c, 1600), .88); it.passage = {cv:c, blob, url:URL.createObjectURL(blob)}; return trRead(it); }
     if (t.id === "tr-rot" && it){ const o = document.createElement("canvas"); o.width = it.cv.height; o.height = it.cv.width; const g = o.getContext("2d"); g.translate(o.width, 0); g.rotate(Math.PI / 2); g.drawImage(it.cv, 0, 0); it.cv = o; return render(); }
-    if (t.id === "tr-reset" && it){ it.cv = it.orig; return render(); }
-    if (t.id === "tr-skip"){ S.tr.queue.splice(S.tr.cur, 1); if (S.tr.cur >= S.tr.queue.length) S.tr.cur = 0; return render(); }
-    if (t.id === "tr-save" && it){
-      const texte = $("#tr-txt").value; if (!texte.trim()) return toast("Write the exact text before saving.");
-      t.disabled = true; const a = await ASSETS.upload(await toBlob(scaled(it.cv, 1800), .85));
-      await api("/api/banque", {method:"POST", body:JSON.stringify({asset:a.id, texte, texteIA:it.texteIA ?? null, matiere:$("#tr-mat").value, langue:$("#tr-lang").value, niveau:$("#tr-niv").value, source:"admin"})});
-      S.tr.queue.splice(S.tr.cur, 1); if (S.tr.cur >= S.tr.queue.length) S.tr.cur = 0; toast("Added to the bank"); trLoad();
-      return;
+    if (t.id === "tr-redo" && it){ it.passage = null; S.tr.editing = null; return render(); }
+    if (t.id === "tr-skip"){ S.tr.queue.splice(S.tr.cur, 1); if (S.tr.cur >= S.tr.queue.length) S.tr.cur = 0; S.tr.editing = null; return render(); }
+    if (d.w && P){ S.tr.editing = d.w; return render(); }
+    if (d.wok && P){ const [li, wi] = d.wok.split(":").map(Number), v = $("#tr-wed").value.trim(), orig = P.words[li][wi];
+      if (v === orig) delete P.edits[d.wok]; else P.edits[d.wok] = v; S.tr.editing = null; return render(); }
+    if (d.wadd != null && P){ const v = prompt("Missing word(s) to add at the end of the line:"); if (!v || !v.trim()) return; if (!P.words.length) P.words = [[]];
+      P.adds[d.wadd] = [...(P.adds[d.wadd] || []), v.trim()]; return render(); }
+    if (d.wadx && P){ const [li, ai] = d.wadx.split(":").map(Number); P.adds[li].splice(ai, 1); return render(); }
+    if (t.id === "tr-save" && P){
+      const texte = trFinal(P); if (!texte.trim()) return toast("The passage is empty: add the text with the +.");
+      t.disabled = true; const a = await ASSETS.upload(P.blob);
+      await api("/api/banque", {method:"POST", body:JSON.stringify({asset:a.id, texte, texteIA:P.texteIA ?? "", corrections:trPairs(P), matiere:$("#tr-mat").value, langue:$("#tr-lang").value, niveau:$("#tr-niv").value, source:"admin"})});
+      const nb = trPairs(P).length; it.faits = (it.faits || 0) + 1; it.passage = null; S.tr.editing = null;
+      toast(nb ? `Saved: ${nb} word(s) corrected. Box another passage or move to the next paper.` : "Saved: read correctly. Box another passage or move to the next paper.");
+      trLoad(); return;
     }
     if (t.id === "tr-aadd"){ const ia = $("#tr-aia").value.trim(), vrai = $("#tr-avr").value.trim(); if (!ia || !vrai) return;
       S.tr.cons = await api("/api/banque/regles", {method:"PUT", body:JSON.stringify({ajouts:[...(S.tr.cons?.ajouts || []), {ia, vrai}]})}); window.LECT = S.tr.cons; return render(); }
