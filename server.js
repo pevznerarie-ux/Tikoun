@@ -94,7 +94,7 @@ const checkPw = (pw, stored) => { const [salt, h] = String(stored || "").split("
 const PLANS = ["essentiel", "pro"];
 const entitled = u => { if (!u) return false; const a = access(u); if (a.mode === "essai" || a.mode === "ecole") return true; if (a.mode === "abonne") return a.plan === "pro"; if (!a.ok) return false; return u.plan === "pro" && !!u.options?.exercices; };
 const AFF = ["ecole", "nom", "les2"];
-const pub = u => ({id:u.id, email:u.email, nom:u.nom, role:u.role, ecole:u.ecole || null, matieres:u.matieres || [], affichage:AFF.includes(u.affichage) ? u.affichage : "les2", plan:u.plan || "essentiel", options:{exercices:!!u.options?.exercices}, can:{exercices:entitled(u)}, actif:u.actif !== false, statut:u.statut || "valide", planDemande:u.planDemande || null, createdAt:u.createdAt, bareme:u.bareme || null, espace:u.espace, ref:refCode(u), acces:access(u), billing:BILLING(), parrainage:refStats(u), etab:etabPub(groupOf(u), u), inscription:u.inscription || "admin"});
+const pub = u => ({id:u.id, email:u.email, nom:u.nom, role:u.role, ecole:u.ecole || null, matieres:u.matieres || [], affichage:AFF.includes(u.affichage) ? u.affichage : "les2", plan:u.plan || "essentiel", options:{exercices:!!u.options?.exercices}, can:{exercices:entitled(u)}, actif:u.actif !== false, statut:u.statut || "valide", planDemande:u.planDemande || null, createdAt:u.createdAt, bareme:u.bareme || null, partageEcriture:u.role === "admin" || !!u.partageEcriture, espace:u.espace, ref:refCode(u), acces:access(u), billing:BILLING(), parrainage:refStats(u), etab:etabPub(groupOf(u), u), inscription:u.inscription || "admin"});
 const sidOf = req => ((req.headers.cookie || "").match(/(?:^|;\s*)sid=([a-f0-9]{64})/) || [])[1] || "";
 function userOf(req){
   const s = SESS[sidOf(req)]; if (!s || s.exp < Date.now()) return null;
@@ -364,6 +364,7 @@ async function accounts(req, res, url, p, u){
     if (b.nom && String(b.nom).trim()) u.nom = String(b.nom).trim().slice(0, 80);
     if (AFF.includes(b.affichage)) u.affichage = b.affichage;
     if (["20", "10", "100", "AF"].includes(b.bareme)) u.bareme = b.bareme;
+    if (typeof b.partageEcriture === "boolean") u.partageEcriture = b.partageEcriture;
     if (Array.isArray(b.matieres)) u.matieres = [...new Set(b.matieres.map(x => String(x).trim().slice(0, 40)).filter(Boolean))].slice(0, 40);
     if (b.ecole){ const e = await checkEcole(b.ecole); if (!e || e.error) return sendJ(res, 400, {error:{message:e?.error || "École invalide"}}); u.ecole = e; }
     saveUsers(); return sendJ(res, 200, {user:pub(u)});
@@ -445,65 +446,6 @@ async function storage(req, res, url, p, u){
     }
     return sendJ(res, 404, {error:{message:"Route inconnue"}});
   } catch(e){ return sendJ(res, e.message === "too_large" ? 413 : 400, {error:{message:e.message === "too_large" ? "Trop lourd" : "Requête invalide"}}); }
-}
-
-/* ---------- Laboratoire OCR : documents et essais privés, séparés des copies notées ---------- */
-const LABDIR = path.join(DATA, "ocr-lab");
-fs.mkdirSync(LABDIR, {recursive:true});
-async function ocrLab(req, res, url, p, u){
-  if (!u) return sendJ(res, 401, {error:{message:"Connexion requise"}});
-  const dir = path.join(LABDIR, u.id);
-  const list = () => fs.existsSync(dir) ? fs.readdirSync(dir).filter(f => /^[a-f0-9]{24}\.json$/.test(f)).map(f => readJ(path.join(dir, f), null)).filter(Boolean).sort((a,b) => b.createdAt.localeCompare(a.createdAt)) : [];
-  if (p === "/api/ocr-lab" && req.method === "GET") return sendJ(res, 200, {documents:list(), persistent:PERSISTENT}, {"Cache-Control":"no-store"});
-  if (p === "/api/ocr-lab" && req.method === "POST"){
-    if (!access(u).ok) return sendJ(res, 402, {error:{message:NO_ACCESS}});
-    const mime = String(req.headers["content-type"] || "").split(";")[0].toLowerCase();
-    const ext = {"application/pdf":"pdf", "image/png":"png", "image/jpeg":"jpg", "image/webp":"webp"}[mime];
-    if (!ext) return sendJ(res, 415, {error:{message:"PDF, PNG, JPEG ou WebP requis"}});
-    let blob; try { blob = await readBody(req, 20e6); } catch(e){ return sendJ(res, 413, {error:{message:"Document limité à 20 Mo"}}); }
-    const valid = ext === "pdf" ? blob.subarray(0,5).toString() === "%PDF-" : ext === "png" ? blob.subarray(0,8).equals(Buffer.from("89504e470d0a1a0a","hex")) : ext === "jpg" ? blob[0] === 0xff && blob[1] === 0xd8 : blob.subarray(0,4).toString() === "RIFF" && blob.subarray(8,12).toString() === "WEBP";
-    if (!valid || blob.length < 32) return sendJ(res, 400, {error:{message:"Fichier invalide"}});
-    let name; try { name = decodeURIComponent(String(req.headers["x-filename"] || "Document")); } catch(e){ name = "Document"; }
-    name = name.replace(/[\x00-\x1f/\\]/g," ").slice(0,140) || "Document";
-    const id = crypto.randomBytes(12).toString("hex"); fs.mkdirSync(dir, {recursive:true});
-    const doc = {id, name, mime, ext, size:blob.length, createdAt:new Date().toISOString(), runs:[]};
-    fs.writeFileSync(path.join(dir, id + "." + ext), blob, {flag:"wx"}); writeAtomic(path.join(dir, id + ".json"), doc);
-    return sendJ(res, 201, {document:doc}, {"Cache-Control":"no-store"});
-  }
-  const m = p.match(/^\/api\/ocr-lab\/([a-f0-9]{24})(\/file)?$/);
-  if (!m) return sendJ(res, 404, {error:{message:"Document introuvable"}});
-  const doc = readJ(path.join(dir, m[1] + ".json"), null);
-  if (!doc || doc.id !== m[1]) return sendJ(res, 404, {error:{message:"Document introuvable"}});
-  if (m[2] && req.method === "GET"){
-    const f = path.join(dir, doc.id + "." + doc.ext);
-    if (!fs.existsSync(f)) return sendJ(res, 404, {error:{message:"Fichier introuvable"}});
-    res.writeHead(200, {"Content-Type":doc.mime, "X-Content-Type-Options":"nosniff", "Content-Disposition":"inline", "Cache-Control":"private, no-store"});
-    return fs.createReadStream(f).pipe(res);
-  }
-  if (m[2]) return sendJ(res, 405, {error:{message:"Méthode non autorisée"}});
-  if (req.method === "PATCH"){
-    if (!access(u).ok) return sendJ(res, 402, {error:{message:NO_ACCESS}});
-    let body; try { body = await readJSON(req, 300e3); } catch(e){ return sendJ(res, 400, {error:{message:"Données invalides"}}); }
-    if (isObj(body) && /^[a-f0-9]{16}$/.test(body.runId || "") && typeof body.reference === "string"){
-      const entry = doc.runs.find(x => x.id === body.runId);
-      if (!entry) return sendJ(res, 404, {error:{message:"Essai introuvable"}});
-      entry.reference = body.reference.slice(0,20000);
-      writeAtomic(path.join(dir, doc.id + ".json"), doc);
-      return sendJ(res, 200, {run:entry}, {"Cache-Control":"no-store"});
-    }
-    if (!isObj(body) || !isObj(body.run)) return sendJ(res, 400, {error:{message:"Essai invalide"}});
-    const run = body.run;
-    if (!Number.isInteger(run.page) || run.page < 1 || run.page > 500 || !["quick","complex","double","manuel"].includes(run.mode) || !Array.isArray(run.rect) || run.rect.length !== 4 || !run.rect.every(x => Number.isInteger(x) && x >= 0 && x <= 20000)) return sendJ(res, 400, {error:{message:"Essai invalide"}});
-    if (JSON.stringify(run).length > 120000) return sendJ(res, 413, {error:{message:"Essai trop long"}});
-    const entry = {id:crypto.randomBytes(8).toString("hex"), at:new Date().toISOString(), page:run.page, rect:run.rect, mode:run.mode, first:run.first || null, second:run.second || null, reference:typeof run.reference === "string" ? run.reference.slice(0,20000) : ""};
-    doc.runs = [...doc.runs, entry].slice(-200); writeAtomic(path.join(dir, doc.id + ".json"), doc);
-    return sendJ(res, 200, {run:entry}, {"Cache-Control":"no-store"});
-  }
-  if (req.method === "DELETE"){
-    fs.rmSync(path.join(dir, doc.id + ".json"), {force:true}); fs.rmSync(path.join(dir, doc.id + "." + doc.ext), {force:true});
-    return sendJ(res, 200, {ok:true});
-  }
-  return sendJ(res, 405, {error:{message:"Méthode non autorisée"}});
 }
 
 /* ---------- Espace élève : quiz d'exercices en ligne (code personnel, sans e-mail) ---------- */
@@ -646,6 +588,92 @@ if (!USERS.length && validEmail(env("ADMIN_EMAIL").toLowerCase()) && env("ADMIN_
   USERS.push({id:aid, espace:aid, email:env("ADMIN_EMAIL").toLowerCase(), nom:env("ADMIN_NAME") || "Admin", role:"admin", plan:"pro", options:{exercices:true}, affichage:"les2", pw:hashPw(env("ADMIN_PASSWORD")), createdAt:new Date().toISOString()});
   saveUsers(); console.log("Compte administrateur créé depuis ADMIN_EMAIL");
 }
+
+/* ---------- Banque d'écriture : copies manuscrites anonymisées (image du cadre + texte validé) ----------
+   Sert à mesurer la précision de lecture de l'IA et à lui donner des aides de lecture (erreurs fréquentes, règles de l'admin).
+   Aucun nom d'élève : seulement l'image du cadre de réponse, le texte, la matière, la langue et le niveau. */
+const BANQUE_F = path.join(DATA, "banque.json"), REGLES_F = path.join(DATA, "banque-regles.json");
+let BANQUE = readJ(BANQUE_F, []), REGLES = readJ(REGLES_F, {texte:"", off:[], ajouts:[]});
+let bqTimer = null; const saveBanque = () => { clearTimeout(bqTimer); bqTimer = setTimeout(() => writeAtomic(BANQUE_F, BANQUE), 400); };
+const saveRegles = () => writeAtomic(REGLES_F, REGLES);
+const normTxt = s => String(s || "").normalize("NFC").replace(/\s+/g, " ").trim();
+function lev(a, b){ a = [...a]; b = [...b]; if (!a.length) return b.length; if (!b.length) return a.length; if (a.length * b.length > 4e6) return Math.max(a.length, b.length);
+  let prev = Array.from({length:b.length + 1}, (_, j) => j);
+  for (let i = 1; i <= a.length; i++){ const cur = [i]; for (let j = 1; j <= b.length; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); prev = cur; }
+  return prev[b.length]; }
+const wordsOf = s => normTxt(s).split(" ").filter(Boolean);
+function scoreOf(ia, vrai){ const A = normTxt(ia), V = normTxt(vrai); const n = Math.max(1, [...V].length), wn = Math.max(1, wordsOf(V).length);
+  return {cer:Math.min(1, lev(A, V) / n), wer:Math.min(1, lev(wordsOf(A), wordsOf(V)) / wn)}; }
+/* Mots mal lus : alignement mot à mot (LCS), paires « lu par l'IA → vrai texte » */
+function confusions(ia, vrai){
+  const A = wordsOf(ia), V = wordsOf(vrai), out = []; if (A.length * V.length > 250000) return out;
+  const L = Array.from({length:A.length + 1}, () => new Array(V.length + 1).fill(0));
+  for (let i = A.length - 1; i >= 0; i--) for (let j = V.length - 1; j >= 0; j--) L[i][j] = A[i] === V[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+  let i = 0, j = 0, ga = [], gv = [];
+  const flush = () => { if (ga.length && gv.length && ga.length <= 3 && gv.length <= 3) out.push([ga.join(" "), gv.join(" ")]); ga = []; gv = []; };
+  while (i < A.length || j < V.length){
+    if (i < A.length && j < V.length && A[i] === V[j]){ flush(); i++; j++; }
+    else if (j < V.length && (i >= A.length || L[i][j + 1] >= L[i + 1][j])) gv.push(V[j++]);
+    else ga.push(A[i++]);
+  }
+  flush(); return out.filter(([a, v]) => a.replace(/[^\p{L}\p{N}]/gu, "") !== v.replace(/[^\p{L}\p{N}]/gu, "") || a !== v);
+}
+function conseils(){
+  const cnt = new Map();
+  for (const s of BANQUE) if (s.texteIA && s.texte && s.texteIA !== s.texte) for (const [a, v] of confusions(s.texteIA, s.texte)){ const k = a + "→" + v; const c = cnt.get(k) || {ia:a, vrai:v, n:0, langues:new Set()}; c.n++; c.langues.add(s.langue || ""); cnt.set(k, c); }
+  const auto = [...cnt.entries()].filter(([k, c]) => c.n >= 2 && !REGLES.off.includes(k)).sort((x, y) => y[1].n - x[1].n).slice(0, 60).map(([k, c]) => ({k, ia:c.ia, vrai:c.vrai, n:c.n, langues:[...c.langues].filter(Boolean)}));
+  return {regles:REGLES.texte || "", ajouts:REGLES.ajouts || [], off:REGLES.off || [], confusions:auto};
+}
+function banqueStats(){
+  const grp = (key) => { const m = {}; for (const s of BANQUE){ if (s.cer == null) continue; const k = key(s) || "—"; const g = m[k] || (m[k] = {n:0, cer:0, wer:0}); g.n++; g.cer += s.cer; g.wer += s.wer; }
+    return Object.entries(m).map(([k, g]) => ({k, n:g.n, lettres:1 - g.cer / g.n, mots:1 - g.wer / g.n})).sort((a, b) => b.n - a.n); };
+  const tot = grp(() => "Total")[0] || {n:0, lettres:null, mots:null};
+  return {total:BANQUE.length, mesures:tot.n, lettres:tot.lettres, mots:tot.mots, parLangue:grp(s => s.langue), parMatiere:grp(s => s.matiere), parMois:grp(s => String(s.at || "").slice(0, 7)).sort((a, b) => a.k.localeCompare(b.k)), parSource:grp(s => s.source)};
+}
+const SRC_OK = ["correction", "validation", "modele", "admin"];
+function addSample(u, b){
+  const texte = String(b.texte || "").slice(0, 4000), texteIA = String(b.texteIA ?? "").slice(0, 4000), asset = /^[a-z0-9]{8,40}$/.test(b.asset || "") ? b.asset : null;
+  if (!asset || !normTxt(texte)) return null;
+  const sc = b.texteIA != null ? scoreOf(texteIA, texte) : {cer:null, wer:null};
+  const s = {id:crypto.randomBytes(8).toString("hex"), asset, texte, texteIA, ...sc, matiere:String(b.matiere || "").slice(0, 60), langue:String(b.langue || "").slice(0, 40), niveau:String(b.niveau || "").slice(0, 30),
+    source:SRC_OK.includes(b.source) ? b.source : "correction", par:u.id, at:new Date().toISOString()};
+  const i = BANQUE.findIndex(x => x.asset === asset);
+  if (i >= 0) BANQUE[i] = {...BANQUE[i], ...s, id:BANQUE[i].id, texteIA:BANQUE[i].texteIA || s.texteIA, ...(BANQUE[i].texteIA ? scoreOf(BANQUE[i].texteIA, texte) : sc)}; else BANQUE.push(s);
+  if (BANQUE.length > 60000) BANQUE.splice(0, BANQUE.length - 60000);
+  saveBanque(); return i >= 0 ? BANQUE[i] : s;
+}
+async function banqueApi(req, res, url, p, u){
+  if (!u) return sendJ(res, 401, {error:{message:"Connexion requise"}});
+  if (p === "/api/banque/conseils" && req.method === "GET") return sendJ(res, 200, conseils());
+  if (p === "/api/banque" && req.method === "POST"){
+    if (u.role !== "admin" && !u.partageEcriture) return sendJ(res, 200, {ignore:true});
+    const b = await readJSON(req, 2e5) || {}; const list = Array.isArray(b.items) ? b.items.slice(0, 60) : [b];
+    const out = list.map(x => addSample(u, x)).filter(Boolean); return sendJ(res, 200, {ajoutes:out.length, items:u.role === "admin" ? out : undefined});
+  }
+  if (u.role !== "admin") return sendJ(res, 403, {error:{message:"Réservé à l'administrateur"}});
+  if (p === "/api/banque/stats" && req.method === "GET") return sendJ(res, 200, banqueStats());
+  if (p === "/api/banque" && req.method === "GET"){
+    const q = String(url.searchParams.get("q") || "").toLowerCase(), lg = url.searchParams.get("langue") || "", off = Math.max(0, +url.searchParams.get("offset") || 0);
+    const l = BANQUE.filter(s => (!lg || s.langue === lg) && (!q || (s.texte + " " + s.texteIA + " " + s.matiere).toLowerCase().includes(q))).slice().reverse();
+    return sendJ(res, 200, {total:l.length, items:l.slice(off, off + 40)});
+  }
+  if (p === "/api/banque/regles" && req.method === "PUT"){
+    const b = await readJSON(req, 1e5) || {};
+    if (typeof b.texte === "string") REGLES.texte = b.texte.slice(0, 3000);
+    if (Array.isArray(b.off)) REGLES.off = [...new Set(b.off.map(String))].slice(0, 2000);
+    if (Array.isArray(b.ajouts)) REGLES.ajouts = b.ajouts.filter(x => x && x.ia && x.vrai).map(x => ({ia:String(x.ia).slice(0, 80), vrai:String(x.vrai).slice(0, 80)})).slice(0, 200);
+    saveRegles(); return sendJ(res, 200, conseils());
+  }
+  const m = p.match(/^\/api\/banque\/([a-f0-9]{16})$/);
+  if (m){ const i = BANQUE.findIndex(s => s.id === m[1]); if (i < 0) return sendJ(res, 404, {error:{message:"Document introuvable"}});
+    if (req.method === "DELETE"){ BANQUE.splice(i, 1); saveBanque(); return sendJ(res, 200, {ok:true}); }
+    if (req.method === "PATCH"){ const b = await readJSON(req, 2e4) || {}; const s = BANQUE[i];
+      if (typeof b.texte === "string" && normTxt(b.texte)){ s.texte = b.texte.slice(0, 4000); Object.assign(s, s.texteIA != null ? scoreOf(s.texteIA, s.texte) : {}); }
+      for (const k of ["matiere", "langue", "niveau"]) if (typeof b[k] === "string") s[k] = b[k].slice(0, 60);
+      saveBanque(); return sendJ(res, 200, {item:s}); } }
+  return sendJ(res, 404, {error:{message:"Route inconnue"}});
+}
+
 migrateEspaces();
 /* ---------- Sauvegardes automatiques : une copie complète par jour sur le Volume, 14 jours gardés ---------- */
 const BAKDIR = path.join(DATA, "backups"); fs.mkdirSync(BAKDIR, {recursive:true});
@@ -653,7 +681,7 @@ function autoBackup(){
   try {
     const f = path.join(BAKDIR, "mastery-" + new Date().toISOString().slice(0, 10) + ".json");
     if (fs.existsSync(f) || (!USERS.length && !DOCS.size)) return;
-    writeAtomic(f, {mastery:1, at:new Date().toISOString(), users:USERS, docs:Object.fromEntries(DOCS)});
+    writeAtomic(f, {mastery:1, at:new Date().toISOString(), users:USERS, docs:Object.fromEntries(DOCS), banque:BANQUE, banqueRegles:REGLES});
     const all = fs.readdirSync(BAKDIR).filter(x => /^mastery-\d{4}-\d{2}-\d{2}\.json$/.test(x)).sort();
     for (const x of all.slice(0, Math.max(0, all.length - (Number(env("BACKUP_KEEP")) || 14)))) fs.rmSync(path.join(BAKDIR, x), {force:true});
     console.log("Sauvegarde automatique :", path.basename(f));
@@ -688,8 +716,8 @@ http.createServer(async (req, res) => {
     if (p === "/eleve" || p === "/eleve/") p = "/eleve.html";
     if (p.startsWith("/api/")){
       if (req.method === "POST" && p === "/api/ai") return await aiProxy(req, res, u);
-      if (p === "/api/ocr-lab" || p.startsWith("/api/ocr-lab/")) return await ocrLab(req, res, url, p, u);
       if (p.startsWith("/api/backups")) return backups(req, res, p, u);
+      if (p === "/api/banque" || p.startsWith("/api/banque/")) return await banqueApi(req, res, url, p, u);
       if (p === "/api/etab" || p.startsWith("/api/etab/") || p.startsWith("/api/billing/")){ try { return await billingApi(req, res, url, p, u); } catch(e){ console.warn("Abonnement :", e.message); return sendJ(res, 502, {error:{message:"Paiement indisponible pour le moment : réessaie dans un instant."}}); } }
       if (p.startsWith("/api/db") || p.startsWith("/api/files") || p === "/api/export") return await storage(req, res, url, p, u);
       return await accounts(req, res, url, p, u);

@@ -165,3 +165,10 @@ Règles appliquées :
 - Le site existe en **français**, **anglais (US)** et **portugais (Brésil)**. La langue suit le navigateur ; liens FR · EN · PT en haut de page (`?lang=pt`).
 - Chaque prof choisit dans Mon compte comment ses notes s'affichent : sur 20 (France), sur 10 (Brésil), en pourcentage ou en lettres A–F (États-Unis). Par défaut : sur 20 en français, sur 10 en portugais, A–F en anglais.
 - Prix affichés en portugais : variables `PRICE_LABEL_*_PT` (par défaut en dollars US). Pour faire payer en réais, ajoute une devise BRL aux prix Stripe (« currency options »).
+
+## Entraînement de la lecture (onglet admin « Entraînement IA »)
+
+- Banque d'écriture anonymisée dans `/data/banque.json` (images des cadres dans `/data/files`), incluse dans les sauvegardes automatiques.
+- Sources : copies passées par l'admin dans l'onglet, corrections de transcription des profs, copies validées, feuilles modèles d'écriture.
+  Les profs ne contribuent que s'ils cochent « Partager anonymement mes corrections » dans Mon compte (l'admin contribue toujours).
+- Les « aides de lecture » (règles écrites par l'admin + confusions fréquentes trouvées automatiquement) sont ajoutées à chaque lecture de copie.

@@ -310,12 +310,12 @@ textarea,input{text-align:start}
       <a class="tab" data-r="controles" href="#/controles">Provas</a>
       <a class="tab" data-r="exercices" href="#/exercices">Exercícios</a>
       <a class="tab" data-r="scanner" href="#/scanner">Escanear</a>
-      <a class="tab" href="/ocr-lab.html">Leitura IA</a>
       <a class="tab" data-r="classes" href="#/classes">Turmas</a>
       <a class="tab" data-r="suivi" href="#/suivi">Acompanhamento</a>
       <a class="tab" data-r="banque" href="#/banque">Banco</a>
       <a class="tab" data-r="direction" href="#/direction" id="tabDir">Direção</a>
       <a class="tab" data-r="comptes" href="#/comptes" id="tabComptes" hidden>Contas</a>
+      <a class="tab" data-r="entrainement" href="#/entrainement" id="tabIA" hidden>Treinamento da IA</a>
       <a class="tab" data-r="compte" href="#/compte" id="tabCompte" hidden>Minha conta</a>
       <a class="tab" data-r="sauvegarde" href="#/sauvegarde" id="tabReglages" hidden>Backup</a>
     </nav>
@@ -496,10 +496,10 @@ function render(){
   if (keep?.typing && a.dataset.live !== undefined){ skipped = true; return; } // don't clobber a field being typed
   skipped = false;
   $$(".tab").forEach(t => t.setAttribute("aria-selected", t.dataset.r === navKey()));
-  const V = S.auth ? vAuth : (typeof SB !== "undefined" && SB && !SB_USER) ? vLogin : (typeof NEED_CODE !== "undefined" && NEED_CODE) ? vCode : {home:vHome, classes:vClasses, new:vNew, edit:vEdit, scan:vScan, correct:vCorrect, analyse:vAnalyse, suivi:vSuivi, banque:vBanque, direction:vDirection, reglages:vReglages, controles:vControles, exercices:vExercices, quiznew:vQuizNew, quiz:vQuiz, compte:vCompte, comptes:vComptes}[S.view] || vHome;
+  const V = S.auth ? vAuth : (typeof SB !== "undefined" && SB && !SB_USER) ? vLogin : (typeof NEED_CODE !== "undefined" && NEED_CODE) ? vCode : {home:vHome, classes:vClasses, new:vNew, edit:vEdit, scan:vScan, correct:vCorrect, analyse:vAnalyse, suivi:vSuivi, banque:vBanque, direction:vDirection, reglages:vReglages, controles:vControles, exercices:vExercices, quiznew:vQuizNew, quiz:vQuiz, compte:vCompte, comptes:vComptes, entrainement:vEntrainement}[S.view] || vHome;
   $("#tabs").hidden = V === vLogin || V === vCode || V === vAuth;
   { const acc = !!window.TIKOUN_CONFIG?.accounts; const tg = (id, h) => { const e = document.getElementById(id); if (e) e.hidden = h; };
-    tg("tabComptes", !isAdmin()); { const n = (S.users || []).filter(u => u.statut === "en_attente").length, tc = document.getElementById("tabComptes"); if (tc) tc.textContent = n ? `Contas (${n})` : "Contas"; } tg("tabCompte", !(acc && S.me)); tg("tabReglages", acc || !STANDALONE); tg("tabDir", acc && !isBoss()); }
+    tg("tabComptes", !isAdmin()); tg("tabIA", !isAdmin()); { const n = (S.users || []).filter(u => u.statut === "en_attente").length, tc = document.getElementById("tabComptes"); if (tc) tc.textContent = n ? `Contas (${n})` : "Contas"; } tg("tabCompte", !(acc && S.me)); tg("tabReglages", acc || !STANDALONE); tg("tabDir", acc && !isBoss()); }
   let html = V();
   const fc = S.inCtrl && ["edit","scan","correct","analyse"].includes(S.view) && V !== vLogin && ctrl(S.inCtrl);
   if (fc){
@@ -1018,7 +1018,7 @@ async function processPage(it){
       if (blank.has(qid)) ans = {transcription:"", annot:"", lisible:true, noteIA:0, note:null, commentaire:"Sem resposta.", erreurs:["sem resposta"], acquis:[], valide:false, auto:true};
       else if (marks[qid]) ans = qcmAnswer(q, ver, marks[qid].coches, marks[qid].ambigu);
       else if (q.type === "qcm") ans = qcmAnswer(q, ver, (r.coches || []).map(Number), r.lisible === false);
-      else ans = {transcription:String(r.transcription ?? ""), annot:r.annotee != null ? String(r.annotee) : markFautes(String(r.transcription ?? ""), r.fautes), lisible:r.lisible !== false,
+      else ans = {transcription:String(r.transcription ?? ""), transcriptionIA:String(r.transcription ?? ""), annot:r.annotee != null ? String(r.annotee) : markFautes(String(r.transcription ?? ""), r.fautes), lisible:r.lisible !== false,
         noteIA:clamp(half(Number(r.note) || 0), 0, +q.points), note:null, commentaire:String(r.commentaire ?? ""), erreurs:(r.erreurs || []).map(String).slice(0, 4), acquis:(r.acquis || []).map(String).slice(0, 4), valide:false};
       if (!ans.auto && isNoAnswer(ans.transcription)){ ans.noteIA = 0; ans.commentaire = "Sem resposta: revise este conteúdo."; ans.erreurs = ["sem resposta"]; ans.acquis = []; }
       ans.crop = crops[qid]?.asset || null;
@@ -1053,7 +1053,7 @@ ${how}
 
 Questões presentes nesta página:
 ${blocks}
-
+${lectureTips()}
 Instruções:
 1. Transcreva fielmente o que o aluno escreveu em cada quadro, sem corrigir a ortografia, linha por linha. ${MATH_RULE} Hebraico em caracteres hebraicos, na ordem de leitura (a escrita manuscrita hebraica costuma ser cursiva: leia com cuidado, letra por letra). Trecho ilegível: [ilegível]. Campo vazio: "". Ignore o que estiver riscado.
 2. "fautes": lista dos trechos errados, copiados exatamente como aparecem na transcrição (curtos: poucas palavras). Lista vazia se tudo estiver certo.
@@ -1453,8 +1453,8 @@ document.addEventListener("click", async ev => {
         const blob = await getBlob(a.crop);
         const i = C.questions.indexOf(q);
         const smp = await sampleImages(S.corrEleve, C.matiere);
-        const r = await ai(`Leia com muita atenção este quadro de resposta manuscrita de um aluno (${C.matiere}, ${C.niveau || ""}), depois corrija. A imagem 1 é o quadro a ler.${smp.txt}\n${qBlockPrompt(C, q, cp.version?.[qid] || "standard", i)}\n\nUma primeira leitura deu: """${a.transcription}""" (considerada incerta).\nTranscreva linha por linha, sem corrigir a ortografia. ${MATH_RULE} Hebraico em caracteres hebraicos. Trecho realmente ilegível: [ilegível]. "annotee" = transcrição com cada trecho errado cercado por ⟦ ⟧ (fora dos $…$). Nota em passos de 0,5. Comentário de 2 a 3 frases, dirigido diretamente ao aluno (você). ${NOSRC}\nResponda apenas em JSON, em português para uma escola brasileira: {"transcription":"…","annotee":"…","lisible":true,"note":0,"commentaire":"…","erreurs":["…"],"acquis":["…"]}`, {images:[blob, ...smp.blobs], modelTier:"complex"});
-        await write("feuilles/" + C.id, {copies:{[S.corrEleve]:{validee:false, answers:{[qid]:{transcription:String(r.transcription || ""), annot:String(r.annotee || r.transcription || ""), lisible:r.lisible !== false,
+        const r = await ai(`Leia com muita atenção este quadro de resposta manuscrita de um aluno (${C.matiere}, ${C.niveau || ""}), depois corrija. A imagem 1 é o quadro a ler.${smp.txt}${lectureTips()}\n${qBlockPrompt(C, q, cp.version?.[qid] || "standard", i)}\n\nUma primeira leitura deu: """${a.transcription}""" (considerada incerta).\nTranscreva linha por linha, sem corrigir a ortografia. ${MATH_RULE} Hebraico em caracteres hebraicos. Trecho realmente ilegível: [ilegível]. "annotee" = transcrição com cada trecho errado cercado por ⟦ ⟧ (fora dos $…$). Nota em passos de 0,5. Comentário de 2 a 3 frases, dirigido diretamente ao aluno (você). ${NOSRC}\nResponda apenas em JSON, em português para uma escola brasileira: {"transcription":"…","annotee":"…","lisible":true,"note":0,"commentaire":"…","erreurs":["…"],"acquis":["…"]}`, {images:[blob, ...smp.blobs], modelTier:"complex"});
+        await write("feuilles/" + C.id, {copies:{[S.corrEleve]:{validee:false, answers:{[qid]:{transcription:String(r.transcription || ""), transcriptionIA:String(r.transcription || ""), annot:String(r.annotee || r.transcription || ""), lisible:r.lisible !== false,
           noteIA:clamp(half(+r.note || 0), 0, +q.points), note:null, commentaire:String(r.commentaire || ""), erreurs:(r.erreurs || []).map(String).slice(0, 4), acquis:(r.acquis || []).map(String).slice(0, 4), valide:false}}}}}, "update");
       }catch(e){ st.textContent = e?.code ? aiErr(e.code) : "Imagem do quadro não encontrada."; t.disabled = false; }
       return;
@@ -1468,6 +1468,7 @@ document.addEventListener("click", async ev => {
         await write("feuilles/" + C.id, {copies:{[S.corrEleve]:{validee:false, answers:{[qid]:{transcription:text, annot:String(r.annotee || text), lisible:true, noteIA:clamp(half(+r.note || 0), 0, +q.points), note:null,
           commentaire:String(r.commentaire || ""), erreurs:(r.erreurs || []).map(String).slice(0, 4), acquis:(r.acquis || []).map(String).slice(0, 4), valide:false}}}}}, "update");
         delete S.editTr[qid];
+        const a0 = cp.answers?.[qid]; if (a0?.crop && q.type !== "qcm") bankPush([{asset:a0.crop, texteIA:a0.transcriptionIA ?? a0.transcription ?? "", texte:text, source:"correction", ...bankMeta(C)}]);
       }catch(e){ st.textContent = aiErr(e?.code); t.disabled = false; }
       return;
     }
@@ -1477,6 +1478,7 @@ document.addEventListener("click", async ev => {
         toast(`Sem nota para ${miss.map(x => "Q" + (x.k + 1)).join(", ")} : página não escaneada? Escaneie-a, digite a nota ou clique de novo para dar 0.`, 7000); return; }
       const answers = {}; C.questions.forEach(q => { answers[q.id] = noteOf(cp?.answers?.[q.id]) == null ? {valide:true, note:0, transcription:"", annot:"", commentaire:"Questão não escaneada ou sem resposta.", lisible:true} : {valide:true}; });
       await write("feuilles/" + C.id, {copies:{[S.corrEleve]:{validee:true, answers}}}, "update");
+      bankPush(C.questions.filter(q => q.type !== "qcm").map(q => cp?.answers?.[q.id]).filter(a => a?.crop && a.transcription && a.lisible !== false && !a.auto).map(a => ({asset:a.crop, texteIA:a.transcriptionIA ?? a.transcription, texte:a.transcription, source:"validation", ...bankMeta(C)})));
       const f = feuille(C.id), studs = studentsOf(C); const next = studs.find(e => e.id !== S.corrEleve && f.copies[e.id] && !f.copies[e.id].validee && copyDone(C, f.copies[e.id]));
       if (studs.every(e => e.id === S.corrEleve || f.copies[e.id]?.validee) && C.statut !== "corrige"){ C.statut = "corrige"; await saveCtrl(C); toast("Todas as provas estão validadas."); }
       if (next){ S.corrEleve = next.id; S.editTr = {}; S.editCom = {}; } return render(); }
@@ -1865,7 +1867,7 @@ function applyRoute(){
     else { S.view = "analyse"; S.anCtrl = b; }
   }
   else if (a === "exercices" && b){ if (b === "nouveau") S.view = "quiznew"; else { if (S.qz.id !== b) S.qz.el = null; S.view = "quiz"; S.qz.id = b; S.qz.tab = ["questions","reglages","resultats"].includes(c) ? c : "questions"; } }
-  else S.view = {accueil:"home", nouveau:"new", scanner:"scan", sauvegarde:"reglages", correction:"correct", resultats:"analyse"}[a] || (["controles","exercices","classes","suivi","banque","direction","compte","comptes"].includes(a) ? a : "home");
+  else S.view = {accueil:"home", nouveau:"new", scanner:"scan", sauvegarde:"reglages", correction:"correct", resultats:"analyse"}[a] || (["controles","exercices","classes","suivi","banque","direction","compte","comptes","entrainement"].includes(a) ? a : "home");
 }
 function go(v){
   S.view = v;
@@ -2036,6 +2038,7 @@ function vAuth(){
 }
 const KEEP = ["rg-nom","rg-mail","rg-pw","me-nom","ec-adr","ec-ville","ec-q","ec-cp"]; let kept = {}; S.form = {};
 document.addEventListener("change", async ev => { if (ev.target.id === "rg-cgu") S.regCgu = ev.target.checked;
+  if (ev.target.id === "me-partage"){ try { const j = await api("/api/me", {method:"PATCH", body:JSON.stringify({partageEcriture:ev.target.checked})}); S.me = j.user; toast("Salvo"); } catch(e){ toast(e.message); } }
   if (ev.target.id === "me-bareme"){ try { const j = await api("/api/me", {method:"PATCH", body:JSON.stringify({bareme:ev.target.value})}); S.me = j.user; toast("Salvo"); render(); } catch(e){ toast(e.message); } } });
 document.addEventListener("input", ev => { const el = ev.target; if (KEEP.includes(el.id)) S.form[el.id] = el.value; if (el.id === "ec-q") S.ec.q = el.value; if (el.id === "ec-cp") S.ec.cp = el.value; });
 const keepForm = () => { kept = {}; for (const id of KEEP){ const el = $("#" + id); if (el) kept[id] = el.value; } const a = document.querySelector('input[name="aff"]:checked'); if (a) kept.aff = a.dataset.aff; };
@@ -2066,6 +2069,8 @@ function vCompte(){
     <div class="row">${(S.me?.matieres || []).map(m => `<span class="chip">${esc(m)} <button class="btn sm ghost" style="padding:0 4px" data-matdel="${esc(m)}" aria-label="Remover">×</button></span>`).join("") || `<span class="small muted">Nenhuma disciplina personalizada.</span>`}</div>
     <div class="row">${MAT_SUGG.filter(m => !(S.me?.matieres || []).includes(m)).map(m => `<button class="btn sm" data-matadd="${esc(m)}">+ ${esc(m)}</button>`).join("")}</div>
     <div class="row"><input id="mat-new" placeholder="Outra disciplina" style="max-width:260px"><button class="btn sm primary" id="mat-go">Adicionar</button></div></section>
+  <section class="panel grid" style="max-width:520px"><h3>Melhoria da leitura</h3>
+    <label class="row small" style="gap:8px;align-items:flex-start"><input type="checkbox" id="me-partage" style="width:auto;margin-top:3px"${S.me?.partageEcriture ? " checked" : ""}${isAdmin() ? " disabled" : ""}><span>Compartilhar anonimamente minhas correções de leitura (imagem do quadro de resposta e texto corrigido, nunca o nome do aluno) para melhorar a leitura da escrita à mão.</span></label></section>
   <section class="panel grid" style="max-width:520px"><h3>Exibição das notas</h3>
     <p class="small muted" style="margin:0">Os cálculos não mudam; só muda a forma de exibir as notas.</p>
     <select id="me-bareme" style="max-width:320px">${[["20","De 0 a 20 (França)"],["10","De 0 a 10 (Brasil)"],["100","Porcentagem (%)"],["AF","Letras de A a F (EUA)"]].map(([k, t]) => `<option value="${k}"${bareme() === k ? " selected" : ""}>${t}</option>`).join("")}</select></section>
@@ -2458,9 +2463,10 @@ async function processWriting(it, data){
       const per = Math.max(1, LIM.images.maxCount || 1);
       for (let i = 0; i < crops.length; i += per){
         const part = crops.slice(i, i + per);
-        const r = await ai(`Cada imagem é uma linha manuscrita escrita por um aluno. Transcreva exatamente o que está escrito, caractere por caractere, sem corrigir. O hebraico em letras hebraicas quadradas. Responda somente em JSON: {"lignes":["…"]} com ${part.length} elemento(s), na ordem das imagens.`, {images: await Promise.all(part.map(cv => toBlob(cv, .9)))});
+        const r = await ai(`Cada imagem é uma linha manuscrita escrita por um aluno. Transcreva exatamente o que está escrito, caractere por caractere, sem corrigir. O hebraico em letras hebraicas quadradas.${lectureTips()} Responda apenas em JSON: {"lignes":["…"]} com ${part.length} elemento(s), na ordem das imagens.`, {images: await Promise.all(part.map(cv => toBlob(cv, .9)))});
         (r?.lignes || []).forEach((t, j) => { if (samples[i + j]){ samples[i + j].lu = String(t); samples[i + j].sim = simil(samples[i + j].texte, t); } });
       }
+      bankPush(samples.filter(s => s.asset && s.lu != null).map(s => ({asset:s.asset, texteIA:s.lu, texte:s.texte, source:"modele", langue:/[\u05D0-\u05EA]/.test(s.texte) ? "Hebraico" : langueDef(""), matiere:"", niveau:""})));
     }
     const sims = samples.map(s => s.sim).filter(x => x != null);
     const score = sims.length ? sims.reduce((a, b) => a + b, 0) / sims.length : null;
@@ -2802,6 +2808,142 @@ document.addEventListener("change", async ev => {
     else x[k] = v;
     await write("quizzes/" + q.id, q); }
 });
+
+/* ================= Entraînement de la lecture (administrateur) =================
+   Banque d'écriture anonymisée : image d'un cadre ou d'une copie + texte validé.
+   Elle mesure la précision de lecture de l'IA et nourrit les « aides de lecture » ajoutées à chaque demande de lecture. */
+S.tr = {queue:[], cur:0, stats:null, list:null, cons:null, q:"", busy:false, test:null, sel:null, meta:{matiere:"", langue:"", niveau:""}};
+window.LECT = null; let LECT_AT = 0;
+async function loadLect(){ LECT_AT = Date.now(); try { const r = await fetch("/api/banque/conseils", {credentials:"same-origin"}); if (r.ok) window.LECT = await r.json(); } catch(e){} }
+setInterval(() => { if (window.TIKOUN_CONFIG?.accounts && S.me && Date.now() - LECT_AT > 20 * 60e3) loadLect(); }, 4000);
+function lectureTips(){
+  const c = window.LECT; if (!c) return "";
+  const pairs = [...(c.ajouts || []), ...(c.confusions || [])].slice(0, 40).map(x => `« ${x.ia} » → « ${x.vrai} »`).join(" ; ");
+  const r = String(c.regles || "").trim(); if (!pairs && !r) return "";
+  return `\nAjudas de leitura, tiradas das correções dos professores (servem apenas para decifrar melhor as letras; nunca corrija a ortografia do aluno):${r ? "\n" + r.slice(0, 1500) : ""}${pairs ? `\nConfusões frequentes (lido por engano → texto verdadeiro): ${pairs}.` : ""}\n`;
+}
+/* Envoi à la banque (seulement si le prof a accepté le partage anonyme) */
+function bankPush(items){
+  if (!window.TIKOUN_CONFIG?.accounts || !S.me?.partageEcriture) return;
+  const ok = items.filter(x => x && x.asset && String(x.texte || "").trim()); if (!ok.length) return;
+  fetch("/api/banque", {method:"POST", credentials:"same-origin", headers:{"content-type":"application/json"}, body:JSON.stringify({items:ok})}).catch(() => {});
+}
+const bankMeta = C => ({matiere:C.matiere || "", langue:C.langue || langueDef(""), niveau:C.niveau || ""});
+const pctS = x => x == null ? "—" : Math.round(x * 100) + (document.documentElement.lang === "en" ? "%" : " %");
+
+async function trLoad(){
+  try { const [st, li, co] = await Promise.all([api("/api/banque/stats"), api("/api/banque?q=" + encodeURIComponent(S.tr.q)), api("/api/banque/conseils")]); S.tr.stats = st; S.tr.list = li; S.tr.cons = co; window.LECT = co; }
+  catch(e){ toast(e.message); } render();
+}
+function vEntrainement(){
+  if (!isAdmin()) return `<div class="panel empty">Reservado ao administrador.</div>`;
+  if (!S.tr.stats && !S.tr.busy){ S.tr.busy = true; trLoad().finally(() => { S.tr.busy = false; }); }
+  const st = S.tr.stats || {}, it = S.tr.queue[S.tr.cur];
+  const card = (l, v, s) => `<div class="panel"><div class="label">${l}</div><div class="total num" style="color:var(--ink)">${v}</div>${s ? `<div class="small muted">${s}</div>` : ""}</div>`;
+  const tbl = (title, rows) => rows?.length ? `<div><b class="small">${title}</b><div class="tbl-wrap"><table><thead><tr><th></th><th class="c">Amostras</th><th class="c">Letras corretas</th><th class="c">Palavras corretas</th></tr></thead><tbody>${rows.slice(0, 8).map(r => `<tr><td>${esc(r.k)}</td><td class="c num">${r.n}</td><td class="c num">${pctS(r.lettres)}</td><td class="c num">${pctS(r.mots)}</td></tr>`).join("")}</tbody></table></div></div>` : "";
+  const months = st.parMois || [];
+  return `<div class="head"><div><h2>Treinamento da leitura</h2><p>Passe provas antigas uma a uma: a IA lê, você corrige. Cada correção mede a precisão e ensina à IA os erros a evitar.</p></div></div>
+  <div class="grid" style="grid-template-columns:repeat(3,minmax(0,1fr));gap:14px">${card("Amostras", st.total ?? "—", st.mesures ? st.mesures + " medida(s)" : "")}${card("Letras lidas corretamente", pctS(st.lettres))}${card("Palavras lidas corretamente", pctS(st.mots))}</div>
+  ${months.length > 1 ? `<section class="panel"><h3>Evolução da precisão (palavras corretas)</h3><div class="row" style="align-items:flex-end;gap:10px;height:120px;margin-top:8px">${months.slice(-12).map(m => `<div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex:1"><span class="small num">${pctS(m.mots)}</span><div style="width:100%;max-width:36px;height:${Math.max(4, Math.round((m.mots || 0) * 80))}px;background:var(--gold);border-radius:3px"></div><span class="small muted">${esc(m.k.slice(5))}/${esc(m.k.slice(2, 4))}</span></div>`).join("")}</div></section>` : ""}
+
+  <section class="panel grid"><div class="row between"><h3>Adicionar provas</h3><label class="btn primary" for="tr-files">Escolher fotos ou PDFs</label><input id="tr-files" type="file" accept="image/*,application/pdf" multiple hidden></div>
+    <p class="small muted" style="margin:0">Oculte ou recorte o nome do aluno antes de salvar: arraste sobre a imagem para manter só a escrita. Um quadro ou algumas linhas dão resultados melhores que uma página inteira.</p>
+    ${it ? trItem(it) : `<p class="small muted" style="margin:0">Nenhuma prova na fila.</p>`}</section>
+
+  <section class="panel grid"><h3>Ajudas de leitura enviadas à IA</h3>
+    <div class="field"><label for="tr-regles">Regras escritas por você (ex.: “Nas nossas provas, o ה cursivo parece muitas vezes um ח: observe a abertura no alto à esquerda.”)</label><textarea id="tr-regles" rows="4">${esc(S.tr.cons?.regles || "")}</textarea></div>
+    <div class="form-row"><div class="field"><label for="tr-aia">A IA lê</label><input id="tr-aia" placeholder="ex. Hashem"></div><div class="field"><label for="tr-avr">Deveria ler</label><input id="tr-avr" placeholder="ex. Hachem"></div><button class="btn sm" id="tr-aadd" style="align-self:end">Adicionar</button></div>
+    ${(S.tr.cons?.ajouts || []).length ? `<div class="row">${S.tr.cons.ajouts.map((x, i) => `<span class="chip">« ${esc(x.ia)} » → « ${esc(x.vrai)} » <button class="btn sm ghost" style="padding:0 4px" data-trad="${i}" aria-label="Remover">×</button></span>`).join("")}</div>` : ""}
+    <div><b class="small">Confusões encontradas automaticamente nas correções</b>${(S.tr.cons?.confusions || []).length ? `<div class="row" style="margin-top:6px">${S.tr.cons.confusions.map(x => `<span class="chip">« ${esc(x.ia)} » → « ${esc(x.vrai)} » <span class="muted">×${x.n}</span> <button class="btn sm ghost" style="padding:0 4px" data-troff="${esc(x.k)}" aria-label="Ignorar">×</button></span>`).join("")}</div>` : `<p class="small muted" style="margin:4px 0 0">Elas aparecem quando um mesmo erro foi corrigido pelo menos duas vezes.</p>`}</div>
+    <div class="row"><button class="btn primary" id="tr-rsave">Salvar as regras</button><button class="btn" id="tr-test">Testar a precisão atual (10 provas)</button></div>
+    <div class="status" id="tr-tst">${S.tr.test ? esc(S.tr.test) : ""}</div></section>
+
+  ${st.mesures ? `<section class="panel grid"><div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:16px">${tbl("Por idioma", st.parLangue)}${tbl("Por disciplina", st.parMatiere)}</div>${tbl("Por origem", (st.parSource || []).map(r => ({...r, k:{correction:"Correções dos professores", validation:"Provas validadas", modele:"Folhas-modelo de escrita", admin:"Adicionados pelo administrador"}[r.k] || r.k})))}</section>` : ""}
+
+  <section class="panel grid"><div class="row between"><h3>Banco de escrita ${S.tr.list ? `<span class="muted small">· ${S.tr.list.total}</span>` : ""}</h3><div class="row"><input id="tr-q" placeholder="Buscar uma palavra" value="${esc(S.tr.q)}" style="max-width:220px"><button class="btn sm" id="tr-qgo">Buscar</button></div></div>
+    ${(S.tr.list?.items || []).map(s => `<div class="item" style="align-items:flex-start;gap:14px"><img src="${esc(blobSrc(s.asset))}" alt="" loading="lazy" style="width:220px;max-height:120px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:6px" data-zoom="${esc(blobSrc(s.asset))}">
+      <div style="flex:1;min-width:0;display:grid;gap:4px"><div class="small muted">${esc([s.matiere, s.langue, s.niveau].filter(Boolean).join(" · "))} · ${esc(frDate((s.at || "").slice(0, 10)))}${s.cer != null ? ` · <b>${pctS(1 - s.cer)}</b> das letras` : ""}</div>
+        <div dir="auto" style="white-space:pre-wrap"><b>${esc(s.texte)}</b></div>${s.texteIA && s.texteIA !== s.texte ? `<div dir="auto" class="small muted" style="white-space:pre-wrap">IA: ${esc(s.texteIA)}</div>` : ""}</div>
+      <div class="row"><button class="btn sm ghost" data-tred="${s.id}">Editar</button><button class="btn sm ghost" data-trdel="${s.id}">Excluir</button></div></div>`).join("") || `<p class="small muted">O banco está vazio por enquanto.</p>`}</section>`;
+}
+function trItem(it){
+  const n = S.tr.queue.length, m = S.tr.meta;
+  return `<div class="grid" style="grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:18px;align-items:start">
+    <div class="grid" style="gap:8px"><div class="small muted">Prova do aluno ${S.tr.cur + 1} sur ${n} · ${esc(it.name)}</div>
+      <div id="tr-stage" style="position:relative;background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden;touch-action:none;cursor:crosshair"><canvas id="tr-cv" style="width:100%;display:block"></canvas><div id="tr-box" style="position:absolute;border:2px solid var(--gold);background:rgba(183,134,43,.12);display:none;pointer-events:none"></div></div>
+      <div class="row"><button class="btn sm" id="tr-crop">Manter a seleção</button><button class="btn sm ghost" id="tr-rot">Girar</button><button class="btn sm ghost" id="tr-reset">Imagem original</button></div></div>
+    <div class="grid" style="gap:10px">
+      <div class="form-row"><div class="field"><label for="tr-mat">Disciplina</label><select id="tr-mat">${matOpts(m.matiere || myMatieres()[0])}</select></div><div class="field"><label for="tr-lang">Idioma</label><select id="tr-lang">${selOpts(LANGUES, m.langue || langueDef(""))}</select></div></div>
+      <div class="field"><label for="tr-niv">Nível</label><select id="tr-niv">${selOpts(NIVEAUX, m.niveau || NIVEAUX[3])}</select></div>
+      <div class="row"><button class="btn" id="tr-read" ${it.reading ? "disabled" : ""}>${it.texteIA != null ? "Reler com a IA" : "Ler com a IA"}</button><span class="small muted" id="tr-rst">${it.reading ? `<span class="thinking">Lendo…</span>` : it.texteIA != null ? "Corrija o texto abaixo: ele deve ser exatamente o que está escrito, com os erros." : ""}</span></div>
+      <div class="field"><label for="tr-txt">Texto exato escrito à mão</label><textarea id="tr-txt" dir="auto" rows="9" data-live>${esc(it.texte ?? it.texteIA ?? "")}</textarea></div>
+      <div class="row"><button class="btn primary" id="tr-save">Salvar e próxima</button><button class="btn ghost" id="tr-skip">Pular</button></div></div></div>`;
+}
+/* Image courante : dessin, sélection, recadrage */
+function trDraw(){
+  const it = S.tr.queue[S.tr.cur], cv = $("#tr-cv"); if (!it || !cv) return;
+  cv.width = it.cv.width; cv.height = it.cv.height; cv.getContext("2d").drawImage(it.cv, 0, 0);
+}
+new MutationObserver(() => { const cv = document.getElementById("tr-cv"); if (cv && !cv.dataset.done){ cv.dataset.done = 1; trDraw(); } }).observe(document.documentElement, {childList:true, subtree:true});
+document.addEventListener("pointerdown", ev => {
+  const st = ev.target.closest?.("#tr-stage"); if (!st) return; const r = st.getBoundingClientRect(), box = $("#tr-box");
+  const x0 = ev.clientX - r.left, y0 = ev.clientY - r.top; S.tr.sel = null; st.setPointerCapture(ev.pointerId);
+  const move = e => { const x = Math.max(0, Math.min(r.width, e.clientX - r.left)), y = Math.max(0, Math.min(r.height, e.clientY - r.top));
+    const b = {x:Math.min(x0, x), y:Math.min(y0, y), w:Math.abs(x - x0), h:Math.abs(y - y0)}; Object.assign(box.style, {display:"block", left:b.x + "px", top:b.y + "px", width:b.w + "px", height:b.h + "px"}); S.tr.sel = {...b, W:r.width, H:r.height}; };
+  const up = () => { st.removeEventListener("pointermove", move); st.removeEventListener("pointerup", up); if (!S.tr.sel || S.tr.sel.w < 12 || S.tr.sel.h < 12){ S.tr.sel = null; box.style.display = "none"; } };
+  st.addEventListener("pointermove", move); st.addEventListener("pointerup", up);
+});
+async function trAddFiles(files){
+  for (const f of files){ try { const cvs = await fileToCanvases(f); cvs.forEach((cv, i) => S.tr.queue.push({id:uid(8), name:f.name + (cvs.length > 1 ? " · p. " + (i + 1) : ""), cv, orig:cv})); } catch(e){ toast("Arquivo ilegível: " + f.name); } }
+  render(); setTimeout(() => $("#tr-stage")?.scrollIntoView({block:"center", behavior:"smooth"}), 60);
+}
+async function trRead(it){
+  it.reading = true; render();
+  try { const r = await ai(`Transcreva exatamente o que está escrito à mão nesta imagem, linha por linha, caractere por caractere, sem corrigir a ortografia. ${MATH_RULE} O hebraico em letras hebraicas quadradas, na ordem de leitura. Trecho realmente ilegível: [illisible]. Ignore o texto impresso (instruções, cabeçalhos, quadros): só a escrita à mão.${lectureTips()}\nResponda apenas em JSON: {"texte":"…"}`, {images:[await toBlob(scaled(it.cv, 1800), .85)]});
+    it.texteIA = String(r?.texte ?? ""); it.texte = it.texteIA; }
+  catch(e){ toast(aiErr(e?.code)); }
+  it.reading = false; render();
+}
+document.addEventListener("change", ev => { if (ev.target.id === "tr-files"){ const fs = [...ev.target.files]; ev.target.value = ""; trAddFiles(fs); }
+  if (["tr-mat", "tr-lang", "tr-niv"].includes(ev.target.id) && ev.target.value !== "__add") S.tr.meta[{"tr-mat":"matiere", "tr-lang":"langue", "tr-niv":"niveau"}[ev.target.id]] = ev.target.value; });
+document.addEventListener("input", ev => { if (ev.target.id === "tr-txt"){ const it = S.tr.queue[S.tr.cur]; if (it) it.texte = ev.target.value; } });
+document.addEventListener("click", async ev => {
+  const t = ev.target.closest("button"); if (!t || S.view !== "entrainement") return; const d = t.dataset, it = S.tr.queue[S.tr.cur];
+  try {
+    if (t.id === "tr-read" && it) return trRead(it);
+    if (t.id === "tr-crop" && it && S.tr.sel){ const s = S.tr.sel, k = it.cv.width / s.W; it.cv = crop(it.cv, s.x * k, s.y * k, s.w * k, s.h * k); S.tr.sel = null; return render(); }
+    if (t.id === "tr-rot" && it){ const o = document.createElement("canvas"); o.width = it.cv.height; o.height = it.cv.width; const g = o.getContext("2d"); g.translate(o.width, 0); g.rotate(Math.PI / 2); g.drawImage(it.cv, 0, 0); it.cv = o; return render(); }
+    if (t.id === "tr-reset" && it){ it.cv = it.orig; return render(); }
+    if (t.id === "tr-skip"){ S.tr.queue.splice(S.tr.cur, 1); if (S.tr.cur >= S.tr.queue.length) S.tr.cur = 0; return render(); }
+    if (t.id === "tr-save" && it){
+      const texte = $("#tr-txt").value; if (!texte.trim()) return toast("Escreva o texto exato antes de salvar.");
+      t.disabled = true; const a = await ASSETS.upload(await toBlob(scaled(it.cv, 1800), .85));
+      await api("/api/banque", {method:"POST", body:JSON.stringify({asset:a.id, texte, texteIA:it.texteIA ?? null, matiere:$("#tr-mat").value, langue:$("#tr-lang").value, niveau:$("#tr-niv").value, source:"admin"})});
+      S.tr.queue.splice(S.tr.cur, 1); if (S.tr.cur >= S.tr.queue.length) S.tr.cur = 0; toast("Adicionado ao banco"); trLoad();
+      return;
+    }
+    if (t.id === "tr-aadd"){ const ia = $("#tr-aia").value.trim(), vrai = $("#tr-avr").value.trim(); if (!ia || !vrai) return;
+      S.tr.cons = await api("/api/banque/regles", {method:"PUT", body:JSON.stringify({ajouts:[...(S.tr.cons?.ajouts || []), {ia, vrai}]})}); window.LECT = S.tr.cons; return render(); }
+    if (d.trad){ const aj = (S.tr.cons?.ajouts || []).filter((_, i) => i !== +d.trad); S.tr.cons = await api("/api/banque/regles", {method:"PUT", body:JSON.stringify({ajouts:aj})}); window.LECT = S.tr.cons; return render(); }
+    if (d.troff){ S.tr.cons = await api("/api/banque/regles", {method:"PUT", body:JSON.stringify({off:[...(S.tr.cons?.off || []), d.troff]})}); window.LECT = S.tr.cons; return render(); }
+    if (t.id === "tr-rsave"){ S.tr.cons = await api("/api/banque/regles", {method:"PUT", body:JSON.stringify({texte:$("#tr-regles").value})}); window.LECT = S.tr.cons; toast("Regras salvas: elas valem para todas as próximas leituras."); return render(); }
+    if (t.id === "tr-qgo"){ S.tr.q = $("#tr-q").value.trim(); return trLoad(); }
+    if (d.trdel){ if (!confirm("Excluir esta amostra do banco?")) return; await api("/api/banque/" + d.trdel, {method:"DELETE"}); return trLoad(); }
+    if (d.tred){ const s = (S.tr.list?.items || []).find(x => x.id === d.tred); const v = prompt("Texto exato escrito à mão:", s?.texte || ""); if (v == null || !v.trim()) return;
+      await api("/api/banque/" + d.tred, {method:"PATCH", body:JSON.stringify({texte:v})}); return trLoad(); }
+    if (t.id === "tr-test"){
+      const pool = (S.tr.list?.items || []).filter(s => s.texteIA != null && s.cer != null); if (!pool.length) return toast("Primeiro são necessárias provas com uma primeira leitura da IA.");
+      const pick = pool.sort(() => Math.random() - .5).slice(0, 10); t.disabled = true; let avant = 0, apres = 0, n = 0;
+      for (const s of pick){ S.tr.test = `Teste em andamento: ${n + 1} / ${pick.length}…`; $("#tr-tst").textContent = S.tr.test;
+        try { const r = await ai(`Transcreva exatamente o que está escrito à mão nesta imagem, linha por linha, caractere por caractere, sem corrigir a ortografia. ${MATH_RULE} O hebraico em letras hebraicas quadradas, na ordem de leitura. Trecho realmente ilegível: [illisible]. Ignore o texto impresso.${lectureTips()}\nResponda apenas em JSON: {"texte":"…"}`, {images:[await getBlob(s.asset)]});
+          avant += 1 - s.cer; apres += 1 - cerOf(String(r?.texte ?? ""), s.texte); n++; } catch(e){} }
+      t.disabled = false; S.tr.test = n ? `de ${n} prova(s): ${pctS(avant / n)} das letras corretas na primeira leitura, ${pctS(apres / n)} hoje com as ajudas de leitura.` : "Teste impossível no momento."; return render();
+    }
+  } catch(e){ t.disabled = false; toast(e.message || "Erro"); }
+});
+function cerOf(a, b){ a = [...String(a).normalize("NFC").replace(/\s+/g, " ").trim()]; b = [...String(b).normalize("NFC").replace(/\s+/g, " ").trim()]; if (!b.length) return a.length ? 1 : 0;
+  let prev = Array.from({length:b.length + 1}, (_, j) => j); for (let i = 1; i <= a.length; i++){ const cur = [i]; for (let j = 1; j <= b.length; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); prev = cur; }
+  return Math.min(1, prev[b.length] / b.length); }
 
 /* ================= Boot ================= */
 applyRoute(); render();
