@@ -2854,6 +2854,15 @@ function vEntrainement(){
     <p class="small muted" style="margin:0">Pour chaque photo : encadre un passage, l'IA le lit, tu corriges seulement les mots faux. Tu peux enregistrer plusieurs passages de la même copie.</p>
     ${it ? trItem(it) : `<p class="small muted" style="margin:0">Aucune copie en attente.</p>`}</section>
 
+  <section class="panel grid"><h3>Importer une base publique</h3>
+    <p class="small muted" style="margin:0">Le serveur télécharge depuis Hugging Face des lignes manuscrites avec leur texte exact. L'IA les lit, la précision et les erreurs fréquentes sont calculées toutes seules : rien à corriger, rien n'est mis dans GitHub. Chaque nouvel import reprend là où le précédent s'est arrêté.</p>
+    <div class="form-row" style="grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr) auto;align-items:end">
+      <div class="field"><label for="hf-ds">Base (auteur/nom sur Hugging Face)</label><input id="hf-ds" value="${esc(S.tr.hfds || "Teklia/RIMES-2011-line")}" list="hf-list"><datalist id="hf-list"><option value="Teklia/RIMES-2011-line">RIMES · français</option></datalist></div>
+      <div class="field"><label for="hf-lang">Langue</label><select id="hf-lang">${selOpts(LANGUES, S.tr.hflang || "Français")}</select></div>
+      <div class="field"><label for="hf-n">Lignes</label><select id="hf-n">${selOpts(["20", "50", "100", "200", "300"], S.tr.hfn || "50")}</select></div>
+      <button class="btn primary" id="hf-go" ${S.tr.hfBusy ? "disabled" : ""}>Importer et tester</button></div>
+    <div class="status" id="hf-st">${esc(S.tr.hfMsg || "")}</div></section>
+
   <section class="panel grid"><h3>Aides de lecture envoyées à l'IA</h3>
     <div class="field"><label for="tr-regles">Règles écrites par toi (ex. : « Dans nos copies, le ה cursif ressemble souvent à un ח : regarde l'ouverture en haut à gauche. »)</label><textarea id="tr-regles" rows="4">${esc(S.tr.cons?.regles || "")}</textarea></div>
     <div class="form-row"><div class="field"><label for="tr-aia">L'IA lit</label><input id="tr-aia" placeholder="ex. Hashem"></div><div class="field"><label for="tr-avr">Il fallait lire</label><input id="tr-avr" placeholder="ex. Hachem"></div><button class="btn sm" id="tr-aadd" style="align-self:end">Ajouter</button></div>
@@ -2862,7 +2871,7 @@ function vEntrainement(){
     <div class="row"><button class="btn primary" id="tr-rsave">Enregistrer les règles</button><button class="btn" id="tr-test">Tester la précision actuelle (10 copies)</button></div>
     <div class="status" id="tr-tst">${S.tr.test ? esc(S.tr.test) : ""}</div></section>
 
-  ${st.mesures ? `<section class="panel grid"><div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:16px">${tbl("Par langue", st.parLangue)}${tbl("Par matière", st.parMatiere)}</div>${tbl("Par origine", (st.parSource || []).map(r => ({...r, k:{correction:"Corrections des profs", validation:"Copies validées", modele:"Feuilles modèles d'écriture", admin:"Ajouts de l'admin"}[r.k] || r.k})))}</section>` : ""}
+  ${st.mesures ? `<section class="panel grid"><div class="grid" style="grid-template-columns:repeat(2,minmax(0,1fr));gap:16px">${tbl("Par langue", st.parLangue)}${tbl("Par matière", st.parMatiere)}</div>${tbl("Par origine", (st.parSource || []).map(r => ({...r, k:{correction:"Corrections des profs", validation:"Copies validées", modele:"Feuilles modèles d'écriture", admin:"Ajouts de l'admin", public:"Bases publiques"}[r.k] || r.k})))}</section>` : ""}
 
   <section class="panel grid"><div class="row between"><h3>Banque d'écriture ${S.tr.list ? `<span class="muted small">· ${S.tr.list.total}</span>` : ""}</h3><div class="row"><input id="tr-q" placeholder="Rechercher un mot" value="${esc(S.tr.q)}" style="max-width:220px"><button class="btn sm" id="tr-qgo">Chercher</button></div></div>
     ${(S.tr.list?.items || []).map(s => `<div class="item" style="align-items:flex-start;gap:14px"><img src="${esc(blobSrc(s.asset))}" alt="" loading="lazy" style="width:220px;max-height:120px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:6px" data-zoom="${esc(blobSrc(s.asset))}">
@@ -2944,6 +2953,31 @@ document.addEventListener("click", async ev => {
       const nb = trPairs(P).length; it.faits = (it.faits || 0) + 1; it.passage = null; S.tr.editing = null;
       toast(nb ? `Enregistré : ${nb} mot(s) corrigé(s). Encadre un autre passage ou passe à la copie suivante.` : "Enregistré : lecture juste. Encadre un autre passage ou passe à la copie suivante.");
       trLoad(); return;
+    }
+    if (t.id === "hf-go"){
+      const ds = $("#hf-ds").value.trim(), langue = $("#hf-lang").value, total = +$("#hf-n").value || 50; S.tr.hfds = ds; S.tr.hflang = langue; S.tr.hfn = String(total);
+      const say = m => { S.tr.hfMsg = m; const el = $("#hf-st"); if (el) el.textContent = m; };
+      S.tr.hfBusy = true; t.disabled = true; let done = 0, lu = 0, justes = 0;
+      try {
+        while (done < total){
+          say(`Téléchargement depuis Hugging Face… (${done} / ${total})`);
+          const j = await api("/api/banque/hf", {method:"POST", body:JSON.stringify({dataset:ds, length:Math.min(50, total - done)})});
+          if (!(j.items || []).length){ if (j.total != null && j.offset >= j.total) say("Toute la base a déjà été importée."); break; }
+          const per = Math.max(1, Math.min(10, LIM?.images?.maxCount || 1));
+          for (let i = 0; i < j.items.length; i += per){
+            const part = j.items.slice(i, i + per); say(`L'IA lit les lignes… ${done + i} / ${total}`);
+            let lignes = [];
+            try { const r = await ai(`Chaque image est une ligne manuscrite. Transcris exactement ce qui est écrit, caractère par caractère, sans corriger l'orthographe ni la ponctuation. L'hébreu en caractères hébreux carrés.${lectureTips()} Réponds uniquement en JSON : {"lignes":["…"]} avec ${part.length} élément(s), dans l'ordre des images.`, {images:await Promise.all(part.map(async x => { const bmp = await createImageBitmap(await getBlob(x.asset)); const c = document.createElement("canvas"); c.width = bmp.width; c.height = bmp.height; c.getContext("2d").drawImage(bmp, 0, 0); return toBlob(scaled(c, 1600), .9); })), modelTier:"quick"});
+              lignes = (r?.lignes || []).map(String); } catch(e){ if (e?.code === "rate_limited" || e?.code === "no_access") throw e; }
+            const items = part.map((x, k) => ({asset:x.asset, texte:x.texte, texteIA:lignes[k] ?? "", ref:x.ref, source:"public", langue, matiere:"", niveau:""}));
+            await api("/api/banque", {method:"POST", body:JSON.stringify({items})});
+            items.forEach(x => { lu++; if (cerOf(x.texteIA, x.texte) < .02) justes++; });
+          }
+          done += j.items.length;
+        }
+        say(lu ? `${lu} ligne(s) importée(s) et lues : ${justes} parfaitement lue(s). Les statistiques et les erreurs fréquentes sont à jour.` : (S.tr.hfMsg || "Aucune ligne importée."));
+      } catch(e){ say(e?.code ? aiErr(e.code) : (e.message || "Erreur")); }
+      S.tr.hfBusy = false; t.disabled = false; return trLoad();
     }
     if (t.id === "tr-aadd"){ const ia = $("#tr-aia").value.trim(), vrai = $("#tr-avr").value.trim(); if (!ia || !vrai) return;
       S.tr.cons = await api("/api/banque/regles", {method:"PUT", body:JSON.stringify({ajouts:[...(S.tr.cons?.ajouts || []), {ia, vrai}]})}); window.LECT = S.tr.cons; return render(); }
