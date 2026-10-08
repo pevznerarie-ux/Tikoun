@@ -9,6 +9,7 @@
 //   AI_MAX_PER_DAY    : plafond d'appels IA par jour, tous comptes confondus (défaut 400)
 //   AI_MAX_PER_USER_DAY : plafond d'appels IA par jour et par professeur (défaut 80)
 //   ADMIN_EMAIL, ADMIN_PASSWORD (+ ADMIN_NAME) : crée automatiquement l'administrateur au démarrage s'il n'existe aucun compte
+//   ADMIN_RESET_PASSWORD : mot de passe oublié, réinitialise le compte ADMIN_EMAIL (une fois par valeur)
 //   SIGNUP            : "off" pour fermer l'inscription libre des professeurs (ouverte par défaut)
 //   MODEL_QUICK, MODEL_DEFAULT, MODEL_COMPLEX : modèles (défaut économique)
 const http = require("http"), fs = require("fs"), path = require("path"), crypto = require("crypto");
@@ -39,9 +40,9 @@ const EN_MSG = {"8 caractères minimum":"8 characters minimum","ANTHROPIC_API_KE
  "Trop de recherches, réessaie dans quelques minutes":"Too many searches: try again in a few minutes","Tu ne peux pas te retirer tes propres droits":"You can't remove your own admin rights",
  "Un compte existe déjà avec cet e-mail":"An account already exists with this email","Indique ton école":"Please enter your school","École invalide":"Invalid school","Trop lourd":"Too large","Ton essai gratuit est terminé : choisis un abonnement dans Mon compte pour continuer.":"Your free trial has ended: choose a plan in My account to continue.","Tu fais déjà partie d'un établissement":"You already belong to a school","Indique le nom de l'établissement":"Enter the school name","Code d'établissement inconnu":"Unknown school code","Résilie d'abord l'abonnement de l'établissement":"Cancel the school subscription first","Réservé à la direction de l'établissement":"School leadership only","Le paiement n'est pas encore ouvert : la bêta est gratuite":"Payments aren't open yet: the beta is free","Tarif non configuré sur le serveur":"Price not configured on the server","Tu as déjà un abonnement : gère-le avec « Gérer mon abonnement »":"You already have a plan: use “Manage my plan”","L'établissement a déjà un abonnement":"The school already has a plan","Indique le nombre d'élèves de l'établissement":"Enter the school's number of students","Aucun abonnement à gérer":"No plan to manage","Paiement indisponible pour le moment : réessaie dans un instant.":"Payments are unavailable right now: try again in a moment.","Accepte les conditions d'utilisation et la politique de confidentialité":"Please accept the terms of use and the privacy policy",
  "Indique le nom de l'école, son code postal (5 chiffres) et sa ville":"Enter the school's name, ZIP code (5 digits) and city",
- "Nom de base invalide (format : auteur/nom)":"Invalid dataset name (format: author/name)","Hugging Face injoignable pour le moment":"Hugging Face is unreachable right now","Cette base n'a pas de colonne image + texte":"This dataset has no image + text columns","Plafond quotidien d'appels IA atteint.":"Daily AI limit reached.","Plafond quotidien d'appels IA atteint pour ton compte : réessaie demain.":"Your daily AI limit is reached: try again tomorrow.",
+ "Nom de base invalide (format : auteur/nom)":"Invalid dataset name (format: author/name)","Hugging Face injoignable pour le moment":"Hugging Face is unreachable right now","Cette base n'a pas de colonne image + texte":"This dataset has no image + text columns","Appareil inconnu":"Unknown device","Trop de pages d'un coup : attends une minute":"Too many pages at once: wait a minute","Format accepté : JPEG, PNG ou PDF":"Accepted formats: JPEG, PNG or PDF","Fichier vide":"Empty file","Plafond quotidien d'appels IA atteint.":"Daily AI limit reached.","Plafond quotidien d'appels IA atteint pour ton compte : réessaie demain.":"Your daily AI limit is reached: try again tomorrow.",
  "Trop d'appels IA depuis cet appareil : réessaie dans une heure.":"Too many AI requests from this device: try again in an hour."};
-const PT_MSG = {"Nom de base invalide (format : auteur/nom)": "Nome de base inválido (formato: autor/nome)", "Hugging Face injoignable pour le moment": "Hugging Face indisponível no momento", "Cette base n'a pas de colonne image + texte": "Esta base não tem colunas de imagem + texto", "8 caractères minimum": "Mínimo de 8 caracteres", "ANTHROPIC_API_KEY manquante sur le serveur": "ANTHROPIC_API_KEY ausente no servidor", "Annuaire officiel injoignable pour le moment : tu peux enregistrer ton école manuellement.": "Diretório oficial de escolas indisponível no momento: você pode cadastrar sua escola manualmente.", "Ce compte existe déjà": "Esta conta já existe", "Ce document appartient à un autre professeur": "Este documento pertence a outro professor", "Ce quiz est fermé": "Este quiz está encerrado", "Chemin invalide": "Caminho inválido", "Code de l'établissement incorrect": "Código da escola incorreto", "Code inconnu : vérifie ta carte": "Código desconhecido: confira o seu cartão", "Compte désactivé": "Conta desativada", "Compte introuvable": "Conta não encontrada", "Connexion requise": "É necessário entrar na sua conta", "Document introuvable": "Documento não encontrado", "Définis la variable MASTERY_CODE sur le serveur": "Defina a variável MASTERY_CODE no servidor", "E-mail invalide": "E-mail inválido", "E-mail ou mot de passe incorrect": "E-mail ou senha incorretos", "E-mail valide et mot de passe de 8 caractères minimum": "Informe um e-mail válido e uma senha com no mínimo 8 caracteres", "Exercices en ligne : forfait Pro avec l'option Exercices": "Exercícios on-line: exigem o plano Pro com o complemento Exercícios", "IA injoignable": "Serviço de IA indisponível", "Impossible sur ton propre compte": "Não é possível na sua própria conta", "Indique ton nom": "Informe o seu nome", "Le compte administrateur existe déjà": "A conta de administrador já existe", "Les inscriptions sont fermées": "As inscrições estão encerradas", "Mot de passe : 8 caractères minimum": "Senha: mínimo de 8 caracteres", "Mot de passe actuel incorrect": "Senha atual incorreta", "Mot de passe provisoire : 8 caractères minimum": "Senha provisória: mínimo de 8 caracteres", "Objet JSON attendu": "Era esperado um objeto JSON", "Option Exercices non activée pour ce compte (abonnement Pro)": "Complemento Exercícios não ativado para esta conta (assinatura Pro)", "Question invalide": "Questão inválida", "Quiz introuvable": "Quiz não encontrado", "Requête invalide": "Requisição inválida", "Route inconnue": "Rota desconhecida", "Réservé à l'administrateur": "Exclusivo para o administrador", "Session de quiz expirée : recommence": "Sessão do quiz expirada: comece de novo", "Ton inscription est en attente de validation par l'équipe Mastery. Tu pourras te connecter dès qu'elle sera acceptée.": "Sua inscrição está aguardando aprovação da equipe Mastery. Você poderá entrar assim que ela for aceita.", "Ton inscription n'a pas été acceptée. Contacte l'équipe Mastery.": "Sua inscrição não foi aceita. Entre em contato com a equipe Mastery.", "Trop d'essais : réessaie dans 15 minutes": "Muitas tentativas: tente novamente em 15 minutos", "Trop d'essais, réessaie dans 15 minutes": "Muitas tentativas: tente novamente em 15 minutos", "Trop de recherches, réessaie dans quelques minutes": "Muitas buscas: tente novamente em alguns minutos", "Tu ne peux pas te retirer tes propres droits": "Você não pode remover os seus próprios direitos de administrador", "Un compte existe déjà avec cet e-mail": "Já existe uma conta com este e-mail", "Indique ton école": "Informe a sua escola", "École invalide": "Escola inválida", "Trop lourd": "Arquivo grande demais", "Ton essai gratuit est terminé : choisis un abonnement dans Mon compte pour continuer.": "Seu teste grátis terminou: escolha uma assinatura em Minha conta para continuar.", "Tu fais déjà partie d'un établissement": "Você já faz parte de uma escola", "Indique le nom de l'établissement": "Informe o nome da escola", "Code d'établissement inconnu": "Código de escola desconhecido", "Résilie d'abord l'abonnement de l'établissement": "Cancele primeiro a assinatura da escola", "Réservé à la direction de l'établissement": "Exclusivo para a direção da escola", "Le paiement n'est pas encore ouvert : la bêta est gratuite": "O pagamento ainda não está disponível: a versão beta é gratuita", "Tarif non configuré sur le serveur": "Preço não configurado no servidor", "Tu as déjà un abonnement : gère-le avec « Gérer mon abonnement »": "Você já tem uma assinatura: gerencie-a em “Gerenciar minha assinatura”", "L'établissement a déjà un abonnement": "A escola já tem uma assinatura", "Indique le nombre d'élèves de l'établissement": "Informe o número de alunos da escola", "Aucun abonnement à gérer": "Nenhuma assinatura para gerenciar", "Paiement indisponible pour le moment : réessaie dans un instant.": "Pagamento indisponível no momento: tente novamente em instantes.", "Accepte les conditions d'utilisation et la politique de confidentialité": "Aceite os termos de uso e a política de privacidade", "Indique le nom de l'école, son code postal (5 chiffres) et sa ville": "Informe o nome da escola, o código postal (5 dígitos) e a cidade", "Plafond quotidien d'appels IA atteint.": "Limite diário de uso da IA atingido.", "Plafond quotidien d'appels IA atteint pour ton compte : réessaie demain.": "Sua conta atingiu o limite diário de uso da IA: tente novamente amanhã.", "Trop d'appels IA depuis cet appareil : réessaie dans une heure.": "Muitas solicitações de IA a partir deste dispositivo: tente novamente em uma hora."};
+const PT_MSG = {"Appareil inconnu": "Aparelho desconhecido", "Trop de pages d'un coup : attends une minute": "Páginas demais de uma vez: espere um minuto", "Format accepté : JPEG, PNG ou PDF": "Formatos aceitos: JPEG, PNG ou PDF", "Fichier vide": "Arquivo vazio", "Nom de base invalide (format : auteur/nom)": "Nome de base inválido (formato: autor/nome)", "Hugging Face injoignable pour le moment": "Hugging Face indisponível no momento", "Cette base n'a pas de colonne image + texte": "Esta base não tem colunas de imagem + texto", "8 caractères minimum": "Mínimo de 8 caracteres", "ANTHROPIC_API_KEY manquante sur le serveur": "ANTHROPIC_API_KEY ausente no servidor", "Annuaire officiel injoignable pour le moment : tu peux enregistrer ton école manuellement.": "Diretório oficial de escolas indisponível no momento: você pode cadastrar sua escola manualmente.", "Ce compte existe déjà": "Esta conta já existe", "Ce document appartient à un autre professeur": "Este documento pertence a outro professor", "Ce quiz est fermé": "Este quiz está encerrado", "Chemin invalide": "Caminho inválido", "Code de l'établissement incorrect": "Código da escola incorreto", "Code inconnu : vérifie ta carte": "Código desconhecido: confira o seu cartão", "Compte désactivé": "Conta desativada", "Compte introuvable": "Conta não encontrada", "Connexion requise": "É necessário entrar na sua conta", "Document introuvable": "Documento não encontrado", "Définis la variable MASTERY_CODE sur le serveur": "Defina a variável MASTERY_CODE no servidor", "E-mail invalide": "E-mail inválido", "E-mail ou mot de passe incorrect": "E-mail ou senha incorretos", "E-mail valide et mot de passe de 8 caractères minimum": "Informe um e-mail válido e uma senha com no mínimo 8 caracteres", "Exercices en ligne : forfait Pro avec l'option Exercices": "Exercícios on-line: exigem o plano Pro com o complemento Exercícios", "IA injoignable": "Serviço de IA indisponível", "Impossible sur ton propre compte": "Não é possível na sua própria conta", "Indique ton nom": "Informe o seu nome", "Le compte administrateur existe déjà": "A conta de administrador já existe", "Les inscriptions sont fermées": "As inscrições estão encerradas", "Mot de passe : 8 caractères minimum": "Senha: mínimo de 8 caracteres", "Mot de passe actuel incorrect": "Senha atual incorreta", "Mot de passe provisoire : 8 caractères minimum": "Senha provisória: mínimo de 8 caracteres", "Objet JSON attendu": "Era esperado um objeto JSON", "Option Exercices non activée pour ce compte (abonnement Pro)": "Complemento Exercícios não ativado para esta conta (assinatura Pro)", "Question invalide": "Questão inválida", "Quiz introuvable": "Quiz não encontrado", "Requête invalide": "Requisição inválida", "Route inconnue": "Rota desconhecida", "Réservé à l'administrateur": "Exclusivo para o administrador", "Session de quiz expirée : recommence": "Sessão do quiz expirada: comece de novo", "Ton inscription est en attente de validation par l'équipe Mastery. Tu pourras te connecter dès qu'elle sera acceptée.": "Sua inscrição está aguardando aprovação da equipe Mastery. Você poderá entrar assim que ela for aceita.", "Ton inscription n'a pas été acceptée. Contacte l'équipe Mastery.": "Sua inscrição não foi aceita. Entre em contato com a equipe Mastery.", "Trop d'essais : réessaie dans 15 minutes": "Muitas tentativas: tente novamente em 15 minutos", "Trop d'essais, réessaie dans 15 minutes": "Muitas tentativas: tente novamente em 15 minutos", "Trop de recherches, réessaie dans quelques minutes": "Muitas buscas: tente novamente em alguns minutos", "Tu ne peux pas te retirer tes propres droits": "Você não pode remover os seus próprios direitos de administrador", "Un compte existe déjà avec cet e-mail": "Já existe uma conta com este e-mail", "Indique ton école": "Informe a sua escola", "École invalide": "Escola inválida", "Trop lourd": "Arquivo grande demais", "Ton essai gratuit est terminé : choisis un abonnement dans Mon compte pour continuer.": "Seu teste grátis terminou: escolha uma assinatura em Minha conta para continuar.", "Tu fais déjà partie d'un établissement": "Você já faz parte de uma escola", "Indique le nom de l'établissement": "Informe o nome da escola", "Code d'établissement inconnu": "Código de escola desconhecido", "Résilie d'abord l'abonnement de l'établissement": "Cancele primeiro a assinatura da escola", "Réservé à la direction de l'établissement": "Exclusivo para a direção da escola", "Le paiement n'est pas encore ouvert : la bêta est gratuite": "O pagamento ainda não está disponível: a versão beta é gratuita", "Tarif non configuré sur le serveur": "Preço não configurado no servidor", "Tu as déjà un abonnement : gère-le avec « Gérer mon abonnement »": "Você já tem uma assinatura: gerencie-a em “Gerenciar minha assinatura”", "L'établissement a déjà un abonnement": "A escola já tem uma assinatura", "Indique le nombre d'élèves de l'établissement": "Informe o número de alunos da escola", "Aucun abonnement à gérer": "Nenhuma assinatura para gerenciar", "Paiement indisponible pour le moment : réessaie dans un instant.": "Pagamento indisponível no momento: tente novamente em instantes.", "Accepte les conditions d'utilisation et la politique de confidentialité": "Aceite os termos de uso e a política de privacidade", "Indique le nom de l'école, son code postal (5 chiffres) et sa ville": "Informe o nome da escola, o código postal (5 dígitos) e a cidade", "Plafond quotidien d'appels IA atteint.": "Limite diário de uso da IA atingido.", "Plafond quotidien d'appels IA atteint pour ton compte : réessaie demain.": "Sua conta atingiu o limite diário de uso da IA: tente novamente amanhã.", "Trop d'appels IA depuis cet appareil : réessaie dans une heure.": "Muitas solicitações de IA a partir deste dispositivo: tente novamente em uma hora."};
 const langOf = req => { const c = ((req.headers.cookie || "").match(/(?:^|;\s*)lang=(fr|en|pt)/) || [])[1]; if (c) return c; const h = String(req.headers["x-lang"] || ""); if (/^(fr|en|pt)$/.test(h)) return h; const al = String(req.headers["accept-language"] || ""); return /^en\b/i.test(al) ? "en" : /^pt\b/i.test(al) ? "pt" : "fr"; };
 const sendJ = (res, status, obj, extra) => { const DICT = res._lang === "en" ? EN_MSG : res._lang === "pt" ? PT_MSG : null; if (DICT && obj?.error?.message && DICT[obj.error.message]) obj = {...obj, error:{...obj.error, message:DICT[obj.error.message]}}; return send(res, status, JSON.stringify(obj), TYPES[".json"], extra); };
 const same = (a, b) => { const x = Buffer.from(String(a)), y = Buffer.from(String(b)); return x.length === y.length && crypto.timingSafeEqual(x, y); };
@@ -94,7 +95,7 @@ const checkPw = (pw, stored) => { const [salt, h] = String(stored || "").split("
 const PLANS = ["essentiel", "pro"];
 const entitled = u => { if (!u) return false; const a = access(u); if (a.mode === "essai" || a.mode === "ecole") return true; if (a.mode === "abonne") return a.plan === "pro"; if (!a.ok) return false; return u.plan === "pro" && !!u.options?.exercices; };
 const AFF = ["ecole", "nom", "les2"];
-const pub = u => ({id:u.id, email:u.email, nom:u.nom, role:u.role, ecole:u.ecole || null, matieres:u.matieres || [], affichage:AFF.includes(u.affichage) ? u.affichage : "les2", plan:u.plan || "essentiel", options:{exercices:!!u.options?.exercices}, can:{exercices:entitled(u)}, actif:u.actif !== false, statut:u.statut || "valide", planDemande:u.planDemande || null, createdAt:u.createdAt, bareme:u.bareme || null, partageEcriture:u.role === "admin" || !!u.partageEcriture, espace:u.espace, ref:refCode(u), acces:access(u), billing:BILLING(), parrainage:refStats(u), etab:etabPub(groupOf(u), u), inscription:u.inscription || "admin"});
+const pub = u => ({id:u.id, email:u.email, nom:u.nom, role:u.role, ecole:u.ecole || null, matieres:u.matieres || [], enseigne:u.enseigne || [], affichage:AFF.includes(u.affichage) ? u.affichage : "les2", plan:u.plan || "essentiel", options:{exercices:!!u.options?.exercices}, can:{exercices:entitled(u)}, actif:u.actif !== false, statut:u.statut || "valide", planDemande:u.planDemande || null, createdAt:u.createdAt, bareme:u.bareme || null, partageEcriture:u.role === "admin" || !!u.partageEcriture, espace:u.espace, ref:refCode(u), acces:access(u), billing:BILLING(), parrainage:refStats(u), etab:etabPub(groupOf(u), u), inscription:u.inscription || "admin"});
 const sidOf = req => ((req.headers.cookie || "").match(/(?:^|;\s*)sid=([a-f0-9]{64})/) || [])[1] || "";
 function userOf(req){
   const s = SESS[sidOf(req)]; if (!s || s.exp < Date.now()) return null;
@@ -365,6 +366,7 @@ async function accounts(req, res, url, p, u){
     if (AFF.includes(b.affichage)) u.affichage = b.affichage;
     if (["20", "10", "100", "AF"].includes(b.bareme)) u.bareme = b.bareme;
     if (typeof b.partageEcriture === "boolean") u.partageEcriture = b.partageEcriture;
+    if (Array.isArray(b.enseigne)) u.enseigne = [...new Set(b.enseigne.map(x => String(x).trim().slice(0, 40)).filter(Boolean))].slice(0, 12);
     if (Array.isArray(b.matieres)) u.matieres = [...new Set(b.matieres.map(x => String(x).trim().slice(0, 40)).filter(Boolean))].slice(0, 40);
     if (b.ecole){ const e = await checkEcole(b.ecole); if (!e || e.error) return sendJ(res, 400, {error:{message:e?.error || "École invalide"}}); u.ecole = e; }
     saveUsers(); return sendJ(res, 200, {user:pub(u)});
@@ -573,7 +575,7 @@ async function aiProxy(req, res, u){
   const M = MODELS(), model = M[body?.tier] || M.default;
   const r = await fetch((env("ANTHROPIC_BASE_URL") || "https://api.anthropic.com") + "/v1/messages", {method:"POST",
     headers:{"content-type":"application/json", "x-api-key":env("ANTHROPIC_API_KEY"), "anthropic-version":"2023-06-01"},
-    body:JSON.stringify({model, max_tokens:8000, messages:body?.messages})}).catch(() => null);
+    body:JSON.stringify({model, max_tokens:Math.min(32000, Math.max(1000, +env("AI_MAX_TOKENS") || 16000)), messages:body?.messages})}).catch(() => null);
   if (!r) return sendJ(res, 502, {error:{message:"IA injoignable"}});
   const txt = await r.text();
   if (r.ok){ try { const us = JSON.parse(txt).usage; console.log(`IA ${model} · ${u.email} · entrée ${us?.input_tokens} · sortie ${us?.output_tokens}`); } catch(e){} }
@@ -588,6 +590,14 @@ if (!USERS.length && validEmail(env("ADMIN_EMAIL").toLowerCase()) && env("ADMIN_
   USERS.push({id:aid, espace:aid, email:env("ADMIN_EMAIL").toLowerCase(), nom:env("ADMIN_NAME") || "Admin", role:"admin", plan:"pro", options:{exercices:true}, affichage:"les2", pw:hashPw(env("ADMIN_PASSWORD")), createdAt:new Date().toISOString()});
   saveUsers(); console.log("Compte administrateur créé depuis ADMIN_EMAIL");
 }
+
+/* Mot de passe administrateur oublié : mettre ADMIN_EMAIL + ADMIN_RESET_PASSWORD (8 caractères min.) dans Railway.
+   Au redémarrage, ce compte reçoit ce mot de passe provisoire et devra en choisir un nouveau à la connexion.
+   Appliqué une seule fois par valeur : on peut retirer la variable ensuite (conseillé). */
+{ const em = env("ADMIN_EMAIL").toLowerCase(), rp = env("ADMIN_RESET_PASSWORD");
+  if (em && rp.length >= 8){ const u = USERS.find(x => x.email === em), tag = crypto.createHash("sha256").update(rp).digest("hex").slice(0, 16);
+    if (!u) console.log("ADMIN_RESET_PASSWORD : aucun compte avec ADMIN_EMAIL");
+    else if (u.resetTag !== tag){ u.pw = hashPw(rp); u.mustChange = true; u.resetTag = tag; u.actif = true; if (u.role !== "admin") u.role = "admin"; saveUsers(); console.log("Mot de passe administrateur réinitialisé pour", em); } } }
 
 /* ---------- Banque d'écriture : copies manuscrites anonymisées (image du cadre + texte validé) ----------
    Sert à mesurer la précision de lecture de l'IA et à lui donner des aides de lecture (erreurs fréquentes, règles de l'admin).
@@ -700,6 +710,60 @@ async function banqueApi(req, res, url, p, u){
   return sendJ(res, 404, {error:{message:"Route inconnue"}});
 }
 
+
+/* ---------- Appareils de scan (Mastery Box, scanners Wi-Fi) et boîte de réception des copies ----------
+   Un appareil reçoit un jeton secret. Il envoie chaque page (image ou PDF) à /api/scan/upload?t=JETON.
+   Les pages arrivent dans la boîte de réception du prof (ou de l'établissement) ; l'application du prof
+   les récupère, lit les QR codes, range chaque copie dans le bon contrôle et lance la correction. */
+const DEV_F = path.join(DATA, "appareils.json"), INBOX_F = path.join(DATA, "inbox.json");
+let DEVICES = readJ(DEV_F, []), INBOX = readJ(INBOX_F, []);
+const saveDevices = () => writeAtomic(DEV_F, DEVICES);
+let inTimer = null; const saveInbox = () => { clearTimeout(inTimer); inTimer = setTimeout(() => writeAtomic(INBOX_F, INBOX), 300); };
+const devPub = d => ({id:d.id, nom:d.nom, portee:d.portee, token:d.token, createdAt:d.createdAt, dernier:d.dernier || null, pages:d.pages || 0});
+const inboxFor = u => INBOX.filter(it => it.status !== "fait" && (it.cible === "u:" + u.id || (it.cible.startsWith("g:") && (() => { const g = GROUPES.find(x => "g:" + x.id === it.cible); return g && (g.directeur === u.id || (g.membres || []).includes(u.id)); })()))
+  && !(it.autres || []).includes(u.id));
+const devHits = new Map();
+async function scanApi(req, res, url, p, u){
+  if (p === "/api/scan/upload" && req.method === "POST"){
+    const tok = String(url.searchParams.get("t") || (req.headers.authorization || "").replace(/^Bearer\s+/i, "")).trim();
+    const d = /^[a-f0-9]{40}$/.test(tok) && DEVICES.find(x => same(x.token, tok));
+    if (!d) return sendJ(res, 401, {error:{message:"Appareil inconnu"}});
+    const now = Date.now(), l = (devHits.get(d.id) || []).filter(t => now - t < 60e3); if (l.length >= 120) return sendJ(res, 429, {error:{message:"Trop de pages d'un coup : attends une minute"}}); l.push(now); devHits.set(d.id, l);
+    const ct = String(req.headers["content-type"] || "").split(";")[0].trim().toLowerCase();
+    if (!["image/jpeg", "image/png", "application/pdf"].includes(ct)) return sendJ(res, 415, {error:{message:"Format accepté : JPEG, PNG ou PDF"}});
+    const buf = await readBody(req, 30e6); if (buf.length < 100) return sendJ(res, 400, {error:{message:"Fichier vide"}});
+    const id = crypto.randomBytes(10).toString("hex"); fs.writeFileSync(path.join(FILEDIR, id + ".jpg"), buf);
+    INBOX.push({id:crypto.randomBytes(8).toString("hex"), asset:id, mime:ct, cible:d.cible, appareil:d.id, at:new Date().toISOString(), status:"nouveau"});
+    if (INBOX.length > 20000) INBOX = INBOX.filter(x => x.status !== "fait").slice(-20000);
+    d.dernier = new Date().toISOString(); d.pages = (d.pages || 0) + 1; saveDevices(); saveInbox();
+    return sendJ(res, 200, {ok:true});
+  }
+  if (!u) return sendJ(res, 401, {error:{message:"Connexion requise"}});
+  if (p === "/api/devices" && req.method === "GET") return sendJ(res, 200, {appareils:DEVICES.filter(d => d.par === u.id).map(devPub)});
+  if (p === "/api/devices" && req.method === "POST"){
+    const b = await readJSON(req, 1e4) || {}; const g = groupOf(u);
+    const ecole = b.portee === "ecole" && g && g.directeur === u.id;
+    const d = {id:crypto.randomBytes(8).toString("hex"), token:crypto.randomBytes(20).toString("hex"), nom:String(b.nom || "Scanner").trim().slice(0, 60) || "Scanner", portee:ecole ? "ecole" : "moi", cible:ecole ? "g:" + g.id : "u:" + u.id, par:u.id, createdAt:new Date().toISOString()};
+    DEVICES.push(d); saveDevices(); return sendJ(res, 200, {appareil:devPub(d)});
+  }
+  const dm = p.match(/^\/api\/devices\/([a-f0-9]{16})$/);
+  if (dm && req.method === "DELETE"){ DEVICES = DEVICES.filter(d => !(d.id === dm[1] && d.par === u.id)); saveDevices(); return sendJ(res, 200, {ok:true}); }
+  if (p === "/api/scan/inbox" && req.method === "GET"){
+    const now = Date.now(), l = inboxFor(u).filter(it => !it.pris || it.pris.u === u.id || now - it.pris.t > 10 * 60e3).slice(0, 60);
+    for (const it of l) it.pris = {u:u.id, t:now}; if (l.length) saveInbox();
+    return sendJ(res, 200, {items:l.map(it => ({id:it.id, asset:it.asset, mime:it.mime, at:it.at, groupe:it.cible.startsWith("g:"), status:it.status}))});
+  }
+  const im = p.match(/^\/api\/scan\/inbox\/([a-f0-9]{16})$/);
+  if (im && req.method === "POST"){
+    const it = INBOX.find(x => x.id === im[1]); if (!it || !inboxFor(u).includes(it)) return sendJ(res, 404, {error:{message:"Document introuvable"}});
+    const b = await readJSON(req, 1e4) || {};
+    if (b.status === "autre"){ it.autres = [...new Set([...(it.autres || []), u.id])]; delete it.pris; }
+    else if (["fait", "manuel"].includes(b.status)){ it.status = b.status; it.par = u.id; if (b.status === "fait") it.faitAt = new Date().toISOString(); }
+    saveInbox(); return sendJ(res, 200, {ok:true});
+  }
+  return sendJ(res, 404, {error:{message:"Route inconnue"}});
+}
+
 migrateEspaces();
 /* ---------- Sauvegardes automatiques : une copie complète par jour sur le Volume, 14 jours gardés ---------- */
 const BAKDIR = path.join(DATA, "backups"); fs.mkdirSync(BAKDIR, {recursive:true});
@@ -707,7 +771,7 @@ function autoBackup(){
   try {
     const f = path.join(BAKDIR, "mastery-" + new Date().toISOString().slice(0, 10) + ".json");
     if (fs.existsSync(f) || (!USERS.length && !DOCS.size)) return;
-    writeAtomic(f, {mastery:1, at:new Date().toISOString(), users:USERS, docs:Object.fromEntries(DOCS), banque:BANQUE, banqueRegles:REGLES});
+    writeAtomic(f, {mastery:1, at:new Date().toISOString(), users:USERS, docs:Object.fromEntries(DOCS), banque:BANQUE, banqueRegles:REGLES, appareils:DEVICES, inbox:INBOX});
     const all = fs.readdirSync(BAKDIR).filter(x => /^mastery-\d{4}-\d{2}-\d{2}\.json$/.test(x)).sort();
     for (const x of all.slice(0, Math.max(0, all.length - (Number(env("BACKUP_KEEP")) || 14)))) fs.rmSync(path.join(BAKDIR, x), {force:true});
     console.log("Sauvegarde automatique :", path.basename(f));
@@ -737,6 +801,7 @@ http.createServer(async (req, res) => {
     if (/^[A-Za-z0-9]{7}$/.test(wantRef || "") && !p.startsWith("/api/")){ url.searchParams.delete("ref"); const q = url.searchParams.toString();
       res.writeHead(302, {"Location":p + (q ? "?" + q : ""), "Set-Cookie":`mref=${wantRef.toUpperCase()}; Path=/; SameSite=Lax; Max-Age=${60 * 86400}`}); return res.end(); }
     if (p === "/api/stripe/webhook" && req.method === "POST") return await stripeWebhook(req, res);
+    if (p === "/api/scan/upload") return await scanApi(req, res, url, p, null);
     const u = userOf(req);
     if (p.startsWith("/api/eleve/")) return await eleveApi(req, res, url, p);
     if (p === "/eleve" || p === "/eleve/") p = "/eleve.html";
@@ -744,6 +809,7 @@ http.createServer(async (req, res) => {
       if (req.method === "POST" && p === "/api/ai") return await aiProxy(req, res, u);
       if (p.startsWith("/api/backups")) return backups(req, res, p, u);
       if (p === "/api/banque" || p.startsWith("/api/banque/")) return await banqueApi(req, res, url, p, u);
+      if (p === "/api/devices" || p.startsWith("/api/devices/") || p.startsWith("/api/scan/")) return await scanApi(req, res, url, p, u);
       if (p === "/api/etab" || p.startsWith("/api/etab/") || p.startsWith("/api/billing/")){ try { return await billingApi(req, res, url, p, u); } catch(e){ console.warn("Abonnement :", e.message); return sendJ(res, 502, {error:{message:"Paiement indisponible pour le moment : réessaie dans un instant."}}); } }
       if (p.startsWith("/api/db") || p.startsWith("/api/files") || p === "/api/export") return await storage(req, res, url, p, u);
       return await accounts(req, res, url, p, u);
