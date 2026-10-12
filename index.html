@@ -983,12 +983,28 @@ async function footerId(cv){
   if (!AI) return null;
   const W = cv.width, H = cv.height, strip = crop(cv, 0, H * 0.9, W, H * 0.1);
   try {
-    const r = await ai(`Image : bas d'une feuille imprimée. Recopie exactement la ligne qui commence par « Mastery » (deux codes de lettres minuscules et chiffres séparés par un point) et le numéro de page « page X / Y ». Attention aux confusions l/1, o/0, q/g. Réponds uniquement en JSON : {"ligne":"…","page":1}`, {images:[await toBlob(scaled(strip, 1600), .9)], modelTier:"quick"});
+    const r = await ai(`Image : bas d'une feuille imprimée. Recopie exactement la ligne qui commence par « Mastery » (deux codes de lettres minuscules et chiffres séparés par un point) et le numéro de page « page X / Y ». Attention aux confusions l/1, o/0, q/g. Dans "page", mets seulement le nombre X (un entier). Réponds uniquement en JSON : {"ligne":"…","page":1}`, {images:[await toBlob(scaled(strip, 1600), .9)], modelTier:"quick"});
     const m = String(r?.ligne || "").toLowerCase().replace(/\s+/g, "").match(/([a-z0-9]{8,16})[·.•:\-|,]+([a-z0-9]{5,12})/); if (!m) return null;
     const cid = closest(m[1], store.controles.map(c => c.id)); if (!cid) return null;
     const eid = closest(m[2], Object.keys(feuille(cid)?.copies || {})); if (!eid) return null;
-    return `TK1|${cid}|${eid}|${Math.max(1, Math.round(+r.page) || 1)}`;
+    /* « page 2 / 3 » : on prend le premier nombre (avant, « 2 / 3 » donnait la page 1 par erreur) */
+    const pn = +((String(r.page ?? "").match(/\d+/) || [])[0] || (String(r.ligne || "").match(/page\s*(\d+)/i) || [])[1] || 0);
+    const nP = (feuille(cid)?.copies?.[eid]?.pages || []).length || 1;
+    return `TK1|${cid}|${eid}|${pn >= 1 && pn <= nP ? pn : 0}`;
   } catch(e){ S.footErr = e?.message || aiErr(e?.code); console.warn("Bas de page", e); return null; }
+}
+/* Vérifie que les cadres attendus sont bien là où on va découper : on cherche leur bordure noire imprimée.
+   Sert à choisir la bonne page de la copie et à refuser un redressement faux. */
+function boxScore(cv, H, boxes){
+  const d = pix(cv), SW = cv.width, SH = cv.height; let hit = 0, n = 0;
+  const lum = (x, y) => { const [u, v] = applyH(H, x, y), X = u | 0, Y = v | 0; if (X < 0 || Y < 0 || X >= SW || Y >= SH) return 255; const o = (Y * SW + X) * 4; return 0.3 * d[o] + 0.59 * d[o + 1] + 0.11 * d[o + 2]; };
+  for (const b of boxes || []){ if (!(b.w > 20 && b.h > 20)) continue;
+    const edges = [[b.x, b.y, b.x + b.w, b.y, 0, 1], [b.x, b.y + b.h, b.x + b.w, b.y + b.h, 0, 1], [b.x, b.y, b.x, b.y + b.h, 1, 0], [b.x + b.w, b.y, b.x + b.w, b.y + b.h, 1, 0]];
+    for (const [x0, y0, x1, y1, px, py] of edges) for (let t = 0.12; t <= 0.88; t += 0.04){
+      const x = x0 + (x1 - x0) * t, y = y0 + (y1 - y0) * t; let m = 255;
+      for (let k = -3; k <= 3; k++) m = Math.min(m, lum(x + px * k, y + py * k));
+      n++; if (m < 150) hit++; } }
+  return n ? hit / n : 0;
 }
 function solve(A, b){ const n = b.length; A = A.map((r, i) => [...r, b[i]]);
   for (let i = 0; i < n; i++){ let m = i; for (let k = i + 1; k < n; k++) if (Math.abs(A[k][i]) > Math.abs(A[m][i])) m = k; [A[i], A[m]] = [A[m], A[i]];
@@ -1108,7 +1124,7 @@ async function runQueue(){
         else { it.msg = "QR illisible : lecture du bas de page…"; scheduleRender(); data = await footerId(it.cv); if (data){ it.viaPied = true; if (it.src) it.src.qrBad++; } } }
       if (!data){ freeCv(it); it.status = "manuel"; it.msg = (S.footErr ? "IA indisponible pour lire le bas de page (" + S.footErr + "). " : "") + "Choisis le contrôle, l'élève et la page, ou reprends la photo avec le QR code bien net."; S.footErr = null; if (it.inbox){ const m = INBOX_ITEMS[it.inbox]; if (m) m.manuel = true; inboxPage(it, true); } scheduleRender(); continue; }
       if (data.startsWith("TK1W|")){ if (it.inbox && !classe(data.split("|")[1])){ S.queue = S.queue.filter(x => x !== it); inboxPage(it, false); continue; } await processWriting(it, data); freeCv(it); if (it.inbox) inboxPage(it, true); continue; }
-      const [, cid, eid, p] = data.split("|"); it.ctrlId = cid; it.eleveId = eid; it.page = +p || 1;
+      const [, cid, eid, p] = data.split("|"); it.ctrlId = cid; it.eleveId = eid; it.page = +p || 0;
       if (it.inbox && !ctrl(cid)){ S.queue = S.queue.filter(x => x !== it); inboxPage(it, false); continue; }
       await processPage(it); freeCv(it); if (it.inbox) inboxPage(it, true);
     }
@@ -1118,8 +1134,8 @@ async function processPage(it){
   const c = ctrl(it.ctrlId), f = feuille(it.ctrlId), cp = f?.copies?.[it.eleveId];
   if (!c){ it.status = "erreur"; it.msg = "Contrôle introuvable (supprimé ?)."; return scheduleRender(); }
   if (!cp){ it.status = "erreur"; it.msg = "Feuille de cet élève non trouvée : réimprime les feuilles depuis l'onglet du contrôle."; return scheduleRender(); }
-  const pg = cp.pages?.[it.page - 1], qids = pageQ(pg), boxes = pg?.b || [];
-  if (!qids.length){ it.status = "erreur"; it.msg = "Aucune question attendue sur cette page."; return scheduleRender(); }
+  let pg = cp.pages?.[it.page - 1], qids = pageQ(pg), boxes = pg?.b || [];
+  if (!qids.length && !(it.page === 0 && cp.pages?.length)){ it.status = "erreur"; it.msg = "Aucune question attendue sur cette page."; return scheduleRender(); }
   it.status = "lecture"; it.msg = "Envoi de l'image…"; scheduleRender();
   try{
     await pageCv(it); if (!it.cv){ it.status = "erreur"; it.msg = "Image perdue : ajoute la photo à nouveau."; return scheduleRender(); }
@@ -1129,8 +1145,16 @@ async function processPage(it){
     it.msg = "Lecture de l'écriture et correction (30 s à 1 min)…"; scheduleRender();
     let fnd = it.found || await detectAll(it.cv);
     const have = fnd.map(f => /^TK1W?\|/.test(f.data) ? "tl" : f.data.startsWith("TK1C|") ? f.data.slice(5) : "").filter(Boolean);
-    if (boxes.length && have.length < 4){ const extra = blobMarkers(it.cv, have), all = fnd.concat(extra); if (extra.length && markersOk(all)) fnd = all; }
-    const Hm = boxes.length ? sheetToPhoto(fnd) : null;
+    if ((boxes.length || cp.pages?.some(p => p?.b?.length)) && have.length < 4){ const extra = blobMarkers(it.cv, have), all = fnd.concat(extra); if (extra.length && markersOk(all)) fnd = all; }
+    let Hm = sheetToPhoto(fnd);
+    /* Bonne page ? On compare la position des cadres de chaque page de la copie avec ce qu'on voit sur l'image */
+    if (Hm && cp.pages?.length){
+      const sc = cp.pages.map(p => (p?.b || []).length ? boxScore(it.cv, Hm, p.b) : 0);
+      let best = it.page >= 1 ? it.page : 1; sc.forEach((v, i) => { if (v > sc[best - 1] + 0.1 || (it.page === 0 && v > sc[best - 1])) best = i + 1; });
+      if (best !== it.page){ console.warn("Page corrigée", it.page, "→", best, sc); it.page = best; pg = cp.pages[best - 1]; qids = pageQ(pg); boxes = pg?.b || []; }
+      if (sc[it.page - 1] < 0.45){ console.warn("Cadres non retrouvés sur l'image", sc); Hm = null; } }
+    if (it.page < 1 || !qids.length){ it.status = "manuel"; it.msg = "Page de la copie non reconnue : choisis-la puis clique sur Traiter."; it.page = it.page || 1; return scheduleRender(); }
+    if (!boxes.length) Hm = null;
     const maxImg = LIM?.images?.maxCount || 1;
     const qcmB = Hm ? boxes.filter(b => b.type === "qcm") : [];
     let aiQ = qids.filter(id => !qcmB.some(b => b.q === id));

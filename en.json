@@ -1426,5 +1426,9 @@
  "✓ Correction terminée :": "✓ Grading done:",
  "Lecture du bas de page…": "Reading the page footer…",
  "Bas de page": "Page footer",
- "IA indisponible pour lire le bas de page (": "AI unavailable to read the page footer ("
+ "IA indisponible pour lire le bas de page (": "AI unavailable to read the page footer (",
+ "Image : bas d'une feuille imprimée. Recopie exactement la ligne qui commence par « Mastery » (deux codes de lettres minuscules et chiffres séparés par un point) et le numéro de page « page X / Y ». Attention aux confusions l/1, o/0, q/g. Dans \"page\", mets seulement le nombre X (un entier). Réponds uniquement en JSON : {\"ligne\":\"…\",\"page\":1}": "Image: bottom of a printed sheet. Copy exactly the line that starts with “Mastery” (two codes of lowercase letters and digits separated by a dot) and the page number “page X / Y”. Beware of l/1, o/0, q/g confusions. In \"page\", put only the number X (an integer). Reply only in JSON: {\"ligne\":\"…\",\"page\":1}",
+ "Cadres non retrouvés sur l'image": "Boxes not found on the image",
+ "Page corrigée": "Page corrected",
+ "Page de la copie non reconnue : choisis-la puis clique sur Traiter.": "Page of the paper not recognized: choose it, then click Process."
 }
