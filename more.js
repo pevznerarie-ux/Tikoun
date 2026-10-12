@@ -24,7 +24,7 @@ async function buildPdf(builders, filename, st){
       await Promise.all($$("img", stage).map(im => im.decode ? im.decode().catch(() => {}) : null));
       for (let i = 0; i < pages.length; i++){
         $("#ovm").textContent = `${label} · ${k + 1} / ${builders.length}`;
-        const cv = await html2canvas(pages[i], {scale:2, backgroundColor:"#ffffff", logging:false, scrollX:0, scrollY:-window.scrollY, windowWidth:900, useCORS:true});
+        const cv = await html2canvas(pages[i], {scale:2, backgroundColor:"#ffffff", logging:false, scrollX:0, scrollY:-window.scrollY, windowWidth:900, useCORS:true, onclone:(doc, el) => fixBidiForCanvas(el)});
         if (!first) pdf.addPage(); first = false; pdf.addImage(cv.toDataURL("image/jpeg", 0.88), "JPEG", 0, 0, 595.28, 841.89);
       }
     }
@@ -42,12 +42,12 @@ function renduPages(c, e){
   const rows = studentsOf(c).map(x => feuille(c.id)?.copies?.[x.id]).filter(k => copyDone(c, k));
   const moy = rows.length ? rows.reduce((a, k) => a + final20(c, k), 0) / rows.length : null;
   const ratt = store.controles.find(x => x.type === "rattrapage" && x.parentId === c.id && x.eleves?.includes(e.id));
-  const head = `<div class="sh-head"><div><div class="sh-school">${esc(c.mise?.entete ?? ECOLE)}</div>
+  const head = `<div class="sh-head"><div><div class="sh-school">${esc(enteteOf(c))}</div>
     <div class="sh-title" dir="auto">Copie corrigée · ${esc(c.titre)}</div>
     <div class="sh-meta">${esc(c.matiere)} · ${esc(cl?.nom || "")}${c.date ? " · " + esc(frDate(c.date)) : ""}</div>
     <div class="sh-name">Élève : <b>${esc(e.prenom)} ${esc(e.nom)}</b></div></div></div>
-    <div class="rd-note"><span class="rd-big">${fmt(final20(c, cp))}</span><span> / 20</span>
-      <span class="rd-sub">${[bonusMax(c) ? `note brute ${fmt(on20(copyTotal(c, cp), max))} · bonus propreté ${fmt(b.proprete)} · bonus orthographe ${fmt(b.orthographe)}` : "", moy != null ? `moyenne de la classe ${fmt(moy)}` : ""].filter(Boolean).join(" · ")}</span></div>`;
+    <div class="rd-note"><span class="rd-big">${nv(final20(c, cp))}</span><span>${sfxN(final20(c, cp))}</span>
+      <span class="rd-sub">${[bonusMax(c) ? `note brute ${fmt(on20(copyTotal(c, cp), max))} · bonus propreté ${fmt(b.proprete)} · bonus orthographe ${fmt(b.orthographe)}` : "", moy != null ? `moyenne de la classe ${noteS(moy)}` : ""].filter(Boolean).join(" · ")}</span></div>`;
   const blocks = c.questions.map((q, k) => { const a = cp?.answers?.[q.id], v = vOf(q, cp?.version?.[q.id] || "standard");
     return `<div class="sh-qh"><span>Question ${k + 1}${q.notion ? " · " + esc(q.notion) : ""}</span><span class="rd-q">${fmt(noteOf(a))} / ${fmt(+q.points)}</span></div>
       <div class="sh-qt" dir="auto">${esc(v.enonce)}</div>
@@ -56,7 +56,7 @@ function renduPages(c, e){
       ${(a?.acquis || []).length ? `<div class="rd-tag">Acquis : ${esc(a.acquis.join(", "))}</div>` : ""}
       ${(a?.erreurs || []).length ? `<div class="rd-tag">À retravailler : ${esc(a.erreurs.join(", "))}</div>` : ""}`; });
   if (ratt) blocks.push(`<div class="sh-cons">Une feuille de rattrapage personnelle t'a été préparée : « ${esc(ratt.titre)} ». Fais-la sérieusement, elle cible exactement tes erreurs.</div>`);
-  return docPages(head, blocks, `Tikoun · copie corrigée · ${e.prenom} ${e.nom}`);
+  return docPages(head, blocks, `Mastery · copie corrigée · ${e.prenom} ${e.nom}`);
 }
 
 /* ================= 2. Suivi par notion ================= */
@@ -77,30 +77,36 @@ function studentCtrls(cl, mat, e){
     .sort((a, b) => (a.c.date || a.c.createdAt || "").localeCompare(b.c.date || b.c.createdAt || ""));
 }
 function vSuivi(){
+  const head = `<div class="head"><div><h2>Suivi des élèves</h2><p>Ouvre une classe pour voir la maîtrise de chaque notion (copies validées) et les exercices en ligne. Réduis-la pour passer à une autre.</p></div></div>`;
+  if (!store.classes.length) return head + `<div class="panel empty">Crée d'abord une classe.</div>`;
+  S.su = S.su || {};
+  if (!("suivi" in S.acc)) S.acc.suivi = [classe(S.su.cl)?.id || store.classes[0].id];
+  const sum = cl => { const n = store.controles.filter(c => c.classeId === cl.id && isCtrl(c)).length, q = (store.quizzes || []).filter(x => x.classeId === cl.id).length; return `${(cl.eleves || []).length} élèves · ${n} contrôle(s)${q ? " · " + q + " quiz" : ""}`; };
+  return head + classAcc("suivi", store.classes, sum, cl => { S.su.cl = cl.id; return vSuiviBase() + (typeof quizSuivi === "function" ? quizSuivi() : ""); }, false);
+}
+function vSuiviBase(){
   if (!store.classes.length) return `<div class="head"><h2>Suivi des élèves</h2></div><div class="panel empty">Crée d'abord une classe.</div>`;
   const cl = classe(S.su?.cl) || store.classes[0]; S.su = S.su || {}; S.su.cl = cl.id;
-  const mats = [...new Set(store.controles.filter(c => c.classeId === cl.id).map(c => c.matiere))];
+  const mats = [...new Set([...store.controles.filter(c => c.classeId === cl.id), ...(store.quizzes || []).filter(q => q.classeId === cl.id)].map(c => c.matiere))];
   const mat = mats.includes(S.su.mat) ? S.su.mat : mats[0]; S.su.mat = mat;
-  const top = `<div class="head"><div><h2>Suivi des élèves</h2><p>Maîtrise de chaque notion sur toute l'année, calculée sur les copies validées.</p></div>
-    <div class="row"><select id="su-cl" style="width:auto" aria-label="Classe">${selOpts(store.classes, cl.id, x => x.nom, x => x.id)}</select>
-    ${mats.length ? `<select id="su-mat" style="width:auto" aria-label="Matière">${selOpts(mats, mat)}</select>` : ""}</div></div>`;
-  if (!mat) return top + `<div class="panel empty">Aucun contrôle pour cette classe.</div>`;
+  const top = mats.length > 1 ? `<div class="row"><span class="small muted">Matière</span><select id="su-mat" style="width:auto" aria-label="Matière">${selOpts(mats, mat)}</select></div>` : mats.length ? `<div class="label">${esc(mat)}</div>` : "";
+  if (!mat) return `<p class="muted">Aucun contrôle ni quiz pour cette classe pour l'instant.</p>`;
   const st = notionStats(cl, mat), cols = st.notions.slice(0, 10);
   const ms = (eid, k) => { const o = st.per[eid]?.[k]; return o ? o.s / o.n : null; };
   const lab = r => r == null ? "" : r >= .7 ? "Maîtrisé" : r >= .5 ? "Fragile" : "Non acquis";
   const e = (cl.eleves || []).find(x => x.id === S.su.el);
   let detail = "";
   if (e){
-    const hist = studentCtrls(cl, mat, e), avg = hist.filter(x => x.c.type !== "rattrapage").map(x => final20(x.c, x.cp));
+    const hist = studentCtrls(cl, mat, e), avg = hist.filter(x => isCtrl(x.c)).map(x => final20(x.c, x.cp));
     const bil = store.bilans[`${cl.id}_${e.id}_${slug(mat)}`];
     const nl = st.notions.map(k => ({k, r:ms(e.id, k), n:st.per[e.id]?.[k]?.n || 0})).filter(x => x.r != null).sort((a, b) => a.r - b.r);
     detail = `<section class="panel grid">
       <div class="row between"><div><div class="label">${esc(mat)}</div><h3 style="font-size:20px">${esc(e.prenom)} ${esc(e.nom)}</h3></div>
-        <div class="total num" style="color:var(--ink)">${avg.length ? fmt(avg.reduce((a, b) => a + b, 0) / avg.length) : "—"}<small>/20</small></div></div>
+        <div class="total num" style="color:var(--ink)">${avg.length ? nv(avg.reduce((a, b) => a + b, 0) / avg.length) : "—"}<small>${avg.length ? sfxN(avg.reduce((a, b) => a + b, 0) / avg.length) : ""}</small></div></div>
       <div class="grid g2">
         <div><div class="label" style="margin-bottom:6px">Notions, de la plus fragile à la plus solide</div>
           <div class="bars">${nl.map(x => `<div class="bar" style="grid-template-columns:1fr 90px 44px"><span class="small">${esc(st.labels[x.k])} <span class="muted">(${x.n})</span></span><div class="track"><div class="fill" style="width:${Math.round(x.r * 100)}%;background:var(--${tone(x.r)})"></div></div><span class="num small" style="text-align:right">${pct(x.r)}</span></div>`).join("") || `<p class="muted small">Aucune copie validée.</p>`}</div></div>
-        <div><div class="label" style="margin-bottom:6px">Contrôles</div>${hist.map(x => `<div class="item"><div><div class="t small">${x.c.type === "rattrapage" ? "↺ " : ""}${esc(x.c.titre)}</div><div class="s">${esc(frDate(x.c.date) || "")}</div></div><span class="cell ${tone(final20(x.c, x.cp) / 20)}">${fmt(final20(x.c, x.cp))}</span></div>`).join("") || `<p class="muted small">Aucun.</p>`}</div>
+        <div><div class="label" style="margin-bottom:6px">Contrôles</div>${hist.map(x => `<div class="item"><div><div class="t small">${x.c.type === "rattrapage" ? "↺ " : ""}${esc(x.c.titre)}</div><div class="s">${esc(frDate(x.c.date) || "")}</div></div><span class="cell ${tone(final20(x.c, x.cp) / 20)}">${noteS(final20(x.c, x.cp))}</span></div>`).join("") || `<p class="muted small">Aucun.</p>`}</div>
       </div>
       <div class="grid" style="gap:8px"><div class="row between"><div class="label">Appréciation pour le bulletin</div><button class="btn sm" id="appr" data-e="${e.id}">${bil ? "Réécrire" : "Rédiger"} (IA)</button></div>
         <div class="status" id="appr-st"></div>
@@ -114,10 +120,10 @@ function vSuivi(){
 }
 
 /* ================= 3. Vue direction ================= */
-function vDirection(){
+function vDirection_0(){
   const cls = store.classes; if (!cls.length) return `<div class="head"><h2>Direction</h2></div><div class="panel empty">Aucune classe.</div>`;
-  const mats = [...new Set(store.controles.filter(c => c.type !== "rattrapage").map(c => c.matiere))];
-  const avgOf = (cl, mat, e) => { const v = studentCtrls(cl, mat, e).filter(x => x.c.type !== "rattrapage" && x.cp.validee).slice(-3).map(x => final20(x.c, x.cp)); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+  const mats = [...new Set(store.controles.filter(isCtrl).map(c => c.matiere))];
+  const avgOf = (cl, mat, e) => { const v = studentCtrls(cl, mat, e).filter(x => isCtrl(x.c) && x.cp.validee).slice(-3).map(x => final20(x.c, x.cp)); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
   const grid = cls.map(cl => ({cl, m:Object.fromEntries(mats.map(mat => { const v = (cl.eleves || []).map(e => avgOf(cl, mat, e)).filter(x => x != null); return [mat, v.length ? v.reduce((a, b) => a + b, 0) / v.length : null]; }))}));
   const risk = []; cls.forEach(cl => (cl.eleves || []).forEach(e => { const low = mats.map(m => [m, avgOf(cl, m, e)]).filter(([, a]) => a != null && a < 10); if (low.length >= 2) risk.push({cl, e, low}); }));
   const weak = []; cls.forEach(cl => mats.forEach(mat => { const st = notionStats(cl, mat); st.notions.forEach(k => { const v = Object.values(st.per).map(p => p[k]).filter(Boolean); if (v.length >= 3){ const r = v.reduce((a, o) => a + o.s / o.n, 0) / v.length; if (r < .5) weak.push({cl, mat, label:st.labels[k], r, n:v.length}); } }); }));
@@ -126,7 +132,7 @@ function vDirection(){
   let pending = 0; store.controles.forEach(c => { const f = feuille(c.id); if (f) Object.values(f.copies || {}).forEach(cp => { if (!cp.validee && Object.keys(cp.answers || {}).length) pending++; }); });
   return `<div class="head"><div><h2>Vue direction</h2><p>Toutes les classes et matières d'un coup d'œil. Moyennes sur les 3 derniers contrôles validés.</p></div></div>
   <div class="grid g3">
-    <div class="panel"><div class="label">Contrôles créés · 30 jours</div><div class="total num" style="color:var(--ink)">${recent.filter(c => c.type !== "rattrapage").length}</div></div>
+    <div class="panel"><div class="label">Contrôles créés · 30 jours</div><div class="total num" style="color:var(--ink)">${recent.filter(isCtrl).length}</div></div>
     <div class="panel"><div class="label">Rattrapages · 30 jours</div><div class="total num" style="color:var(--ink)">${recent.filter(c => c.type === "rattrapage").length}</div></div>
     <div class="panel"><div class="label">Copies à valider</div><div class="total num" style="color:${pending ? "var(--pen)" : "var(--ink)"}">${pending}</div></div>
   </div>
@@ -140,9 +146,9 @@ function vDirection(){
 }
 
 /* ================= 5. Banque ================= */
-function vBanque(){
+function vBanque_0(){
   const b = S.bk = S.bk || {mat:"", niv:"", q:""};
-  const all = store.controles.filter(c => c.type !== "rattrapage" && (!b.mat || c.matiere === b.mat) && (!b.niv || c.niveau === b.niv)
+  const all = store.controles.filter(c => isCtrl(c) && (!b.mat || c.matiere === b.mat) && (!b.niv || c.niveau === b.niv)
     && (!b.q || nkey(c.titre + " " + (c.questions || []).map(q => q.notion + " " + vOf(q, "standard").enonce).join(" ")).includes(nkey(b.q))))
     .sort((x, y) => (y.createdAt || "").localeCompare(x.createdAt || ""));
   const mats = [...new Set(store.controles.map(c => c.matiere))];
@@ -156,7 +162,7 @@ function vBanque(){
       <div class="tags" style="margin-top:4px">${[...new Set((c.questions || []).map(q => q.notion).filter(Boolean))].slice(0, 5).map(n => `<span class="chip">${esc(n)}</span>`).join("")}</div></div>
       <div class="row" style="justify-content:flex-end"><select id="dup-${c.id}" style="width:auto" aria-label="Classe">${selOpts(store.classes, c.classeId, x => x.nom, x => x.id)}</select><button class="btn sm primary" data-dup="${c.id}">Dupliquer</button></div></div>`).join("") || `<p class="empty">Aucun contrôle ne correspond.</p>`}</section>`;
 }
-function bankPanel(c){
+function bankPanel_0(c){
   const seen = new Set(), q = nkey(S.bkq || "");
   const list = [];
   store.controles.filter(x => x.id !== c.id && x.matiere === c.matiere).forEach(x => (x.questions || []).forEach(qq => { const en = vOf(qq, "standard").enonce, k = nkey(en);
@@ -178,13 +184,13 @@ const usageOf = mat => ["Guémara","Halakha","Houmach","Hébreu","Hassidout"].in
 function fichePages(cl, e){
   const stage = $("#sheetStage"); stage.innerHTML = "";
   const p = document.createElement("div"); p.className = "sheet"; p.style.fontSize = "15px";
-  p.innerHTML = `<div class="sh-head"><div><div class="sh-school">${esc(ECOLE)}</div><div class="sh-title">Fiche d'écriture</div>
+  p.innerHTML = `<div class="sh-head"><div><div class="sh-school">${esc(headerFrom(S.me?.affichage || "ecole"))}</div><div class="sh-title">Fiche d'écriture</div>
     <div class="sh-meta">${esc(cl.nom)} · à remplir en début d'année et en janvier</div><div class="sh-name">Élève : <b>${esc(e.prenom)} ${esc(e.nom)}</b></div></div></div>
     <div class="sh-cons">Recopie chaque modèle dans le cadre juste en dessous, avec ton écriture habituelle. L'hébreu en cursive. Écris au stylo foncé.</div>`;
   FICHE.forEach(f => { const b = document.createElement("div"); b.className = "sh-q";
     b.innerHTML = `<div class="sh-qh"><span>${esc(f.titre)}</span></div><div class="sh-qt ${f.usage === "hebreu" ? "he" : ""}" dir="auto" style="font-size:19px">${esc(f.texte)}</div><div class="sh-box" style="--lh:60px;height:66px"></div>`; p.append(b); });
   for (const [k, [x, y]] of Object.entries(CORNERS)){ const z = CSIZE[k], im = document.createElement("img"); im.className = "sh-corner"; im.alt = "";
-    im.src = qrURL(k === "tl" ? `TK1W|${cl.id}|${e.id}|1` : "TK1C|" + k, 3); im.style.cssText = `left:${x - z / 2}px;top:${y - z / 2}px;width:${z}px;height:${z}px`; p.append(im); }
+    cornerQR(im, k === "tl" ? `TK1W|${cl.id}|${e.id}|1` : "TK1C|" + k, x, y, z); p.append(im); }
   stage.append(p);
   const pr = p.getBoundingClientRect(); const boxes = $$(".sh-box", p).map(el => { const r = el.getBoundingClientRect(); return {x:Math.round(r.left - pr.left), y:Math.round(r.top - pr.top), w:Math.round(r.width), h:Math.round(r.height)}; });
   return {pages:[p], boxes};
@@ -209,9 +215,10 @@ async function processWriting(it, data){
       const per = Math.max(1, LIM.images.maxCount || 1);
       for (let i = 0; i < crops.length; i += per){
         const part = crops.slice(i, i + per);
-        const r = await ai(`Chaque image est une ligne manuscrite écrite par un élève. Transcris exactement ce qui est écrit, caractère par caractère, sans corriger. L'hébreu en caractères hébreux carrés. Réponds uniquement en JSON : {"lignes":["…"]} avec ${part.length} élément(s), dans l'ordre des images.`, {images: await Promise.all(part.map(cv => toBlob(cv, .9)))});
+        const r = await ai(`Chaque image est une ligne manuscrite écrite par un élève. Transcris exactement ce qui est écrit, caractère par caractère, sans corriger. L'hébreu en caractères hébreux carrés.${lectureTips()} Réponds uniquement en JSON : {"lignes":["…"]} avec ${part.length} élément(s), dans l'ordre des images.`, {images: await Promise.all(part.map(cv => toBlob(cv, .9)))});
         (r?.lignes || []).forEach((t, j) => { if (samples[i + j]){ samples[i + j].lu = String(t); samples[i + j].sim = simil(samples[i + j].texte, t); } });
       }
+      bankPush(samples.filter(s => s.asset && s.lu != null).map(s => ({asset:s.asset, texteIA:s.lu, texte:s.texte, source:"modele", langue:/[\u05D0-\u05EA]/.test(s.texte) ? "Hébreu" : langueDef(""), matiere:"", niveau:""})));
     }
     const sims = samples.map(s => s.sim).filter(x => x != null);
     const score = sims.length ? sims.reduce((a, b) => a + b, 0) / sims.length : null;
@@ -241,7 +248,7 @@ document.addEventListener("click", async ev => {
   if (d.dup){ const src = ctrl(d.dup); const cl = $("#dup-" + src.id).value; const id = uid(12);
     const {id:_, analyse, ...rest} = structuredClone(src);
     await write("controles/" + id, {...rest, classeId:cl, niveau:classe(cl)?.niveau || rest.niveau, statut:"brouillon", date:"", createdAt:new Date().toISOString(), sourceId:src.id});
-    S.editId = id; toast("Copie créée : modifie-la puis imprime."); return go("edit"); }
+    S.editId = id; S.step = "preparer"; toast("Copie créée : modifie-la puis imprime."); return go("edit"); }
   if (t.id === "rendu1"){ const C = ctrl(S.corrCtrl), e = eleveOf(C, S.corrEleve), st = $("#rd-st");
     await buildPdf([() => ({pages:renduPages(C, e), label:e.prenom})], `Copie corrigée - ${C.titre} - ${e.prenom} ${e.nom}.pdf`, st); return; }
   if (t.id === "renduAll"){ const C = ctrl(S.corrCtrl), f = feuille(C.id), st = $("#rd-st");
@@ -260,7 +267,7 @@ document.addEventListener("click", async ev => {
     try{
       const txt = await aiText(`Rédige l'appréciation de bulletin trimestriel d'un élève en ${mat} (classe de ${cl.niveau}).
 Prénom : ${e.prenom}
-Notes : ${hist.map(x => `${x.c.titre} : ${fmt(final20(x.c, x.cp))}/20${x.c.type === "rattrapage" ? " (rattrapage)" : ""}`).join(" ; ")}
+Notes : ${hist.map(x => `${x.c.titre} : ${noteS(final20(x.c, x.cp))}${x.c.type === "rattrapage" ? " (rattrapage)" : x.c.type === "exercices" ? " (exercices)" : ""}`).join(" ; ")}
 Maîtrise par notion : ${notions}
 Extraits de commentaires de correction : ${coms}
 Style bulletin scolaire français : 2 à 3 phrases, 300 caractères maximum, à la 3e personne avec le prénom, juste et encourageante, avec un point fort et un conseil précis. Uniquement l'appréciation, sans guillemets. N'invente rien qui ne soit pas dans ces données.`, {modelTier:"quick"});
@@ -277,3 +284,9 @@ document.addEventListener("change", ev => {
   if (el.id === "bk-mat" || el.id === "bk-niv" || el.id === "bk-q"){ S.bk[el.id.slice(3)] = el.value; return render(); }
   if (el.id === "bkq-search"){ S.bkq = el.value; return render(); }
 });
+
+function vDirection(...a){ const sv = store.controles, sc = store.classes; store.controles = store.allCtrl || sv; store.classes = store.allClasses || sc; try { return vDirection_0(...a); } finally { store.controles = sv; store.classes = sc; } }
+
+function vBanque(...a){ const sv = store.controles; store.controles = store.allCtrl || sv; try { return vBanque_0(...a); } finally { store.controles = sv; } }
+
+function bankPanel(...a){ const sv = store.controles; store.controles = store.allCtrl || sv; try { return bankPanel_0(...a); } finally { store.controles = sv; } }

@@ -1406,5 +1406,7 @@
  "élève(s) ?": "aluno(s)?",
  "🗑 Supprimer la classe": "🗑 Excluir turma",
  "Page illisible.": "Página ilegível.",
- "pages ajoutées : elles sont lues une par une.": "páginas adicionadas: são lidas uma por uma."
+ "pages ajoutées : elles sont lues une par une.": "páginas adicionadas: são lidas uma por uma.",
+ "Image : bas d'une feuille imprimée. Recopie exactement la ligne qui commence par « Mastery » (deux codes de lettres minuscules et chiffres séparés par un point) et le numéro de page « page X / Y ». Attention aux confusions l/1, o/0, q/g. Réponds uniquement en JSON : {\"ligne\":\"…\",\"page\":1}": "Imagem: parte de baixo de uma folha impressa. Copie exatamente a linha que começa com “Mastery” (dois códigos de letras minúsculas e números separados por um ponto) e o número da página “page X / Y”. Atenção às confusões l/1, o/0, q/g. Responda apenas em JSON: {\"ligne\":\"…\",\"page\":1}",
+ "QR illisible : lecture du bas de page…": "QR ilegível: lendo o rodapé da página…"
 }

@@ -1405,5 +1405,7 @@
  "élève(s) ?": "student(s)?",
  "🗑 Supprimer la classe": "🗑 Delete class",
  "Page illisible.": "Unreadable page.",
- "pages ajoutées : elles sont lues une par une.": "pages added: they are read one by one."
+ "pages ajoutées : elles sont lues une par une.": "pages added: they are read one by one.",
+ "Image : bas d'une feuille imprimée. Recopie exactement la ligne qui commence par « Mastery » (deux codes de lettres minuscules et chiffres séparés par un point) et le numéro de page « page X / Y ». Attention aux confusions l/1, o/0, q/g. Réponds uniquement en JSON : {\"ligne\":\"…\",\"page\":1}": "Image: bottom of a printed sheet. Copy exactly the line that starts with “Mastery” (two codes of lowercase letters and digits separated by a dot) and the page number “page X / Y”. Beware of l/1, o/0, q/g confusions. Reply only in JSON: {\"ligne\":\"…\",\"page\":1}",
+ "QR illisible : lecture du bas de page…": "QR unreadable: reading the page footer…"
 }
