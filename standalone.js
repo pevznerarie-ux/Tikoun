@@ -4,8 +4,8 @@
    the AI is called directly with the school's Anthropic API key, files download normally. */
 let STANDALONE = false;
 const BLOBURL = {};
-const blobSrc = id => STANDALONE ? (BLOBURL[id] || (SB ? (wantUrl(id), "") : "")) : "/_blob/" + id;
-async function getBlob(id){ if (STANDALONE && SB) return cloudBlob(id); if (STANDALONE){ const b = await idbGet("blobs", id); if (!b) throw {code:"no_blob"}; return b; } return (await fetch("/_blob/" + id)).blob(); }
+const blobSrc = id => (typeof SERVERSTORE !== "undefined" && SERVERSTORE) ? "/api/files/" + id : STANDALONE ? (BLOBURL[id] || (SB ? (wantUrl(id), "") : "")) : "/_blob/" + id;
+async function getBlob(id){ if (SERVERSTORE){ const r = await fetch("/api/files/" + id, {credentials:"same-origin"}); if (!r.ok) throw {code:"no_blob"}; return r.blob(); } if (STANDALONE && SB) return cloudBlob(id); if (STANDALONE){ const b = await idbGet("blobs", id); if (!b) throw {code:"no_blob"}; return b; } return (await fetch("/_blob/" + id)).blob(); }
 
 function idbOpen(){ return new Promise((res, rej) => { const r = indexedDB.open("tikoun", 1);
   r.onupgradeneeded = () => { r.result.createObjectStore("docs"); r.result.createObjectStore("blobs"); }; r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
@@ -30,34 +30,52 @@ async function localAssets(){
 const localDownloads = { save: async ({filename, data}) => { const b = data instanceof Blob ? data : new Blob([data]); const a = document.createElement("a");
   a.href = URL.createObjectURL(b); a.download = String(filename).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9 ._-]+/g, "-").replace(/-+/g, "-"); document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000); } };
 
-/* AI through the Anthropic Messages API, called from the browser */
-const CFG_DEF = {key:"", quick:"claude-haiku-4-5-20251001", default:"claude-sonnet-5", complex:"claude-opus-5-5"};
-function cfg(){ try { return {...CFG_DEF, ...JSON.parse(localStorage.getItem("tikoun.cfg") || "{}")}; } catch(e){ return {...CFG_DEF}; } }
-function setCfg(c){ try { localStorage.setItem("tikoun.cfg", JSON.stringify(c)); } catch(e){ toast("Réglages non enregistrés (stockage bloqué)."); } }
+/* AI: always through the school's server (/api/ai) — the API key never reaches the browser */
+const CFG_DEF = {};
+function cfg(){ try { return JSON.parse(localStorage.getItem("tikoun.cfg") || "{}"); } catch(e){ return {}; } }
+function setCfg(c){ try { localStorage.setItem("tikoun.cfg", JSON.stringify(c)); } catch(e){} }
+const accessCode = () => { try { return localStorage.getItem("tikoun.code") || ""; } catch(e){ return ""; } };
+let NEED_CODE = false;
 const b64 = blob => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1]); r.onerror = rej; r.readAsDataURL(blob); });
 function parseJSONloose(t){
   try { return JSON.parse(t); } catch(e){}
   const f = t.match(/```(?:json)?\s*([\s\S]*?)```/); if (f){ try { return JSON.parse(f[1]); } catch(e){} }
   const a = t.search(/[\[{]/), b = Math.max(t.lastIndexOf("}"), t.lastIndexOf("]"));
   if (a >= 0 && b > a){ try { return JSON.parse(t.slice(a, b + 1)); } catch(e){} }
+  const part = salvageJSON(t); if (part) return part;
   throw {code:"invalid_json", text:t};
+}
+/* Réponse coupée (trop longue) : on garde les questions complètes du tableau "questions" (jamais pour la correction des copies) */
+function salvageJSON(t){
+  const k = t.search(/"(questions)"\s*:\s*\[/); if (k < 0) return null;
+  const key = t.slice(k + 1, t.indexOf('"', k + 1)), start = t.indexOf("[", k) + 1, items = [];
+  let depth = 0, inStr = false, esc = false, from = -1;
+  for (let i = start; i < t.length; i++){ const ch = t[i];
+    if (inStr){ if (esc) esc = false; else if (ch === "\\") esc = true; else if (ch === '"') inStr = false; continue; }
+    if (ch === '"') inStr = true;
+    else if (ch === "{"){ if (depth === 0) from = i; depth++; }
+    else if (ch === "}"){ depth--; if (depth === 0 && from >= 0){ try { items.push(JSON.parse(t.slice(from, i + 1))); } catch(e){} from = -1; } }
+    else if (ch === "]" && depth === 0) break; }
+  if (!items.length) return null;
+  const titre = (t.slice(0, k).match(/"titre"\s*:\s*"((?:[^"\\]|\\.)*)"/) || [])[1];
+  return {[key]:items, ...(titre ? {titre:JSON.parse('"' + titre + '"')} : {}), _partiel:true};
 }
 function apiSample(){
   async function call(input, opts = {}, asJson){
-    const c = cfg(), cc = cloudCfg(), viaProxy = !!(SB && SB_USER && (cc.proxy || cc.endpoint));
-    if (!viaProxy && !c.key) throw {code:"no_key"};
+    const cc = cloudCfg(); if (!cc.endpoint) throw {code:"no_ai"};
     const imgs = opts.images ? (opts.images instanceof Blob ? [opts.images] : Array.from(opts.images)) : [];
     const content = [];
     for (const im of imgs) content.push({type:"image", source:{type:"base64", media_type:im.type && im.type.startsWith("image/") ? im.type : "image/jpeg", data:await b64(im)}});
-    content.push({type:"text", text:String(input) + (asJson ? "\n\n(Ta réponse sera lue par un programme : réponds uniquement avec le JSON demandé, sans texte autour.)" : "")});
+    content.push({type:"text", text:String(input) + (asJson ? "\n\n(Réponds uniquement avec le JSON demandé, sans texte autour.)" : "")});
+    const headers = {"content-type":"application/json", "x-tikoun-code":accessCode()};
+    if (SB && SB_USER){ const {data} = await SB.auth.getSession(); headers.authorization = "Bearer " + data.session.access_token; }
     let r;
-    try {
-      const body = JSON.stringify({model:c[opts.modelTier || "default"] || c.default, max_tokens:16000, messages:[{role:"user", content}]});
-      if (viaProxy){ const {data} = await SB.auth.getSession();
-        r = await fetch(cc.endpoint || cc.url + "/functions/v1/ai", {method:"POST", signal:opts.signal, headers:{"content-type":"application/json", "authorization":"Bearer " + data.session.access_token, "apikey":cc.anon}, body}); }
-      else r = await fetch("https://api.anthropic.com/v1/messages", {method:"POST", signal:opts.signal, headers:{"content-type":"application/json", "x-api-key":c.key, "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true"}, body});
-    } catch(e){ throw {code:e?.name === "AbortError" ? "cancelled" : "upstream_error"}; }
-    if (!r.ok){ const code = r.status === 401 || r.status === 403 ? "bad_key" : r.status === 429 ? "rate_limited" : r.status === 400 || r.status === 413 ? "api_400" : "upstream_error";
+    try { r = await fetch(cc.endpoint, {method:"POST", signal:opts.signal, headers, body:JSON.stringify({tier:opts.modelTier || "default", feature:opts.feature || "", messages:[{role:"user", content}]})}); }
+    catch(e){ throw {code:e?.name === "AbortError" ? "cancelled" : "upstream_error"}; }
+    if (!r.ok){
+      if (r.status === 401 && window.TIKOUN_CONFIG?.accounts){ S.auth = "login"; scheduleRender(); }
+      else if (r.status === 401 && !SB){ NEED_CODE = true; try { localStorage.removeItem("tikoun.code"); } catch(e){} scheduleRender(); }
+      const code = r.status === 402 ? "no_access" : r.status === 403 ? "no_option" : r.status === 401 ? "need_code" : r.status === 429 ? "rate_limited" : r.status === 400 || r.status === 413 ? "api_400" : r.status === 503 ? "no_ai" : "upstream_error";
       let msg = ""; try { msg = (await r.json())?.error?.message || ""; } catch(e){} throw {code, message:msg}; }
     const j = await r.json(); const text = (j.content || []).filter(b => b.type === "text").map(b => b.text).join("");
     if (!text.trim()) throw {code:"empty_completion"};
@@ -68,47 +86,37 @@ function apiSample(){
   f.limits = async () => ({maxPromptBytes:400000, images:{maxCount:20, maxInputBytes:5e6, mediaTypes:["image/jpeg","image/png","image/webp"]}});
   return f;
 }
+function vCode(){
+  return `<div class="head"><div><h2>Code d'accès</h2><p>Entre le code de l'établissement pour utiliser Mastery.</p></div></div>
+  <section class="panel grid" style="max-width:420px">
+    <div class="field"><label for="cd-in">Code</label><input id="cd-in" type="password" autocomplete="current-password"></div>
+    <div class="row"><button class="btn primary" id="cd-go">Entrer</button></div><div class="status" id="cd-st"></div>
+  </section>`;
+}
 
-/* Settings page (standalone only) */
+/* Sauvegarde page (standalone, local mode) */
 function vReglages(){
-  const c = cfg();
-  return `<div class="head"><div><h2>Réglages</h2><p>Version autonome : les données restent dans ce navigateur, l'IA est appelée avec la clé API de l'école.</p></div></div>
+  if (SERVERSTORE) return `<div class="head"><div><h2>Sauvegarde</h2><p>Tes données (classes, contrôles, notes, photos des copies) sont stockées sur le serveur : tu les retrouves sur tous tes appareils en te connectant.</p></div></div>
+  ${SRV_PERSIST ? "" : `<p class="banner">⚠ Le serveur n'a pas de Volume : les données seront effacées au prochain déploiement. Railway → service → Volume, monté sur /data.</p>`}
+  <section class="panel grid"><div class="row"><button class="btn" id="srv-export">Télécharger une sauvegarde (données)</button><button class="btn ghost sm" id="srv-out">Se déconnecter de cet appareil</button></div>
+    <div class="grid" style="gap:6px;border-top:1px solid var(--line);padding-top:12px"><b>Données saisies avant sur cet appareil ?</b><div class="small muted">Si tu avais utilisé Mastery en mode local sur ce navigateur, transfère-les sur le serveur (une seule fois).</div>
+    <div class="row"><button class="btn" id="srv-migrate">Transférer vers le serveur</button></div><div class="status" id="srv-st"></div></div></section>
+  ${S.me?.role === "admin" ? `<section class="panel grid"><div class="row" style="justify-content:space-between"><div><b>Sauvegardes automatiques</b><div class="small muted">Une copie complète de toute la plateforme chaque jour, gardée 14 jours sur le serveur.</div></div><button class="btn ghost sm" id="bak-now">Sauvegarder maintenant</button></div>
+    <div id="bak-list" class="small muted">Chargement…</div></section>` : ""}`;
+  return `<div class="head"><div><h2>Sauvegarde</h2><p>${SB ? "Les données sont stockées en ligne." : "Les données sont stockées dans ce navigateur. Exporte régulièrement une sauvegarde : tu peux l'importer sur un autre ordinateur ou chez un collègue."}</p></div></div>
+  ${SB ? `<section class="panel grid"><p class="small">Connecté : <b>${esc(SB_USER?.email || "—")}</b> · <button class="btn sm" id="sb-out">Se déconnecter</button></p>
+    ${SB_USER ? `<div class="row"><button class="btn" id="sb-migrate">Transférer les données de cet appareil en ligne</button></div><div class="status" id="sb-st"></div>` : ""}</section>` : `
   <section class="panel grid">
-    <h3>Clé API Anthropic</h3>
-    <p class="small muted">Crée une clé sur console.anthropic.com (compte de l'école), fixe une limite de dépense mensuelle, puis colle-la ici. Elle est gardée uniquement sur cet appareil.</p>
-    <div class="field"><label for="cf-key">Clé API</label><input id="cf-key" type="password" autocomplete="off" value="${esc(c.key)}" placeholder="sk-ant-…"></div>
-    <div class="form-row">
-      <div class="field"><label for="cf-quick">Modèle rapide</label><input id="cf-quick" value="${esc(c.quick)}"></div>
-      <div class="field"><label for="cf-default">Modèle standard</label><input id="cf-default" value="${esc(c.default)}"></div>
-      <div class="field"><label for="cf-complex">Modèle précis</label><input id="cf-complex" value="${esc(c.complex)}"></div>
-    </div>
-    <div class="row"><button class="btn primary" id="cf-save">Enregistrer</button><button class="btn" id="cf-test">Tester la clé</button><span class="status" id="cf-st"></span></div>
-  </section>
-  <section class="panel grid">
-    <h3>Stockage en ligne (Supabase)</h3>
-    <p class="small muted">Avec un projet Supabase (hébergé en Europe), tous les professeurs partagent les mêmes classes, contrôles, notes et photos, depuis n'importe quel appareil. Voir le guide SUPABASE.md du dépôt.</p>
-    ${SB ? `<p class="small">Connecté : <b>${esc(SB_USER?.email || "—")}</b> · <button class="btn sm" id="sb-out">Se déconnecter</button></p>` : ""}
-    <div class="form-row">
-      <div class="field"><label for="sb-url">URL du projet</label><input id="sb-url" value="${esc(cloudCfg().url)}" placeholder="https://xxxx.supabase.co"></div>
-      <div class="field"><label for="sb-anon">Clé publique (anon / publishable)</label><input id="sb-anon" value="${esc(cloudCfg().anon)}"></div>
-    </div>
-    <label class="row small" style="gap:6px"><input type="checkbox" id="sb-proxy"${cloudCfg().proxy ? " checked" : ""}> IA via le serveur de l'école (fonction « ai ») : aucune clé API dans les navigateurs</label>
-    <div class="row"><button class="btn primary" id="sb-save">Enregistrer et recharger</button>${SB && SB_USER ? `<button class="btn" id="sb-migrate">Transférer les données de cet appareil en ligne</button>` : ""}</div>
-    <div class="status" id="sb-st"></div>
-  </section>
-  <section class="panel grid">
-    <h3>Sauvegarde des données</h3>
-    <p class="small muted">Tout est stocké dans ce navigateur. Exporte régulièrement une sauvegarde ; tu peux l'importer sur un autre ordinateur (ou chez un collègue).</p>
     <label class="row small" style="gap:6px"><input type="checkbox" id="ex-img"> Inclure les photos des copies (fichier plus lourd)</label>
     <div class="row"><button class="btn" id="ex-go">Exporter une sauvegarde</button>
       <label class="btn" for="im-file">Importer une sauvegarde</label><input id="im-file" type="file" accept="application/json,.json" hidden></div>
     <div class="status" id="ex-st"></div>
-  </section>`;
+  </section>`}`;
 }
 async function exportAll(withImg){
   const docs = await idbAll("docs"); const out = {tikoun:1, at:new Date().toISOString(), docs, blobs:{}};
   if (withImg){ const bl = await idbAll("blobs"); for (const [k, b] of Object.entries(bl)) out.blobs[k] = {type:b.type, data:await b64(b)}; }
-  await localDownloads.save({filename:`tikoun-sauvegarde-${today()}.json`, data:new Blob([JSON.stringify(out)], {type:"application/json"})});
+  await localDownloads.save({filename:`mastery-sauvegarde-${today()}.json`, data:new Blob([JSON.stringify(out)], {type:"application/json"})});
 }
 async function importAll(file){
   const j = JSON.parse(await file.text()); if (!j?.tikoun || !j.docs) throw new Error("format");
@@ -118,16 +126,13 @@ async function importAll(file){
 }
 document.addEventListener("click", async ev => {
   const t = ev.target.closest("button"); if (!t || !STANDALONE) return;
-  if (t.id === "cf-save" || t.id === "cf-test"){
-    const c = {key:$("#cf-key").value.trim(), quick:$("#cf-quick").value.trim() || CFG_DEF.quick, default:$("#cf-default").value.trim() || CFG_DEF.default, complex:$("#cf-complex").value.trim() || CFG_DEF.complex};
-    setCfg(c); refreshCaps();
-    const st = $("#cf-st");
-    if (t.id === "cf-save"){ st.textContent = "Enregistré."; return; }
-    st.innerHTML = `<span class="thinking">Test…</span>`;
-    try { const r = await AI.json(`Réponds {"ok":true}`, {modelTier:"quick"}); st.textContent = r?.ok ? "La clé fonctionne ✓" : "Réponse inattendue."; } catch(e){ st.textContent = aiErr(e?.code) + (e?.message ? " (" + e.message + ")" : ""); }
-    return;
-  }
-  if (t.id === "sb-save"){ const c = cfg(); c.sbUrl = $("#sb-url").value.trim(); c.sbAnon = $("#sb-anon").value.trim(); c.aiProxy = $("#sb-proxy").checked; setCfg(c); location.reload(); return; }
+  if (t.id === "cd-go"){ const st = $("#cd-st"), code = $("#cd-in").value.trim(); if (!code) return;
+    st.innerHTML = `<span class="thinking">Vérification…</span>`;
+    const r = await fetch("/api/login", {method:"POST", credentials:"same-origin", headers:{"content-type":"application/json"}, body:JSON.stringify({code})}).catch(() => null);
+    if (r?.ok){ try { localStorage.setItem("tikoun.code", code); } catch(e){} NEED_CODE = false;
+      if (window.TIKOUN_CONFIG?.storage === "server" && !SERVERSTORE) await startServer(); else { refreshCaps(); render(); } }
+    else st.textContent = "Code incorrect.";
+    return; }
   if (t.id === "ex-go"){ try { await exportAll($("#ex-img").checked); $("#ex-st").textContent = "Sauvegarde téléchargée."; } catch(e){ $("#ex-st").textContent = "Export impossible."; } }
 });
 document.addEventListener("change", async ev => {
@@ -136,6 +141,7 @@ document.addEventListener("change", async ev => {
 });
 function refreshCaps(){
   if (!STANDALONE) return;
-  const cc = cloudCfg(), aiOk = cfg().key || (SB && (cc.proxy || cc.endpoint));
-  $("#caps").innerHTML = `IA ${aiOk ? "✓" : "✗ (Réglages)"} · Données : ${SB ? (SB_USER ? "en ligne ✓" : "connexion requise") : "cet appareil"}`;
+  const aiOk = !!cloudCfg().endpoint;
+  if (window.TIKOUN_CONFIG?.accounts){ $("#caps").innerHTML = S.me ? `${esc(S.me.nom)}${isAdmin() ? " · admin" : ""} · IA ${aiOk ? "✓" : "✗"}${SERVERSTORE && !SRV_PERSIST ? " · ⚠ données temporaires" : ""}` : "Connexion requise"; return; }
+  $("#caps").innerHTML = `IA ${aiOk ? "✓" : "✗ (serveur)"} · Données : ${SB ? (SB_USER ? "en ligne ✓" : "connexion requise") : SERVERSTORE ? (SRV_PERSIST ? "serveur ✓" : "serveur ⚠ temporaire") : (window.TIKOUN_CONFIG?.storage === "server" ? "code requis" : "cet appareil")}`;
 }

@@ -3,8 +3,8 @@
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const fmt = n => n == null || isNaN(n) ? "—" : (Math.round(n * 10) / 10).toString().replace(".", ",");
-const pct = n => Math.round(n * 100) + " %";
+const fmt = n => n == null || isNaN(n) ? "—" : (Math.round(n * 10) / 10).toString().replace(".", document.documentElement.lang === "en" ? "." : ",");
+const pct = n => Math.round(n * 100) + (document.documentElement.lang === "en" ? "%" : " %");
 const tone = r => r == null ? "none" : r >= 0.7 ? "ok" : r >= 0.5 ? "warn" : "bad";
 const uid = (n = 10) => { const a = "abcdefghijkmnpqrstuvwxyz23456789"; let s = ""; const b = crypto.getRandomValues(new Uint8Array(n)); for (const x of b) s += a[x % a.length]; return s; };
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -14,20 +14,51 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const half = v => Math.round(v * 2) / 2;
 function toast(msg, ms = 3500){ const t = document.createElement("div"); t.className = "toast"; t.textContent = msg; document.body.append(t); setTimeout(() => t.remove(), ms); }
 
-const MATIERES = ["Mathématiques","Français","Histoire-Géographie","SVT","Physique-Chimie","Anglais","Guémara","Halakha","Houmach","Hébreu","Hassidout","Philosophie","SES"];
+const MATIERES = ["Mathématiques","Français","Histoire-Géographie","SVT","Physique-Chimie","Anglais","Espagnol","Allemand","Hébreu","Philosophie","SES","Technologie","NSI","Arts plastiques","Éducation musicale"];
+const MAT_SUGG = ["Guémara","Michna","Houmach","Navi","Halakha","Hassidout","Pensée juive"];
+/* Matières : liste de base + matières personnelles du prof (kodesh ou autres), + celles déjà utilisées */
+const lsGet = k => { try { return JSON.parse(localStorage.getItem(k) || "[]"); } catch(e){ return []; } };
+/* Les matières que le prof enseigne (Mon compte) : seules celles-ci sont proposées. Vide = toute la liste. */
+const enseigne = () => (window.TIKOUN_CONFIG?.accounts && S.me ? S.me.enseigne : lsGet("mastery.enseigne")) || [];
+function myMatieres(all){ const ens = enseigne(); if (!all && ens.length) return ens;
+  const perso = S.me?.matieres || lsGet("mastery.matieres");
+  const used = [...(store.controles || []), ...(store.cours || []), ...(store.quizzes || [])].map(x => x.matiere).filter(Boolean);
+  return [...new Set([...MATIERES, ...MAT_SUGG, ...perso, ...used])]; }
+const matOpts = (cur, all) => { const l = myMatieres(all); return selOpts(cur && !l.includes(cur) ? [cur, ...l] : l, cur) + (!all && enseigne().length ? `<option value="__all">Autre matière…</option>` : `<option value="__add">+ Nouvelle matière…</option>`); };
+async function saveMe(patch, lsKey){ if (window.TIKOUN_CONFIG?.accounts && S.me){ const j = await api("/api/me", {method:"PATCH", body:JSON.stringify(patch)}); S.me = j.user; }
+  else { try { localStorage.setItem(lsKey, JSON.stringify(Object.values(patch)[0])); } catch(e){} } }
+const clean = l => [...new Set(l.map(x => String(x).trim()).filter(Boolean))];
+async function saveMatieres(list){ await saveMe({matieres:clean(list).slice(0, 40)}, "mastery.matieres"); }
+async function saveEnseigne(list){ await saveMe({enseigne:clean(list).slice(0, 12)}, "mastery.enseigne"); }
+/* Une matière utilisée qui n'est pas encore dans « mes matières » y est ajoutée toute seule */
+async function learnMatiere(m){ if (!m || enseigne().includes(m)) return; try { await saveEnseigne([...enseigne(), m]); } catch(e){} }
+document.addEventListener("change", async ev => { const el = ev.target; if (el.tagName !== "SELECT" || !["__add", "__all"].includes(el.value)) return;
+  ev.stopImmediatePropagation();
+  if (el.value === "__all"){ const cur = myMatieres()[0]; el.innerHTML = matOpts(cur, true); el.value = cur; return; }
+  const n = (prompt("Nom de la nouvelle matière (ex. Guémara) :") || "").trim();
+  if (n){ await saveMatieres([...(S.me?.matieres || lsGet("mastery.matieres")), n]); }
+  const v = n || myMatieres()[0]; el.innerHTML = matOpts(v, true); el.value = v; el.dispatchEvent(new Event("change", {bubbles:true})); }, true);
 const NIVEAUX = ["6e","5e","4e","3e","2de","1re","Terminale"];
 const LEVELS = ["socle","standard","approfondi"];
 const LVL = {socle:"Socle", standard:"Standard", approfondi:"Approfondi"};
-const ECOLE = "Collège-Lycée Beth Mena'hem · Levallois-Perret";
+const OLD_ENTETE = "Collège-Lycée Beth Mena'hem · Levallois-Perret";
+/* En-tête des feuilles : choisi par le prof (école, son nom, ou les deux) ; un texte libre saisi dans la mise en page reste prioritaire. */
+const AFFICHE = {les2:"École et mon nom", ecole:"École seulement", nom:"Mon nom seulement"};
+function headerFrom(aff){
+  const e = S.me?.ecole, ec = e?.nom ? e.nom + (e.ville ? " · " + e.ville : "") : "", nom = S.me?.nom || "";
+  if (aff === "ecole") return ec || nom; if (aff === "nom") return nom || ec; return [ec, nom].filter(Boolean).join(" · ");
+}
+const enteteOf = c => { const t = c?.mise?.entete; return t && t !== OLD_ENTETE ? t : headerFrom(c?.mise?.affiche || S.me?.affichage || "les2"); };
 const STATUT = {brouillon:["Brouillon",""], imprime:["Imprimé","blue"], correction:["En correction","warn"], corrige:["Corrigé","ok"]};
 
 const aiErr = c => ({
+  no_access:"Ton essai gratuit est terminé : choisis un abonnement dans Mon compte pour continuer.",
   not_granted:"L'IA n'a pas été autorisée pour cette page.", sampling_disabled:"L'IA n'est pas disponible pour ce compte.",
   rate_limited:"Trop de demandes d'un coup : attends une minute puis relance.", session_expired:"Session expirée : reconnecte-toi à Claude.",
   image_rejected:"Image refusée : essaie une photo JPG ou PNG plus nette.", invalid_json:"Réponse de l'IA illisible : relance.",
   refused:"Demande refusée par l'IA : reformule.", prompt_too_large:"Document trop long : raccourcis le cours.",
-  images_unavailable:"Cette vue ne peut pas envoyer d'images à l'IA.", no_ai:"IA indisponible dans cette vue.",
-  no_key:"Ajoute la clé API dans l'onglet Réglages.", bad_key:"Clé API refusée : vérifie-la dans Réglages.", api_400:"Requête refusée par l'API (document trop long ou modèle inconnu : vérifie les Réglages).", no_blob:"Image introuvable.", cloud_write:"Enregistrement en ligne impossible (connexion ?)."
+  images_unavailable:"Cette vue ne peut pas envoyer d'images à l'IA.", no_ai:"IA indisponible pour le moment (serveur non configuré ?).",
+  no_key:"IA non configurée sur le serveur.", bad_key:"Clé IA refusée par le serveur.", need_code:"Code d'accès requis : recharge la page.", no_option:"Option Exercices non activée pour ton compte (abonnement Pro).", no_cours:"Cours d'origine introuvable.", not_failed:"Rattrapage réservé aux élèves sous 10/20 (copie corrigée).", ratt_exists:"Cet élève a déjà un rattrapage pour ce contrôle.", api_400:"Requête refusée par l'API (document trop long ou modèle inconnu : vérifie les Réglages).", no_blob:"Image introuvable.", cloud_write:"Enregistrement en ligne impossible (connexion ?)."
 }[c] || "Échec temporaire de l'IA : relance.");
 
 /* ================= Capabilities ================= */
@@ -46,21 +77,24 @@ function memDB(init = {}, persist = null){
     set: async d => { data[p] = JSON.parse(JSON.stringify(d)); notify(colOf(p)); if (persist) await persist(p, data[p], "set"); },
     update: async d => { if (!data[p]) throw {code:"invalid_argument"}; const patch = JSON.parse(JSON.stringify(d)); merge(data[p], JSON.parse(JSON.stringify(d))); data[p] = {...data[p]}; notify(colOf(p)); if (persist) await persist(p, data[p], "update", patch); },
     delete: async () => { delete data[p]; notify(colOf(p)); if (persist) await persist(p, null, "delete"); } });
-  return { doc, _remote:(p, val) => { if (val == null) delete data[p]; else data[p] = val; notify(colOf(p)); }, collection: col => ({ path:col, doc: id => doc(col + "/" + (id || uid(16))),
+  return { doc, _all:() => data, _remote:(p, val) => { if (val == null) delete data[p]; else data[p] = val; notify(colOf(p)); }, collection: col => ({ path:col, doc: id => doc(col + "/" + (id || uid(16))),
     onSnapshot: (fn) => { const s = {col, fn}; subs.push(s); setTimeout(() => fn(snapOf(col))); return () => subs.splice(subs.indexOf(s), 1); } }) };
 }
 
+/* Écran de chargement : rien n'est affiché tant que les données du serveur ne sont pas arrivées (évite l'accueil vide qui « saute ») */
+let DATA_READY = false;
+const vLoading = () => `<div style="min-height:55vh;display:grid;place-items:center"><div style="display:grid;justify-items:center;gap:14px;color:var(--muted)"><div class="spin" aria-hidden="true" style="width:28px;height:28px;border:2px solid var(--line);border-top-color:var(--gold);border-radius:50%;animation:spin .8s linear infinite"></div><span class="small">Chargement de tes classes…</span></div></div><style>@keyframes spin{to{transform:rotate(360deg)}}</style>`;
 /* ================= Store ================= */
 const store = {classes:[], cours:[], controles:[], feuilles:{}, ecritures:{}, bilans:{}};
 const S = {
-  view:"home", wizStep:1, coursId:null, coursDraft:null, params:{classeId:"", titre:"", duree:55, nbq:5, difficulte:"moyen", types:["cours","application"], consignes:"", differencie:true, matiere:"", niveau:""},
+  view:"home", wizStep:1, coursId:null, coursDraft:null, params:{classeId:"", titre:"", duree:55, nbq:5, difficulte:"moyen", types:["cours","application"], consignes:"", differencie:false, matiere:"", niveau:""},
   editId:null, vtab:{}, previewEleve:null, classeSel:null, levelMat:"Mathématiques", suggestions:null,
   su:null, bk:null, bankOpen:false, bkq:"", corrCtrl:null, corrEleve:null, editTr:{}, editCom:{}, anCtrl:null, queue:[], queueRunning:false, busy:{}
 };
-try { const v = localStorage.getItem("tikoun2.view"); if (v && v !== "edit") S.view = v; } catch(e){}
+
 
 const classe = id => store.classes.find(c => c.id === id);
-const ctrl = id => store.controles.find(c => c.id === id);
+const ctrl = id => (store.allCtrl || store.controles).find(c => c.id === id);
 const feuille = id => store.feuilles[id];
 const eleveOf = (c, eid) => (classe(c.classeId)?.eleves || []).find(e => e.id === eid);
 const studentsOf = c => { const cl = classe(c.classeId); if (!cl) return []; return c.eleves?.length ? cl.eleves.filter(e => c.eleves.includes(e.id)) : cl.eleves; };
@@ -82,12 +116,21 @@ function bonusOf(c, cp){
   return out;
 }
 const final20 = (c, cp) => { const b = bonusOf(c, cp); return Math.min(20, on20(copyTotal(c, cp), maxOf(c)) + b.proprete + b.orthographe); };
+/* Barème affiché : sur 20 (France), sur 10 (Brésil), pourcentage, lettres A–F (États-Unis). Les calculs restent sur 20. */
+const BAREMES = ["20","10","100","AF"];
+const bareme = () => BAREMES.includes(S.me?.bareme) ? S.me.bareme : ({en:"AF", "pt-BR":"10"})[document.documentElement.lang] || "20";
+const letterOf = p => p >= 90 ? "A" : p >= 80 ? "B" : p >= 70 ? "C" : p >= 60 ? "D" : "F";
+const nv = n => { if (n == null || isNaN(n)) return "—"; const b = bareme(); return b === "10" ? fmt(n / 2) : b === "100" ? String(Math.round(n * 5)) : b === "AF" ? letterOf(n * 5) : fmt(n); };
+const PCT = () => document.documentElement.lang === "en" ? "%" : " %";
+const sfx = () => ({"10":"/10", "100":PCT(), "AF":""})[bareme()] ?? "/20";
+const sfxN = n => bareme() === "AF" ? (n == null || isNaN(n) ? "" : ` ${Math.round(n * 5)}${PCT()}`) : sfx();
+const noteS = n => n == null || isNaN(n) ? "—" : nv(n) + sfx() + (bareme() === "AF" ? ` (${Math.round(n * 5)}${PCT()})` : "");
 
 /* Serialized writes: one at a time */
 let wq = Promise.resolve();
 function write(path, data, mode = "set"){
   wq = wq.then(() => mode === "update" ? DB.doc(path).update(data) : mode === "delete" ? DB.doc(path).delete() : DB.doc(path).set(data))
-    .catch(e => { console.error(e); toast(e?.code === "quota_exceeded" ? "Base pleine : supprime d'anciens contrôles." : "Enregistrement impossible (" + (e?.code || "erreur") + ")."); });
+    .catch(e => { console.error(e); toast(e?.code === "no_access" ? aiErr("no_access") : e?.code === "quota_exceeded" ? "Base pleine : supprime d'anciens contrôles." : "Enregistrement impossible (" + (e?.code || "erreur") + ")."); });
   return wq;
 }
 const saveCtrl = c => { const {id, ...d} = c; return write("controles/" + id, d); };
@@ -101,7 +144,35 @@ async function aiText(prompt, opts = {}){
   if (!AI) throw {code:"no_ai"};
   return (await AI(prompt, {cache:false, ...opts})).text;
 }
-const NOSRC = "N'invente aucune source, référence ni citation : appuie-toi uniquement sur le cours et le corrigé-type fournis. Recopie tout texte en hébreu exactement comme dans le cours.";
+const NOSRC = "N'invente aucune source, référence ni citation : appuie-toi uniquement sur le cours et le corrigé-type fournis. Recopie tout texte en hébreu exactement comme dans le cours.\nHébreu : écris-le en caractères hébreux, dans l'ordre logique de lecture (de droite à gauche), sans le translittérer, l'inverser ni le traduire ; garde le nikoud (voyelles) et les te'amim seulement s'ils sont dans la source ; respecte les lettres finales (ך ם ן ף ץ).";
+const LANGUES = ["Français","Hébreu","Hébreu et français","Anglais","Portugais"];
+const langueDef = texte => hebRatio(texte || "") > .3 ? "Hébreu" : document.documentElement.lang === "en" ? "Anglais" : document.documentElement.lang === "pt-BR" ? "Portugais" : "Français";
+const langueRule = l => !l ? "" : l === "Hébreu" ? "Langue : rédige tout (titre, énoncés, choix, corrigés, critères, explications) en hébreu." : l === "Hébreu et français" ? "Langue : consignes et explications en français, citations et textes étudiés en hébreu (réponses attendues en hébreu quand la question porte sur le texte)." : `Langue : rédige tout en ${l.toLowerCase()}.`;
+/* Hébreu : détection et remise à l'endroit des lignes extraites de PDF en ordre visuel */
+const hebRatio = t => { const h = (t.match(/[\u05D0-\u05EA]/g) || []).length, l = (t.match(/[A-Za-zÀ-ÿ]/g) || []).length; return h / Math.max(1, h + l); };
+function reverseVisual(line){
+  const cl = line.match(/[^\u0591-\u05C7][\u0591-\u05C7]*/gu) || [];
+  let r = cl.reverse().join("").replace(/[()[\]{}<>]/g, c => ({"(":")", ")":"(", "[":"]", "]":"[", "{":"}", "}":"{", "<":">", ">":"<"}[c]));
+  return r.replace(/[A-Za-z0-9À-ÿ](?:[A-Za-z0-9À-ÿ.,:%\/+=\- ]*[A-Za-z0-9À-ÿ])?/g, m => [...m].reverse().join(""));
+}
+/* html2canvas ne « miroite » pas les parenthèses en contexte hébreu : on les inverse dans la copie rendue */
+const MIRROR = {"(":")", ")":"(", "[":"]", "]":"[", "{":"}", "}":"{", "<":">", ">":"<", "«":"»", "»":"«"};
+function fixBidiForCanvas(root){
+  const heb = /[\u0590-\u05FF]/, strong = /[\u0590-\u05FFA-Za-zÀ-ÿ]/;
+  const w = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT); const nodes = []; while (w.nextNode()) nodes.push(w.currentNode);
+  for (const n of nodes){ const t = n.nodeValue; if (!heb.test(t) || !/[()[\]{}<>«»]/.test(t)) continue;
+    const blk = n.parentElement?.closest("p,div,td,li,span,label") || n.parentElement; const first = (blk?.textContent || "").match(strong)?.[0] || ""; const rtlPara = heb.test(first);
+    const chars = [...t]; const side = (i, dir) => { for (let j = i + dir; j >= 0 && j < chars.length; j += dir){ if (strong.test(chars[j])) return heb.test(chars[j]) ? "r" : "l"; } return rtlPara ? "r" : "l"; };
+    n.nodeValue = chars.map((c, i) => { if (!MIRROR[c]) return c; const a = side(i, -1), b = side(i, 1); const rtl = a === "r" && b === "r" || ((a === "r" || b === "r") && rtlPara); return rtl ? MIRROR[c] : c; }).join(""); }
+}
+function fixHebrewText(t){
+  return t.normalize("NFC").split("\n").map(line => {
+    if (!/[\u05D0-\u05EA]/.test(line)) return line;
+    let start = 0, end = 0;
+    for (const w of line.match(/[\u05D0-\u05EA][\u0591-\u05C7\u05D0-\u05EA]*/g) || []){ const b = w.replace(/[\u0591-\u05C7]/g, ""); if (b.length < 2) continue; if (/^[ךםןףץ]/.test(b)) start++; if (/[ךםןףץ]$/.test(b)) end++; }
+    return start > end ? reverseVisual(line) : line;
+  }).join("\n");
+}
 
 /* ================= Render loop (keeps focus while data arrives) ================= */
 let rq = false, skipped = false;
@@ -111,23 +182,32 @@ function render(){
   const a = document.activeElement, keep = a && a.id && $("#view").contains(a) ? {id:a.id, s:a.selectionStart, e:a.selectionEnd, v:a.value, typing: ["INPUT","TEXTAREA"].includes(a.tagName) && a.type !== "file"} : null;
   if (keep?.typing && a.dataset.live !== undefined){ skipped = true; return; } // don't clobber a field being typed
   skipped = false;
-  $$(".tab").forEach(t => t.setAttribute("aria-selected", t.dataset.v === (S.view === "edit" ? "new" : S.view)));
-  const V = (typeof SB !== "undefined" && SB && !SB_USER) ? vLogin : {home:vHome, classes:vClasses, new:vNew, edit:vEdit, scan:vScan, correct:vCorrect, analyse:vAnalyse, suivi:vSuivi, banque:vBanque, direction:vDirection, reglages:vReglages}[S.view] || vHome;
-  $("#tabs").hidden = V === vLogin;
-  $("#view").innerHTML = `<div class="view">${LOCAL ? `<p class="banner">Base de données indisponible dans cette vue : rien n'est sauvegardé. Ouvre l'application depuis claude.ai.</p>` : ""}${V()}</div>`;
+  $$(".tab").forEach(t => t.setAttribute("aria-selected", t.dataset.r === navKey()));
+  const LOADING = window.TIKOUN_CONFIG?.storage === "server" && !S.auth && (!S.me || typeof DATA_READY === "undefined" || !DATA_READY);
+  const V = LOADING ? vLoading : S.auth ? vAuth : (typeof SB !== "undefined" && SB && !SB_USER) ? vLogin : (typeof NEED_CODE !== "undefined" && NEED_CODE) ? vCode : {home:vHome, classes:vClasses, new:vNew, edit:vEdit, scan:vScan, correct:vCorrect, analyse:vAnalyse, suivi:vSuivi, banque:vBanque, direction:vDirection, reglages:vReglages, controles:vControles, exercices:vExercices, quiznew:vQuizNew, quiz:vQuiz, compte:vCompte, comptes:vComptes, entrainement:vEntrainement}[S.view] || vHome;
+  $("#tabs").hidden = V === vLogin || V === vCode || V === vAuth || V === vLoading;
+  { const acc = !!window.TIKOUN_CONFIG?.accounts; const tg = (id, h) => { const e = document.getElementById(id); if (e) e.hidden = h; };
+    tg("tabComptes", !isAdmin()); tg("tabIA", !isAdmin()); { const n = (S.users || []).filter(u => u.statut === "en_attente").length, tc = document.getElementById("tabComptes"); if (tc) tc.textContent = n ? `Comptes (${n})` : "Comptes"; } tg("tabCompte", !(acc && S.me)); tg("tabReglages", acc || !STANDALONE); tg("tabDir", acc && !isBoss()); }
+  let html = V();
+  const fc = S.inCtrl && ["edit","scan","correct","analyse"].includes(S.view) && V !== vLogin && ctrl(S.inCtrl);
+  if (fc){
+    if (S.view === "correct" && fc.statut === "brouillon") html = `<section class="panel empty">Les feuilles ne sont pas encore imprimées. Passe par l'étape « Imprimer ».</section>`;
+    html = ctrlFrame(fc, html.replace(/<select id="(corrSel|anSel)"[\s\S]*?<\/select>/, "").replace(/<h2>(Correction|Classe & rattrapage|Scanner les copies)<\/h2>/, "<h3>$1</h3>"));
+  }
+  $("#view").innerHTML = `<div class="view">${LOCAL ? `<p class="banner">Base de données indisponible dans cette vue : rien n'est sauvegardé. Ouvre l'application depuis claude.ai.</p>` : ""}${typeof billBanner === "function" ? billBanner() : ""}${html}</div>`;
   if (keep){ const el = document.getElementById(keep.id); if (el){ el.focus(); try { el.setSelectionRange(keep.s, keep.e); } catch(e){} } }
-  if (S.view === "edit") drawPreview();
+  if (S.view === "edit" && S.step === "mise-en-page") drawPreview();
+  { const sp = $(".stepper"), on = $(".st.on"); if (sp && on) sp.scrollLeft = on.offsetLeft - sp.clientWidth / 2 + on.clientWidth / 2; }
   if (S.view === "correct" && window.MathJax?.typesetPromise){ const v = $("#view"); MathJax.typesetClear?.([v]); MathJax.typesetPromise([v]).catch(() => {}); }
-  try { localStorage.setItem("tikoun2.view", S.view); } catch(e){}
 }
-function go(v){ S.view = v; render(); window.scrollTo({top:0}); }
+
 const chipStatut = c => { const [l, t] = STATUT[c.statut] || STATUT.brouillon; return `<span class="chip ${t}">${l}</span>`; };
 const selOpts = (arr, cur, lab = x => x, val = x => x) => arr.map(x => `<option value="${esc(val(x))}"${val(x) === cur ? " selected" : ""}>${esc(lab(x))}</option>`).join("");
 
 /* ================= HOME ================= */
 function vHome(){
   if (!store.classes.length) return `
-  <div class="head"><div><h2>Bienvenue sur Tikoun</h2><p>Du cours au rattrapage : l'IA prépare et corrige, le professeur décide.</p></div></div>
+  <div class="head"><div><h2>Bienvenue sur Mastery</h2><p>Du cours au rattrapage : l'IA prépare et corrige, le professeur décide.</p></div></div>
   <section class="panel grid">
     <div class="grid g3">
       <div><div class="label">1 · Classe</div><p>Crée ta classe et colle la liste des élèves.</p></div>
@@ -139,13 +219,25 @@ function vHome(){
   const cs = [...store.controles].sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
   const todo = cs.filter(c => c.statut !== "corrige"), done = cs.filter(c => c.statut === "corrige");
   let aValider = 0; cs.forEach(c => { const f = feuille(c.id); if (f) Object.values(f.copies || {}).forEach(cp => { if (!cp.validee && Object.keys(cp.answers || {}).length) aValider++; }); });
-  const line = c => `<div class="item"><div><div class="t">${c.type === "rattrapage" ? '<span class="chip blue">Rattrapage</span> ' : ""}${esc(c.titre)}</div>
+  const line = c => `<div class="item"><div><div class="t">${c.type === "rattrapage" ? '<span class="chip blue">Rattrapage</span> ' : c.type === "exercices" ? '<span class="chip">Exercices</span> ' : ""}${esc(c.titre)}</div>
       <div class="s">${esc(c.matiere)} · ${esc(classe(c.classeId)?.nom || "?")}${c.type === "rattrapage" ? " · " + esc(studentsOf(c).map(e => e.prenom + " " + e.nom).join(", ")) : ""} · ${frDate(c.date) || "sans date"}</div></div>
       <div class="row">${chipStatut(c)}<button class="btn sm" data-edit="${c.id}">${c.statut === "brouillon" ? "Modifier" : "Feuilles"}</button>
       ${c.statut !== "brouillon" ? `<button class="btn sm" data-corr="${c.id}">Correction</button>` : ""}${c.statut === "corrige" || c.statut === "correction" ? `<button class="btn sm" data-an="${c.id}">Analyse</button>` : ""}</div></div>`;
+  const nEx = cs.filter(c => c.type === "exercices").length, nCtrl = cs.filter(c => !c.type || c.type === "controle").length;
+  const hour = new Date().getHours(), hello = hour < 18 ? "Bonjour" : "Bonsoir";
   return `
-  <div class="head"><div><h2>Tableau de bord</h2><p>${store.classes.length} classe(s) · ${cs.length} contrôle(s)${aValider ? ` · <b style="color:var(--pen)">${aValider} copie(s) à valider</b>` : ""}</p></div>
-    <div class="row"><button class="btn primary" data-go="new">+ Nouveau contrôle</button><button class="btn" data-go="scan">Scanner des copies</button></div></div>
+  <section class="hero-card">
+    <div class="hc-main"><div class="hc-kicker">${esc(new Date().toLocaleDateString("fr-FR", {weekday:"long", day:"numeric", month:"long"}))}</div>
+      <h2>${hello}${S.me?.nom ? " " + esc(S.me.nom) : ""}</h2>
+      <p>${aValider ? `<b>${aValider} copie(s)</b> attendent ta validation.` : "Tout est à jour. Prépare ton prochain contrôle ou un quiz d'exercices."}</p>
+      <div class="row" style="margin-top:18px"><button class="btn gold" data-newctrl="1">+ Nouveau contrôle</button><button class="btn on-dark" data-newex="1">${canEx() ? "" : "🔒 "}+ Quiz d'exercices</button><button class="btn on-dark" data-go="scan">Scanner des copies</button></div></div>
+    <div class="hc-stats">
+      <div><b class="num">${store.classes.length}</b><span>classe(s)</span></div>
+      <div><b class="num">${nCtrl}</b><span>contrôle(s)</span></div>
+      <div><b class="num">${myQuizzes().length}</b><span>quiz d'exercices</span></div>
+      <div><b class="num"${aValider ? ' style="color:var(--gold-2)"' : ""}>${aValider}</b><span>copie(s) à valider</span></div>
+    </div>
+  </section>
   <section class="panel"><h3>En cours</h3><div style="margin-top:4px">${todo.map(line).join("") || `<p class="muted" style="padding:10px 0">Aucun contrôle en cours.</p>`}</div></section>
   ${done.length ? `<section class="panel"><h3>Corrigés</h3><div style="margin-top:4px">${done.map(line).join("")}</div></section>` : ""}`;
 }
@@ -169,28 +261,29 @@ function vClasses(){
     </aside>
     ${cl ? `<section class="panel grid">
       <div class="row between"><h3 style="font-size:20px">${esc(cl.nom)} <span class="muted small">· ${esc(cl.niveau)}</span></h3>
-        <div class="row"><select id="lvlMat" style="width:auto" aria-label="Matière">${selOpts(MATIERES, S.levelMat)}</select>
-        <button class="btn sm" id="sugg">Suggérer les niveaux</button></div></div>
-      ${sug ? `<div class="banner">Suggestions calculées sur les 3 derniers contrôles validés en ${esc(S.levelMat)} (moins de 10/20 : socle · 10 à 15 : standard · plus de 15 : approfondi). <button class="btn sm" id="applySug">Appliquer</button></div>` : ""}
+        <div class="row"><select id="lvlMat" style="width:auto" aria-label="Matière">${matOpts(S.levelMat)}</select>
+        <button class="btn sm" id="sugg">Suggérer les niveaux</button><button class="btn sm ghost" id="del-cl" title="Supprimer cette classe">🗑 Supprimer la classe</button></div></div>
+      ${sug ? `<div class="banner">Suggestions calculées sur les 3 derniers contrôles validés en ${esc(S.levelMat)} (socle : moins de ${noteS(10)} · standard : ${nv(10)}–${noteS(15)} · approfondi : plus de ${noteS(15)}). <button class="btn sm" id="applySug">Appliquer</button></div>` : ""}
       <div class="tbl-wrap"><table><thead><tr><th>Élève</th><th>Niveau · ${esc(S.levelMat)}</th>${sug ? "<th>Suggestion</th>" : ""}<th>Écriture</th><th></th></tr></thead><tbody>
       ${(cl.eleves || []).map(e => `<tr><td><b>${esc(e.prenom)} ${esc(e.nom)}</b></td>
         <td><select data-lvl="${e.id}" style="width:auto" aria-label="Niveau de ${esc(e.prenom)}">${selOpts(LEVELS, levelOf(e, S.levelMat), l => LVL[l])}</select></td>
-        ${sug ? `<td>${sug[e.id] ? `<span class="lvl ${sug[e.id].lvl}">${LVL[sug[e.id].lvl]}</span> <span class="muted small num">${fmt(sug[e.id].avg)}/20</span>` : `<span class="muted small">pas de note</span>`}</td>` : ""}
+        ${sug ? `<td>${sug[e.id] ? `<span class="lvl ${sug[e.id].lvl}">${LVL[sug[e.id].lvl]}</span> <span class="muted small num">${noteS(sug[e.id].avg)}</span>` : `<span class="muted small">pas de note</span>`}</td>` : ""}
         <td>${(() => { const w = store.ecritures[e.id]; const sc = w?.parUsage?.[usageOf(S.levelMat)] ?? w?.score; return w ? (sc != null ? `<span class="chip ${tone(sc >= .9 ? 1 : sc >= .75 ? .6 : 0)}" title="Lisibilité mesurée sur la fiche d'écriture">${pct(sc)}</span>` : `<span class="chip">fiche reçue</span>`) : `<span class="muted small">—</span>`; })()}</td>
         <td><button class="btn sm ghost" data-rmel="${e.id}" aria-label="Retirer">Retirer</button></td></tr>`).join("") || `<tr><td colspan="4" class="muted">Aucun élève.</td></tr>`}
       </tbody></table></div>
       <div class="field"><label for="add-el">Ajouter des élèves : un par ligne, « Prénom Nom »</label><textarea id="add-el" data-live placeholder="Mendel Cohen&#10;Yossef Levy"></textarea></div>
-      <div class="row between"><button class="btn primary" id="add-go">Ajouter</button><button class="btn sm ghost" id="del-cl">Supprimer la classe</button></div>
+      <div class="row"><button class="btn primary" id="add-go">Ajouter</button></div>
       <div class="grid" style="gap:6px;border-top:1px solid var(--line);padding-top:12px"><div class="row between"><div><b>Fiche d'écriture</b><div class="small muted">À faire remplir en septembre et en janvier (10 min), puis à scanner. Mesure la lisibilité de chaque élève et aide l'IA à relire son écriture.</div></div>
         <button class="btn" id="fiches">Fiches de la classe (PDF)</button></div><div class="status" id="fi-st"></div></div>
-    </section>` : `<section class="panel empty">Crée ta première classe à gauche.</section>`}
+    </section>${codesPanel(cl)}` : `<section class="panel empty">Crée ta première classe à gauche.</section>`}
   </div>`;
 }
 
 /* ================= NEW CONTROL (wizard) ================= */
 function vNew(){
   const st = n => `<span class="step ${S.wizStep === n ? "on" : S.wizStep > n ? "done" : ""}">${n}. ${["Cours","Paramètres","Édition & impression"][n - 1]}</span>`;
-  return `<div class="head"><div><h2>Nouveau contrôle</h2><p>Le cours sert de base. L'IA propose, tu gardes la main sur tout.</p></div></div>
+  const EXO = S.params.kind === "exercices"; if (S.params.kind === "quiz" && S.wizStep === 1) return `<div class="crumbs small"><a href="#/exercices/nouveau">← Nouveau quiz</a></div><div class="head"><div><h2>Importer un cours</h2><p>Il servira de base au quiz d'exercices.</p></div></div>` + wizCours();
+  return `<div class="head"><div><h2>${EXO ? "Nouvelle feuille d'exercices" : "Nouveau contrôle"}</h2><p>${EXO ? "Des exercices d'entraînement tirés du cours, régénérables à volonté, imprimables et corrigés au scan." : "Le cours sert de base. L'IA propose, tu gardes la main sur tout."}</p></div></div>
   <div class="steps">${st(1)}${st(2)}${st(3)}</div>
   ${S.wizStep === 1 ? wizCours() : wizParams()}`;
 }
@@ -205,7 +298,7 @@ function wizCours(){
     <h3>Importer un cours</h3>
     <div class="form-row">
       <div class="field"><label for="c-titre">Titre du cours</label><input id="c-titre" data-live value="${esc(d?.titre || "")}" placeholder="ex. Fonctions affines"></div>
-      <div class="field"><label for="c-mat">Matière</label><select id="c-mat">${selOpts(MATIERES, d?.matiere || "Mathématiques")}</select></div>
+      ${matField(d?.matiere)}
       <div class="field"><label for="c-niv">Niveau</label><select id="c-niv">${selOpts(NIVEAUX, d?.niveau || "3e")}</select></div>
     </div>
     <label class="drop" for="c-files">Choisir des fichiers : PDF du cours, ou photos / scans des pages<br><span class="small">Plusieurs fichiers possibles</span></label>
@@ -215,29 +308,35 @@ function wizCours(){
     <div class="row"><button class="btn primary" id="c-save">Enregistrer le cours et continuer</button></div>
   </section>`;
 }
+/* Matière du cours : choisie toute seule si le prof n'enseigne qu'une matière */
+function matField(cur){ const ens = enseigne(); cur = cur || ens[0] || "Mathématiques";
+  if (ens.length === 1 && !S.matChg && cur === ens[0]) return `<div class="field"><label>Matière</label><div class="row" style="min-height:40px"><b>${esc(cur)}</b><button class="btn sm ghost" id="c-matchg" type="button">Changer</button></div><input type="hidden" id="c-mat" value="${esc(cur)}"></div>`;
+  return `<div class="field"><label for="c-mat">Matière</label><select id="c-mat">${matOpts(cur, S.matChg)}</select></div>`; }
+document.addEventListener("click", ev => { if (ev.target.id === "c-matchg"){ S.coursDraft = {...(S.coursDraft || {}), titre:$("#c-titre")?.value, texte:$("#c-texte")?.value}; S.matChg = true; render(); } });
 function wizParams(){
   const co = store.cours.find(c => c.id === S.coursId);
   const p = S.params;
-  if (!p.matiere) p.matiere = co?.matiere || "Mathématiques";
+  p.matiere = co?.matiere || p.matiere || enseigne()[0] || "Mathématiques";
   if (!p.niveau) p.niveau = co?.niveau || "3e";
   if (!p.classeId && store.classes[0]) p.classeId = (store.classes.find(c => c.niveau === p.niveau) || store.classes[0]).id;
+  if (p.kind !== "controle") p.kind = "controle";
+  const EXO = p.kind === "exercices";
   const T = [["cours","Questions de cours"],["application","Exercices d'application"],["probleme","Problème / rédaction"],["texte","Lecture / explication de texte"],["traduction","Traduction"],["qcm","QCM (corrigés sans IA, gratuit)"]];
   return `
   <section class="panel grid">
     <div class="row between"><div><div class="label">Cours</div><b>${esc(co?.titre || "?")}</b> <span class="muted small">· ${esc(co?.matiere)} · ${esc(co?.niveau)}</span></div><button class="btn sm" id="back1">Changer de cours</button></div>
     <div class="form-row">
       <div class="field"><label for="p-cl">Classe</label><select id="p-cl" data-p="classeId">${store.classes.length ? selOpts(store.classes, p.classeId, c => c.nom, c => c.id) : `<option value="">Crée d'abord une classe</option>`}</select></div>
-      <div class="field"><label for="p-mat">Matière</label><select id="p-mat" data-p="matiere">${selOpts(MATIERES, p.matiere)}</select></div>
       <div class="field"><label for="p-niv">Niveau</label><select id="p-niv" data-p="niveau">${selOpts(NIVEAUX, p.niveau)}</select></div>
       <div class="field"><label for="p-dur">Durée (min)</label><input id="p-dur" type="number" min="10" max="240" data-p="duree" value="${esc(p.duree)}"></div>
       <div class="field"><label for="p-nbq">Nombre de questions</label><input id="p-nbq" type="number" min="2" max="10" data-p="nbq" value="${esc(p.nbq)}"></div>
+      <div class="field"><label for="p-lang">Langue du contrôle</label><select id="p-lang" data-p="langue">${selOpts(LANGUES, p.langue || langueDef(co?.texte))}</select></div>
       <div class="field"><label for="p-dif">Difficulté</label><select id="p-dif" data-p="difficulte">${selOpts(["facile","moyen","exigeant"], p.difficulte)}</select></div>
     </div>
-    <div class="field"><label for="p-titre">Titre du contrôle (facultatif)</label><input id="p-titre" data-p="titre" data-live value="${esc(p.titre)}" placeholder="Proposé par l'IA si vide"></div>
     <div class="field"><label>Types de questions</label><div class="row">${T.map(([k, l]) => `<label class="row small" style="gap:6px"><input type="checkbox" data-type="${k}"${p.types.includes(k) ? " checked" : ""}> ${l}</label>`).join("")}</div></div>
     <label class="row small" style="gap:6px"><input type="checkbox" id="p-diff"${p.differencie ? " checked" : ""}> Feuilles différenciées : chaque question en 3 niveaux (socle, standard, approfondi), selon le niveau de chaque élève</label>
     <div class="field"><label for="p-cons">Tes consignes à l'IA (facultatif)</label><textarea id="p-cons" data-p="consignes" data-live placeholder="ex. Insister sur la notion d'antécédent. Une question de rédaction à la fin.">${esc(p.consignes)}</textarea></div>
-    <div class="row"><button class="btn primary" id="gen" ${store.classes.length ? "" : "disabled"}>Générer le contrôle (IA)</button><button class="btn" id="genBlank" ${store.classes.length ? "" : "disabled"}>Partir d'un contrôle vide</button><span class="status" id="gen-st"></span></div>
+    <div class="row"><button class="btn primary" id="gen" ${store.classes.length ? "" : "disabled"}>${EXO ? "Générer les exercices (IA)" : "Générer le contrôle (IA)"}</button><button class="btn" id="genBlank" ${store.classes.length ? "" : "disabled"}>Partir d'un contrôle vide</button><span class="status" id="gen-st"></span></div>
   </section>`;
 }
 
@@ -250,26 +349,23 @@ function vEdit(){
   if (!S.previewEleve || !studs.find(e => e.id === S.previewEleve)) S.previewEleve = studs[0]?.id || null;
   const printed = !!f && Object.keys(f.copies || {}).length;
   const scanned = printed && Object.values(f.copies).some(cp => Object.keys(cp.scans || {}).length);
-  return `
-  <div class="head"><div><div class="label">${c.type === "rattrapage" ? "Rattrapage" : "Contrôle"} · ${esc(c.matiere)} · ${esc(cl?.nom || "?")}</div><h2>${esc(c.titre)}</h2></div>
-    <div class="row">${chipStatut(c)}<button class="btn sm" data-go="home">Tableau de bord</button></div></div>
-  <div class="steps"><span class="step done">1. Cours</span><span class="step done">2. Paramètres</span><span class="step on">3. Édition & impression</span></div>
-  <section class="panel grid">
+  const partPrep = `  <section class="panel grid">
     <div class="form-row">
-      <div class="field"><label for="e-titre">Titre</label><input id="e-titre" data-c="titre" data-live value="${esc(c.titre)}"></div>
+      <div class="field"><label for="e-titre">Nom du contrôle (imprimé en haut de la feuille)</label><input id="e-titre" data-c="titre" data-live value="${esc(c.titre)}"></div>
       <div class="field"><label for="e-date">Date</label><input id="e-date" type="date" data-c="date" value="${esc(c.date || "")}"></div>
       <div class="field"><label for="e-dur">Durée (min)</label><input id="e-dur" type="number" data-c="duree" value="${esc(c.duree || "")}"></div>
     </div>
     <label class="row small" style="gap:6px"><input type="checkbox" id="e-diff"${c.differencie ? " checked" : ""}> Feuilles différenciées selon le niveau de chaque élève</label>
   </section>
-  <div class="head"><h3>Questions <span class="muted num" style="font-weight:500">· total ${fmt(tot)} pts${tot !== 20 ? " (ramené sur 20)" : ""}</span></h3>
-    <div class="row"><button class="btn sm" id="addQ">+ Question vide</button><button class="btn sm" id="addQcm">+ QCM</button><button class="btn sm" id="addQai">+ Question (IA)</button><button class="btn sm" id="bankOpen">${S.bankOpen ? "Fermer la banque" : "+ Depuis la banque"}</button></div></div>
+  <div class="head"><h3>Questions <span class="muted num" style="font-weight:500">· total ${fmt(tot)} pts${tot !== 20 && bareme() === "20" ? " (ramené sur 20)" : ""}</span></h3>
+    <div class="row">${c.type === "exercices" ? (canEx() ? `<button class="btn sm primary" id="regenEx">↻ Régénérer les exercices (IA)</button>` : lockChip()) : (!c.type || c.type === "controle") && c.coursId ? `<button class="btn sm primary" id="regenCtrl">↻ Régénérer le contrôle (IA)</button>` + (canEx() ? `<button class="btn sm" data-exfrom="${c.id}">+ Quiz d'exercices sur ce cours</button>` : lockChip()) : ""}<button class="btn sm" id="addQ">+ Question vide</button><button class="btn sm" id="addQcm">+ QCM</button><button class="btn sm" id="addQai">+ Question (IA)</button><button class="btn sm" id="bankOpen">${S.bankOpen ? "Fermer la banque" : "+ Depuis la banque"}</button></div></div>
   ${S.bankOpen ? bankPanel(c) : ""}
-  ${(c.questions || []).map((q, i) => qEditor(c, q, i)).join("") || `<div class="panel empty">Aucune question.</div>`}
-  <section class="panel grid">
+  ${(c.questions || []).map((q, i) => qEditor(c, q, i)).join("") || `<div class="panel empty">Aucune question.</div>`}`;
+  const partLayout = `  <section class="panel grid">
     <h3>Mise en page</h3>
     <div class="form-row">
-      <div class="field"><label for="m-ent">En-tête</label><input id="m-ent" data-m="entete" data-live value="${esc(m.entete ?? ECOLE)}"></div>
+      <div class="field"><label for="m-aff">En-tête affiché</label><select id="m-aff" data-m="affiche">${selOpts(Object.keys(AFFICHE), m.affiche || S.me?.affichage || "les2", x => AFFICHE[x])}</select></div>
+      <div class="field"><label for="m-ent">Texte d'en-tête libre (facultatif)</label><input id="m-ent" data-m="entete" data-live value="${esc(m.entete && m.entete !== OLD_ENTETE ? m.entete : "")}" placeholder="${esc(headerFrom(m.affiche || S.me?.affichage || "les2"))}"></div>
       <div class="field"><label for="m-pol">Taille du texte</label><select id="m-pol" data-m="police">${selOpts(["13","14","15","16","17"], String(m.police || 15), x => x + " pt")}</select></div>
       <div class="field"><label for="m-lh">Interligne des cadres</label><select id="m-lh" data-m="lh">${selOpts(["26","30","34","38"], String(m.lh || 30), x => ({26:"Serré",30:"Normal",34:"Large",38:"Très large"}[x]))}</select></div>
     </div>
@@ -281,8 +377,8 @@ function vEdit(){
     </div>
     <div class="row between"><div class="label">Aperçu</div><select id="prevEl" style="width:auto" aria-label="Élève">${selOpts(studs, S.previewEleve, e => e.prenom + " " + e.nom + (c.differencie ? " · " + LVL[versionFor(c, e)] : ""), e => e.id)}</select></div>
     <div class="preview-wrap" id="preview"></div>
-  </section>
-  <section class="panel grid">
+  </section>`;
+  const partPrint = `  <section class="panel grid">
     <h3>Impression</h3>
     <p class="muted small">Un PDF pour toute la classe : une feuille par élève, avec son nom et son QR code sur chaque page. Le niveau n'est pas écrit sur la feuille, il est seulement contenu dans le QR code.</p>
     ${scanned ? `<p class="banner">Des copies ont déjà été scannées. Réimprimer garde les scans et les notes existants, mais une mise en page différente peut décaler les questions par page.</p>` : ""}
@@ -290,6 +386,7 @@ function vEdit(){
       <button class="btn" id="print1">Feuille de l'élève affiché</button><button class="btn ghost sm" id="delCtrl">Supprimer</button></div>
     <div class="status" id="pr-st"></div>
   </section>`;
+  return S.step === "mise-en-page" ? partLayout : S.step === "imprimer" ? partPrint + `<section class="panel grid"><h3>Et ensuite</h3><p class="small muted">Fais passer le contrôle, puis scanne les copies à l'étape suivante. L'ordre des copies n'a pas d'importance.</p></section>` : partPrep;
 }
 function qEditor(c, q, i){
   const vt = c.differencie ? (S.vtab[q.id] || "standard") : "standard";
@@ -330,7 +427,7 @@ function sheetPages(c, e){
     const n = pages.length + 1;
     p.innerHTML = first ? `
       <div class="sh-head"><div>
-        <div class="sh-school">${esc(m.entete ?? ECOLE)}</div>
+        <div class="sh-school">${esc(enteteOf(c))}</div>
         <div class="sh-title" dir="auto">${esc(c.titre)}</div>
         <div class="sh-meta">${esc(c.matiere)} · ${esc(cl?.nom || "")}${c.date ? " · " + esc(frDate(c.date)) : ""}${c.duree ? " · " + esc(c.duree) + " min" : ""}${m.bareme !== false ? " · noté sur " + fmt(maxOf(c)) : ""}</div>
         <div class="sh-name">Élève : <b>${esc(e.prenom)} ${esc(e.nom)}</b></div>
@@ -339,7 +436,7 @@ function sheetPages(c, e){
       : `<div class="sh-mini">${esc(e.prenom)} ${esc(e.nom)} · ${esc(c.titre)} · page ${n}</div>`;
     for (const [k, [x, y]] of Object.entries(CORNERS)){ const z = CSIZE[k], im = document.createElement("img"); im.className = "sh-corner"; im.alt = "";
       im.src = qrURL(k === "tl" ? payload(c.id, e.id, n) : "TK1C|" + k, 3); im.style.cssText = `left:${x - z / 2}px;top:${y - z / 2}px;width:${z}px;height:${z}px`; p.append(im); }
-    const foot = document.createElement("div"); foot.className = "sh-foot"; foot.innerHTML = `<span>Tikoun · ${esc(c.id)}·${esc(e.id)}</span><span class="pn">page ${n}</span>`; p.append(foot);
+    const foot = document.createElement("div"); foot.className = "sh-foot"; foot.innerHTML = `<span>Mastery · ${esc(c.id)}·${esc(e.id)}</span><span class="pn">page ${n}</span>`; p.append(foot);
     stage.append(p); pages.push(p); layout.push([]); return p;
   };
   let page = newPage(true);
@@ -390,7 +487,7 @@ async function printSheets(c, list){
       const e = list[k]; const {pages, layout, version} = sheetPages(c, e);
       for (let i = 0; i < pages.length; i++){
         $("#ovm").textContent = `Feuille ${k + 1} / ${list.length} · ${e.prenom} ${e.nom} · page ${i + 1}`;
-        const cv = await html2canvas(pages[i], {scale:2, backgroundColor:"#ffffff", logging:false, scrollX:0, scrollY:-window.scrollY, windowWidth:900});
+        const cv = await html2canvas(pages[i], {scale:2, backgroundColor:"#ffffff", logging:false, scrollX:0, scrollY:-window.scrollY, windowWidth:900, onclone:(doc, el) => fixBidiForCanvas(el)});
         if (!first) pdf.addPage(); first = false;
         pdf.addImage(cv.toDataURL("image/jpeg", 0.9), "JPEG", 0, 0, 595.28, 841.89);
       }
@@ -452,25 +549,65 @@ async function fileToCanvases(file){
 }
 function scaled(cv, maxSide){ const sc = Math.min(1, maxSide / Math.max(cv.width, cv.height)); const o = document.createElement("canvas"); o.width = Math.round(cv.width * sc); o.height = Math.round(cv.height * sc); o.getContext("2d").drawImage(cv, 0, 0, o.width, o.height); return o; }
 function crop(cv, x, y, w, h){ const o = document.createElement("canvas"); o.width = Math.round(w); o.height = Math.round(h); o.getContext("2d").drawImage(cv, x, y, w, h, 0, 0, o.width, o.height); return o; }
-function readQR(cv){
-  if (!window.jsQR) return null;
-  const tryOn = c => { const d = c.getContext("2d").getImageData(0, 0, c.width, c.height); const r = jsQR(d.data, c.width, c.height, {inversionAttempts:"attemptBoth"}); return r?.data?.startsWith("TK1|") ? r.data : null; };
-  const W = cv.width, H = cv.height;
-  return tryOn(scaled(cv, 1100)) || tryOn(crop(cv, W * 0.5, 0, W * 0.5, H * 0.4)) || tryOn(crop(cv, 0, 0, W * 0.5, H * 0.4)) || tryOn(crop(cv, W * 0.5, H * 0.6, W * 0.5, H * 0.4)) || tryOn(scaled(cv, 1700));
+/* Lecture des QR codes (QR de l'élève + 4 petits carrés de repère dans les coins).
+   Photos de téléphone : ombres, flou, feuille petite dans l'image. On essaie donc, dans l'ordre :
+   le lecteur natif du navigateur (bien plus robuste), puis jsQR sur plusieurs fenêtres, tailles et
+   une version « éclairage corrigé » de l'image (ombre retirée, contraste renforcé). */
+function flatten(c){ /* divise chaque pixel par la luminosité moyenne autour de lui : ombres et dégradés disparaissent */
+  const W = c.width, H = c.height, d = c.getContext("2d").getImageData(0, 0, W, H), p = d.data, g = new Float32Array(W * H), I = new Float64Array((W + 1) * (H + 1));
+  for (let i = 0, j = 0; i < g.length; i++, j += 4) g[i] = 0.3 * p[j] + 0.59 * p[j + 1] + 0.11 * p[j + 2];
+  for (let y = 0; y < H; y++){ let row = 0; for (let x = 0; x < W; x++){ row += g[y * W + x]; I[(y + 1) * (W + 1) + x + 1] = I[y * (W + 1) + x + 1] + row; } }
+  const r = Math.max(8, Math.round(Math.max(W, H) / 14));
+  for (let y = 0; y < H; y++){ const y0 = Math.max(0, y - r), y1 = Math.min(H, y + r + 1);
+    for (let x = 0; x < W; x++){ const x0 = Math.max(0, x - r), x1 = Math.min(W, x + r + 1);
+      const m = (I[y1 * (W + 1) + x1] - I[y0 * (W + 1) + x1] - I[y1 * (W + 1) + x0] + I[y0 * (W + 1) + x0]) / ((x1 - x0) * (y1 - y0));
+      const v = clamp(Math.round(255 * (g[y * W + x] / (m + 1) - 0.55) / 0.4), 0, 255), o = (y * W + x) * 4; p[o] = p[o + 1] = p[o + 2] = v; p[o + 3] = 255; } }
+  const o = document.createElement("canvas"); o.width = W; o.height = H; o.getContext("2d").putImageData(d, 0, 0); return o;
 }
-function detectAll(cv){
-  if (!window.jsQR) return [];
-  const W = cv.width, H = cv.height, found = [];
-  for (const [fx, fy] of [[0, 0], [.58, 0], [0, .7], [.58, .7]]){
-    const x0 = W * fx, y0 = H * fy, w = W * .42, h = H * .3;
-    const r0 = crop(cv, x0, y0, w, h), r = scaled(r0, 1000), k = r0.width / r.width;
-    const d = r.getContext("2d").getImageData(0, 0, r.width, r.height);
-    const q = jsQR(d.data, r.width, r.height, {inversionAttempts:"attemptBoth"});
-    if (!q) continue;
-    const L = q.location, pts = [L.topLeftCorner, L.topRightCorner, L.bottomRightCorner, L.bottomLeftCorner];
-    found.push({data:q.data, x:x0 + k * pts.reduce((a, p) => a + p.x, 0) / 4, y:y0 + k * pts.reduce((a, p) => a + p.y, 0) / 4});
+function jsqrOn(c){ if (!window.jsQR) return null; const d = c.getContext("2d").getImageData(0, 0, c.width, c.height); return jsQR(d.data, c.width, c.height, {inversionAttempts:"attemptBoth"}); }
+const centre = L => [L.topLeftCorner, L.topRightCorner, L.bottomRightCorner, L.bottomLeftCorner].reduce((a, q) => [a[0] + q.x / 4, a[1] + q.y / 4], [0, 0]);
+let NATIVE_QR;
+async function nativeQR(cv){
+  try {
+    if (NATIVE_QR === undefined) NATIVE_QR = ("BarcodeDetector" in window && (await BarcodeDetector.getSupportedFormats()).includes("qr_code")) ? new BarcodeDetector({formats:["qr_code"]}) : null;
+    if (!NATIVE_QR) return [];
+    const out = [];
+    for (const side of [2000, 1300]){
+      const c = scaled(cv, side), k = cv.width / c.width;
+      for (const r of await NATIVE_QR.detect(c)){ if (!/^TK1/.test(r.rawValue) || out.some(f => f.data === r.rawValue)) continue;
+        const pts = r.cornerPoints || []; if (pts.length < 4) continue;
+        out.push({data:r.rawValue, x:k * pts.reduce((a, q) => a + q.x, 0) / 4, y:k * pts.reduce((a, q) => a + q.y, 0) / 4}); }
+      if (out.filter(f => f.data.startsWith("TK1C|")).length >= 3) break;
+    }
+    return out;
+  } catch(e){ NATIVE_QR = null; return []; }
+}
+async function detectAll(cv){
+  const W = cv.width, H = cv.height, found = await nativeQR(cv);
+  const add = (data, x, y) => { if (/^TK1/.test(data) && !found.some(f => f.data === data)) found.push({data, x, y}); };
+  const corners = () => found.filter(f => f.data.startsWith("TK1C|") || /^TK1W?\|/.test(f.data)).length;
+  if (corners() >= 4 || !window.jsQR) return found;
+  /* fenêtres de recherche : chaque coin (large puis serré), puis la page entière */
+  const wins = [];
+  for (const [fx, fy] of [[0, 0], [.5, 0], [0, .62], [.5, .62]]) wins.push([W * fx, H * fy, W * .5, H * .38]);
+  for (const [fx, fy] of [[0, 0], [.7, 0], [0, .78], [.7, .78]]) wins.push([W * fx, H * fy, W * .3, H * .22]);
+  for (const [x0, y0, w, h] of wins){
+    const r0 = crop(cv, x0, y0, w, h);
+    for (const [side, flat] of [[1000, false], [1000, true], [1500, false], [700, true]]){
+      let r = scaled(r0, side); if (flat) r = flatten(r); const k = r0.width / r.width;
+      const q = jsqrOn(r); if (!q || !/^TK1/.test(q.data)) continue;
+      const [cx, cy] = centre(q.location); add(q.data, x0 + k * cx, y0 + k * cy); break;
+    }
+    if (corners() >= 4) break;
   }
   return found;
+}
+function readQR(cv){
+  if (!window.jsQR) return null;
+  const tryOn = c => { const r = jsqrOn(c); return r?.data?.startsWith("TK1|") ? r.data : null; };
+  const W = cv.width, H = cv.height;
+  return tryOn(scaled(cv, 1100)) || tryOn(crop(cv, W * 0.5, 0, W * 0.5, H * 0.4)) || tryOn(crop(cv, 0, 0, W * 0.5, H * 0.4)) || tryOn(flatten(scaled(crop(cv, 0, 0, W * 0.5, H * 0.4), 900)))
+    || tryOn(flatten(scaled(crop(cv, W * 0.5, 0, W * 0.5, H * 0.4), 900))) || tryOn(crop(cv, W * 0.5, H * 0.6, W * 0.5, H * 0.4)) || tryOn(flatten(scaled(cv, 1100))) || tryOn(scaled(cv, 1700));
 }
 function solve(A, b){ const n = b.length; A = A.map((r, i) => [...r, b[i]]);
   for (let i = 0; i < n; i++){ let m = i; for (let k = i + 1; k < n; k++) if (Math.abs(A[k][i]) > Math.abs(A[m][i])) m = k; [A[i], A[m]] = [A[m], A[i]];
@@ -483,7 +620,12 @@ const applyH = (H, x, y) => { const w = H[6] * x + H[7] * y + H[8]; return [(H[0
 /* sheet → photo mapping from the 4 corner markers (3 are enough) */
 function sheetToPhoto(found){
   const m = {}; found.forEach(f => { const k = /^TK1W?\|/.test(f.data) ? "tl" : f.data.startsWith("TK1C|") && f.data.slice(5); if (CORNERS[k]) m[k] = [f.x, f.y]; });
-  const ks = Object.keys(m); if (ks.length < 3) return null;
+  const ks = Object.keys(m); if (ks.length < 2) return null;
+  if (ks.length === 2){ /* 2 repères seulement (scanner, feuille à plat) : rotation + échelle + décalage */
+    const [[x1, y1], [x2, y2]] = ks.map(k => CORNERS[k]), [[u1, v1], [u2, v2]] = ks.map(k => m[k]);
+    const dx = x2 - x1, dy = y2 - y1, du = u2 - u1, dv = v2 - v1, n = dx * dx + dy * dy; if (n < 1e4) return null;
+    const a = (du * dx + dv * dy) / n, b = (dv * dx - du * dy) / n; /* u = a·x − b·y + tx ; v = b·x + a·y + ty */
+    return [a, -b, u1 - a * x1 + b * y1, b, a, v1 - b * x1 - a * y1, 0, 0, 1]; }
   if (ks.length === 3){ /* affine from the 3 known markers */
     const A = [], bb = []; ks.forEach(k => { const [x, y] = CORNERS[k], [u, v] = m[k]; A.push([x, y, 1, 0, 0, 0]); bb.push(u); A.push([0, 0, 0, x, y, 1]); bb.push(v); });
     return [...solve(A, bb), 0, 0, 1]; }
@@ -492,7 +634,7 @@ function sheetToPhoto(found){
 function warpBox(cv, H, bx, pad = 8){
   const x0 = bx.x - pad, y0 = bx.y - pad, w = bx.w + 2 * pad, h = bx.h + 2 * pad;
   const [ax, ay] = applyH(H, x0, y0), [bx2, by2] = applyH(H, x0 + w, y0);
-  const srcScale = Math.hypot(bx2 - ax, by2 - ay) / w; const k = clamp(srcScale, 1, 1400 / w);
+  const srcScale = Math.hypot(bx2 - ax, by2 - ay) / w; const k = clamp(srcScale, 1, 900 / w);
   const W = Math.round(w * k), Hh = Math.round(h * k);
   const src = pix(cv), SW = cv.width, SH = cv.height;
   const out = document.createElement("canvas"); out.width = W; out.height = Hh; const oc = out.getContext("2d"), od = oc.createImageData(W, Hh);
@@ -502,6 +644,25 @@ function warpBox(cv, H, bx, pad = 8){
     const q = (Y * SW + X) * 4; od.data[o] = src[q]; od.data[o + 1] = src[q + 1]; od.data[o + 2] = src[q + 2]; od.data[o + 3] = 255; }
   oc.putImageData(od, 0, 0); return out;
 }
+/* Confidentialité : avant d'envoyer une page entière à l'IA, on masque l'en-tête (nom de l'élève, classe, école) */
+function maskHeader(cv, H, boxes){
+  const top = Math.max(0, Math.min(...boxes.map(b => b.y)) - 6);
+  const o = document.createElement("canvas"); o.width = cv.width; o.height = cv.height; const g = o.getContext("2d"); g.drawImage(cv, 0, 0);
+  if (!isFinite(top) || top <= 0) return o;
+  const pts = [[-40, -40], [834, -40], [834, top], [-40, top]].map(([x, y]) => applyH(H, x, y));
+  g.fillStyle = "#fff"; g.beginPath(); pts.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.closePath(); g.fill(); return o;
+}
+function inkRatio(cv, H, b){ /* part de pixels foncés dans le cadre (lignes grises et bordure exclues) */
+  const d = pix(cv), SW = cv.width, SH = cv.height; let dark = 0, n = 0;
+  for (let j = 0; j < 24; j++) for (let i = 0; i < 80; i++){
+    const [x, y] = applyH(H, b.x + b.w * (0.04 + 0.92 * i / 79), b.y + b.h * (0.06 + 0.88 * j / 23)); const X = x | 0, Y = y | 0;
+    if (X < 0 || Y < 0 || X >= SW || Y >= SH) continue; const o = (Y * SW + X) * 4; n++; if (0.3 * d[o] + 0.59 * d[o + 1] + 0.11 * d[o + 2] < 110) dark++; }
+  return n ? dark / n : 1;
+}
+/* Garde-fou : une réponse sans contenu vaut 0, quoi qu'en dise l'IA */
+const NO_ANSWER = /^\s*(je\s*(ne)?\s*sais\s*pas|j'?\s*sais\s*pas|jsp|aucune\s*id[ée]e|pas\s*d'?\s*id[ée]e|je\s*n'?\s*ai\s*pas\s*compris|rien|néant|\?+|-+|\.+|x)\s*[.!?]*\s*$/i;
+const isNoAnswer = t => !String(t || "").replace(/\[illisible\]/g, "").replace(/\$/g, "").trim() || NO_ANSWER.test(String(t).replace(/\$/g, ""));
+function markFautes(t, fautes){ let out = t; for (const f of (Array.isArray(fautes) ? fautes : []).map(String).filter(x => x.trim()).slice(0, 8)){ const i = out.indexOf(f); if (i >= 0 && !out.slice(0, i).endsWith("⟦")) out = out.slice(0, i) + "⟦" + f + "⟧" + out.slice(i + f.length); } return out; }
 function pix(cv){ if (!cv._d) cv._d = cv.getContext("2d").getImageData(0, 0, cv.width, cv.height).data; return cv._d; }
 /* QCM: dark-pixel ratio inside each printed box */
 function readMarks(cv, H, b){
@@ -522,25 +683,48 @@ function qcmAnswer(q, ver, coches, ambigu){
     erreurs:ok ? [] : ["réponse QCM incorrecte"], acquis:ok ? [q.notion || "QCM"] : [], valide:false, auto:true};
 }
 const toBlob = (cv, q = 0.85) => new Promise(r => cv.toBlob(r, "image/jpeg", q));
-async function addScans(files){
-  for (const f of files){
-    let cvs; try { cvs = await fileToCanvases(f); } catch(e){ S.queue.push({id:uid(), name:f.name, thumb:"", status:"erreur", msg:"Fichier illisible."}); continue; }
-    cvs.forEach((cv, i) => S.queue.push({id:uid(), name:f.name + (cvs.length > 1 ? " · p." + (i + 1) : ""), cv, thumb:scaled(cv, 160).toDataURL("image/jpeg", .7), status:"attente", msg:""}));
+/* Pages d'un fichier SANS les garder toutes en mémoire : chaque page n'est dessinée en grand qu'au moment d'être lue,
+   puis libérée. Un PDF de 20 contrôles (40 pages et plus) ne fait plus planter le navigateur. */
+async function pdfPage(pdf, i, side){ const pg = await pdf.getPage(i); const vp = pg.getViewport({scale: side / Math.max(pg.view[2], pg.view[3])});
+  const cv = document.createElement("canvas"); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height); await pg.render({canvasContext:cv.getContext("2d"), viewport:vp}).promise; pg.cleanup(); return cv; }
+async function lazyPages(file){
+  if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)){
+    const pdf = await pdfjsLib.getDocument({data: await file.arrayBuffer()}).promise, out = [];
+    for (let i = 1; i <= pdf.numPages; i++){ let thumb = ""; try { thumb = (await pdfPage(pdf, i, 120)).toDataURL("image/jpeg", .6); } catch(e){}
+      out.push({n:pdf.numPages, i, thumb, load:() => pdfPage(pdf, i, 2000)}); }
+    return out;
   }
+  const cv = (await fileToCanvases(file))[0]; const thumb = scaled(cv, 160).toDataURL("image/jpeg", .7);
+  return [{n:1, i:1, thumb, load:async () => (await fileToCanvases(file))[0]}];
+}
+async function addScans(files){
+  let n = 0;
+  for (const f of files){
+    let pages; try { pages = await lazyPages(f); } catch(e){ S.queue.push({id:uid(), name:f.name, thumb:"", status:"erreur", msg:"Fichier illisible."}); continue; }
+    pages.forEach(pg => S.queue.push({id:uid(), name:f.name + (pg.n > 1 ? " · p." + pg.i : ""), load:pg.load, thumb:pg.thumb, status:"attente", msg:""})); n += pages.length;
+    scheduleRender();
+  }
+  if (n > 1) toast(n + " pages ajoutées : elles sont lues une par une.", 4000);
   render(); runQueue();
 }
+async function pageCv(it){ if (!it.cv && it.load) it.cv = await it.load(); return it.cv; }
+/* iPhone/iPad : la mémoire d'un canvas n'est rendue qu'en le ramenant à 0 × 0 */
+const freeCv = it => { if (!it.load || !it.cv) return; try { it.cv._d = null; it.cv.width = it.cv.height = 0; } catch(e){} it.cv = null; };
 async function runQueue(){
   if (S.queueRunning) return; S.queueRunning = true;
   try{
     let it;
     while ((it = S.queue.find(x => x.status === "attente"))){
       it.status = "qr"; it.msg = ""; scheduleRender();
-      it.found = detectAll(it.cv);
+      try { await pageCv(it); } catch(e){ it.status = "erreur"; it.msg = "Page illisible."; continue; }
+      if (!it.cv){ it.status = "erreur"; it.msg = "Image perdue : ajoute la photo à nouveau."; continue; }
+      it.found = await detectAll(it.cv);
       const data = it.found.find(f => /^TK1W?\|/.test(f.data))?.data || readQR(it.cv);
-      if (!data){ it.status = "manuel"; it.msg = "Choisis le contrôle, l'élève et la page, ou reprends la photo avec le QR code bien net."; scheduleRender(); continue; }
-      if (data.startsWith("TK1W|")){ await processWriting(it, data); continue; }
+      if (!data){ freeCv(it); it.status = "manuel"; it.msg = "Choisis le contrôle, l'élève et la page, ou reprends la photo avec le QR code bien net."; if (it.inbox){ const m = INBOX_ITEMS[it.inbox]; if (m) m.manuel = true; inboxPage(it, true); } scheduleRender(); continue; }
+      if (data.startsWith("TK1W|")){ if (it.inbox && !classe(data.split("|")[1])){ S.queue = S.queue.filter(x => x !== it); inboxPage(it, false); continue; } await processWriting(it, data); freeCv(it); if (it.inbox) inboxPage(it, true); continue; }
       const [, cid, eid, p] = data.split("|"); it.ctrlId = cid; it.eleveId = eid; it.page = +p || 1;
-      await processPage(it);
+      if (it.inbox && !ctrl(cid)){ S.queue = S.queue.filter(x => x !== it); inboxPage(it, false); continue; }
+      await processPage(it); freeCv(it); if (it.inbox) inboxPage(it, true);
     }
   } finally { S.queueRunning = false; scheduleRender(); }
 }
@@ -552,14 +736,18 @@ async function processPage(it){
   if (!qids.length){ it.status = "erreur"; it.msg = "Aucune question attendue sur cette page."; return scheduleRender(); }
   it.status = "lecture"; it.msg = "Envoi de l'image…"; scheduleRender();
   try{
+    await pageCv(it); if (!it.cv){ it.status = "erreur"; it.msg = "Image perdue : ajoute la photo à nouveau."; return scheduleRender(); }
     const upd = {copies:{[it.eleveId]:{scans:{}, answers:{}}}};
     if (ASSETS){ try { const a = await ASSETS.upload(await toBlob(scaled(it.cv, 1700), .8)); upd.copies[it.eleveId].scans[it.page] = {asset:a.id, url:a.url, at:new Date().toISOString()}; } catch(e){ console.warn("asset", e); } }
     if (!AI){ it.status = "erreur"; it.msg = "QR lu, mais l'IA n'est pas disponible pour lire les réponses."; if (Object.keys(upd.copies[it.eleveId].scans).length) await write("feuilles/" + c.id, upd, "update"); return scheduleRender(); }
     it.msg = "Lecture de l'écriture et correction (30 s à 1 min)…"; scheduleRender();
-    const Hm = boxes.length ? sheetToPhoto(it.found || detectAll(it.cv)) : null;
+    const Hm = boxes.length ? sheetToPhoto(it.found || await detectAll(it.cv)) : null;
     const maxImg = LIM?.images?.maxCount || 1;
     const qcmB = Hm ? boxes.filter(b => b.type === "qcm") : [];
-    const aiQ = qids.filter(id => !qcmB.some(b => b.q === id));
+    let aiQ = qids.filter(id => !qcmB.some(b => b.q === id));
+    /* Économie : un cadre vide n'est pas envoyé à l'IA */
+    const blank = new Set(Hm ? boxes.filter(b => b.type !== "qcm" && aiQ.includes(b.q) && inkRatio(it.cv, Hm, b) < 0.003).map(b => b.q) : []);
+    aiQ = aiQ.filter(id => !blank.has(id));
     let arr = [], crops = {}, bon = null, marks = {};
     for (const b of qcmB){ marks[b.q] = readMarks(it.cv, Hm, b); crops[b.q] = warpBox(it.cv, Hm, b); }
     const aiB = boxes.filter(b => aiQ.includes(b.q));
@@ -568,12 +756,13 @@ async function processPage(it){
     if (ASSETS){ for (const k in crops){ try { const a = await ASSETS.upload(await toBlob(crops[k], .82)); crops[k].asset = a.id; } catch(e){} } }
     if (aiQ.length){
       if (!AI){ it.status = "erreur"; it.msg = "QR lu, mais l'IA n'est pas disponible pour lire les réponses rédigées."; await write("feuilles/" + c.id, upd, "update"); return scheduleRender(); }
-      it.msg = cropMode ? "Lecture des " + aiB.length + " cadre(s) découpés et correction…" : "Lecture de la page et correction (30 s à 1 min)…"; scheduleRender();
+      it.msg = cropMode ? "Lecture des " + aiQ.length + " cadre(s) découpés et correction…" : "Lecture de la page et correction (30 s à 1 min)…"; scheduleRender();
       if (cropMode){
-        const res = await ai(gradePrompt(c, cp, aiQ, "crops"), {images: await Promise.all(aiB.map(b => toBlob(crops[b.q], .9)))});
+        const aiB2 = aiB.filter(b => aiQ.includes(b.q));
+        const res = await ai(gradePrompt(c, cp, aiQ, "crops"), {images: await Promise.all(aiB2.map(b => toBlob(crops[b.q], .8)))});
         arr = Array.isArray(res?.reponses) ? res.reponses : []; bon = res;
       } else {
-        const big = scaled(it.cv, 2000), W = big.width, H = big.height;
+        const big = scaled(Hm ? maskHeader(it.cv, Hm, boxes) : it.cv, 1600), W = big.width, H = big.height;
         const many = maxImg >= 2;
         const imgs = many ? [await toBlob(crop(big, 0, 0, W, H * 0.56)), await toBlob(crop(big, 0, H * 0.44, W, H * 0.56))] : [await toBlob(big)];
         const res = await ai(gradePrompt(c, cp, aiQ, many ? "halves" : "page"), {images:imgs});
@@ -586,17 +775,19 @@ async function processPage(it){
       const ver = cp.version?.[qid] || "standard";
       const r = arr.find(x => x.id === qid) || {};
       let ans;
-      if (marks[qid]) ans = qcmAnswer(q, ver, marks[qid].coches, marks[qid].ambigu);
+      if (blank.has(qid)) ans = {transcription:"", annot:"", lisible:true, noteIA:0, note:null, commentaire:"Pas de réponse.", erreurs:["pas de réponse"], acquis:[], valide:false, auto:true};
+      else if (marks[qid]) ans = qcmAnswer(q, ver, marks[qid].coches, marks[qid].ambigu);
       else if (q.type === "qcm") ans = qcmAnswer(q, ver, (r.coches || []).map(Number), r.lisible === false);
-      else ans = {transcription:String(r.transcription ?? ""), annot:String(r.annotee ?? r.transcription ?? ""), lisible:r.lisible !== false,
+      else ans = {transcription:String(r.transcription ?? ""), transcriptionIA:String(r.transcription ?? ""), annot:r.annotee != null ? String(r.annotee) : markFautes(String(r.transcription ?? ""), r.fautes), lisible:r.lisible !== false,
         noteIA:clamp(half(Number(r.note) || 0), 0, +q.points), note:null, commentaire:String(r.commentaire ?? ""), erreurs:(r.erreurs || []).map(String).slice(0, 4), acquis:(r.acquis || []).map(String).slice(0, 4), valide:false};
+      if (!ans.auto && isNoAnswer(ans.transcription)){ ans.noteIA = 0; ans.commentaire = "Pas de réponse : revois cette notion."; ans.erreurs = ["pas de réponse"]; ans.acquis = []; }
       ans.crop = crops[qid]?.asset || null;
       upd.copies[it.eleveId].answers[qid] = ans;
     }
     upd.copies[it.eleveId].validee = false;
     await write("feuilles/" + c.id, upd, "update");
     if (c.statut === "imprime"){ c.statut = "correction"; await saveCtrl(c); }
-    it.status = "ok"; it.msg = `${qids.length} question(s) lue(s)${qcmB.length ? ` · ${qcmB.length} QCM sans IA` : ""}${Hm ? " · cadres découpés" : " · page entière (repères non trouvés)"}` + (arr.some(r => r.lisible === false) ? " · passage peu lisible signalé" : ""); it.cv = null;
+    it.status = "ok"; it.msg = `${qids.length} question(s) lue(s)${qcmB.length ? ` · ${qcmB.length} QCM sans IA` : ""}${Hm ? " · cadres découpés" : " · page entière (repères non trouvés)"}` + (arr.some(r => r.lisible === false) ? " · passage peu lisible signalé" : ""); if (it.load) freeCv(it); else it.cv = null;
   }catch(e){ console.error(e); it.status = "erreur"; it.msg = aiErr(e?.code); }
   scheduleRender();
 }
@@ -622,16 +813,16 @@ ${how}
 
 Questions présentes sur cette page :
 ${blocks}
-
+${lectureTips()}
 Consignes :
-1. Transcris fidèlement ce que l'élève a écrit dans chaque cadre, sans corriger l'orthographe, ligne par ligne. ${MATH_RULE} Hébreu en caractères hébreux. Passage illisible : [illisible]. Cadre vide : "". Ignore ce qui est barré.
-2. "annotee" : la même transcription, avec chaque passage erroné entouré de ⟦ et ⟧ (toujours à l'extérieur des $…$).
-3. Note par pas de 0,5 selon les critères. Réponse vide = 0.
-4. "commentaire" : 2 à 3 phrases, tutoiement, bienveillant : d'abord ce qui est réussi, puis l'erreur précise et comment la corriger.
+1. Transcris fidèlement ce que l'élève a écrit dans chaque cadre, sans corriger l'orthographe, ligne par ligne. ${MATH_RULE} Hébreu en caractères hébreux, dans l'ordre de lecture (l'écriture manuscrite hébraïque est souvent cursive : lis-la avec soin, lettre par lettre). Passage illisible : [illisible]. Cadre vide : "". Ignore ce qui est barré.
+2. "fautes" : liste des passages erronés, recopiés exactement tels qu'ils figurent dans la transcription (courts : quelques mots). Liste vide si tout est juste.
+3. Note par pas de 0,5, strictement selon les critères : chaque demi-point doit correspondre à un élément juste réellement écrit par l'élève. Jamais de point « d'encouragement ». Réponse vide, « je ne sais pas », « ? », énoncé recopié, hors sujet ou sans aucun élément juste = 0.
+4. "commentaire" : 1 ou 2 phrases courtes (40 mots maximum), tutoiement, bienveillant : ce qui est réussi, puis l'erreur précise et comment la corriger.
 5. "erreurs" : choisis dans les erreurs types (texte exact) ; sinon une étiquette de 2 à 5 mots. "acquis" : 1 à 3 étiquettes courtes.
 6. "lisible" : false si tu as dû deviner une partie importante de la réponse.
 7. ${NOSRC}
-${bm ? `8. Donne aussi pour la page "proprete" (0 à 1 : lisibilité, soin, ratures) et "orthographe" (0 à 1 : 1 = aucune faute).\n` : ""}Réponds uniquement en JSON : {"reponses":[{"id":"…","transcription":"…","annotee":"…","lisible":true,"note":0,"commentaire":"…","erreurs":["…"],"acquis":["…"],"coches":[]}]${bm ? ',"proprete":1,"orthographe":1' : ""}}`;
+${bm ? `8. Donne aussi pour la page "proprete" (0 à 1 : lisibilité, soin, ratures) et "orthographe" (0 à 1 : 1 = aucune faute).\n` : ""}Réponds uniquement en JSON : {"reponses":[{"id":"…","transcription":"…","fautes":["…"],"lisible":true,"note":0,"commentaire":"…","erreurs":["…"],"acquis":["…"],"coches":[]}]${bm ? ',"proprete":1,"orthographe":1' : ""}}`;
 }
 
 /* ================= CORRECTION ================= */
@@ -645,30 +836,30 @@ function vCorrect(){
   const nAlert = studs.filter(x => { const k = f.copies[x.id]; return k && !k.validee && copyDone(c, k) && !Object.values(k.answers || {}).some(a => !a.lisible); }).length;
   return `
   <div class="head"><div><h2>Correction</h2><p>L'IA propose ; tu valides. Les passages soulignés en rouge sont ceux que l'IA juge erronés.</p></div>
-    <select id="corrSel" style="max-width:440px" aria-label="Contrôle">${selOpts(list, c.id, x => (x.type === "rattrapage" ? "Rattrapage · " : "") + x.titre + " · " + (classe(x.classeId)?.nom || ""), x => x.id)}</select></div>
+    <select id="corrSel" style="max-width:440px" aria-label="Contrôle">${selOpts(list, c.id, x => (x.type === "rattrapage" ? "Rattrapage · " : x.type === "exercices" ? "Exercices · " : "") + x.titre + " · " + (classe(x.classeId)?.nom || ""), x => x.id)}</select></div>
   <div class="split">
     <aside class="panel" style="padding:8px">
       <div class="row between" style="padding:4px 8px 8px"><span class="label">Copies</span>
         ${nAlert ? `<button class="btn sm" id="valAll">Valider les ${nAlert} sans alerte</button>` : ""}</div>
       ${studs.map(x => { const k = f.copies[x.id]; const n = k ? Object.keys(k.answers || {}).length : 0; const done = copyDone(c, k); const warn = k && Object.values(k.answers || {}).some(a => !a.lisible);
         return `<button class="stu" data-cel="${x.id}" aria-current="${x.id === S.corrEleve}"><span>${esc(x.prenom)} ${esc(x.nom)}</span><span class="row" style="gap:6px">
-        ${!n ? `<span class="chip">non scannée</span>` : done ? `<span class="num">${fmt(final20(c, k))}</span>${k.validee ? `<span class="chip ok">✓</span>` : `<span class="chip ${warn ? "bad" : "warn"}">${warn ? "à vérifier" : "à valider"}</span>`}` : `<span class="chip warn">${n}/${c.questions.length} q.</span>`}</span></button>`; }).join("")}
+        ${!n ? `<span class="chip">non scannée</span>` : done ? `<span class="num">${noteS(final20(c, k))}</span>${k.validee ? `<span class="chip ok">✓</span>` : `<span class="chip ${warn ? "bad" : "warn"}">${warn ? "à vérifier" : "à valider"}</span>`}` : `<span class="chip warn">${n}/${c.questions.length} q.</span>`}</span></button>`; }).join("")}
       <div style="padding:10px 8px 4px;border-top:1px solid var(--line);margin-top:6px" class="row"><button class="btn sm" id="csv">Exporter les notes (CSV)</button><button class="btn sm" id="renduAll">Copies rendues de la classe (PDF)</button></div>
     </aside>
     ${e ? copyView(c, e, cp) : `<div class="panel empty">Aucun élève.</div>`}
   </div>`;
 }
 function renderAnnot(s){
-  return esc(s).replace(/⟦([\s\S]*?)⟧/g, "<mark>$1</mark>").replace(/\[illisible\]/g, '<span class="illisible">[illisible]</span>');
+  return esc(s).replace(/⟦([\s\S]*?)⟧/g, "<mark>$1</mark>").replace(/\[(?:illisible|illegible|ilegível)\]/g, m => `<span class="illisible">${m}</span>`);
 }
 function copyView(c, e, cp){
   const max = maxOf(c), has = cp && Object.keys(cp.answers || {}).length, done = copyDone(c, cp);
   const scans = cp?.scans ? Object.entries(cp.scans).sort((a, b) => a[0] - b[0]) : [];
   return `<article class="copy">
     <div class="copy-h"><div><div class="label">Copie${c.differencie ? ` · <span class="lvl ${versionFor(c, e)}">${LVL[versionFor(c, e)]}</span>` : ""}</div><h3 style="font-size:20px">${esc(e.prenom)} ${esc(e.nom)}</h3></div>
-      <div class="row">${done ? `<div><div class="total num">${fmt(final20(c, cp))}<small>/20</small></div>${bonusMax(c) ? `<div class="small muted num">brute ${fmt(on20(copyTotal(c, cp), max))} + bonus ${fmt(bonusOf(c, cp).proprete + bonusOf(c, cp).orthographe)}</div>` : ""}</div>` : ""}
-      <button class="btn ${cp?.validee ? "" : "pen"}" id="validate" ${done ? "" : "disabled"}>${cp?.validee ? "Validée ✓" : "Valider la copie"}</button>
-      <button class="btn sm" id="mkRatt">Rattrapage</button>${done ? `<button class="btn sm" id="rendu1">Copie rendue (PDF)</button>` : ""}</div><div class="status" id="rd-st" style="width:100%"></div></div>
+      <div class="row">${done ? `<div><div class="total num">${nv(final20(c, cp))}<small>${sfxN(final20(c, cp))}</small></div>${bonusMax(c) ? `<div class="small muted num">brute ${fmt(on20(copyTotal(c, cp), max))} + bonus ${fmt(bonusOf(c, cp).proprete + bonusOf(c, cp).orthographe)}</div>` : ""}</div>` : ""}
+      <button class="btn ${cp?.validee ? "" : "pen"}" id="validate" ${has || done ? "" : "disabled"}>${cp?.validee ? "Validée ✓" : "Valider la copie"}</button>
+      ${done && final20(c, cp) < SEUIL ? `<button class="btn sm" id="mkRatt">Rattrapage</button>` : ""}${done ? `<button class="btn sm" id="rendu1">Copie rendue (PDF)</button>` : ""}</div><div class="status" id="rd-st" style="width:100%"></div></div>
     ${scans.length ? `<div class="scans">${scans.map(([p, s]) => `<img alt="Page ${p}" src="${esc(s.asset ? blobSrc(s.asset) : s.url)}" data-zoom="${esc(s.asset ? blobSrc(s.asset) : s.url)}">`).join("")}</div>` : ""}
     ${has && bonusMax(c) ? `<div class="row" style="padding:10px 16px;border-bottom:1px solid var(--line);gap:14px">${["proprete","orthographe"].filter(k => +c.bonus?.[k]).map(k => `<label class="row small" style="gap:6px">Bonus ${k === "proprete" ? "propreté" : "orthographe"} <input type="number" min="0" max="${c.bonus[k]}" step="0.5" id="bo-${k}" data-bonus="${k}" value="${bonusOf(c, cp)[k]}" style="width:70px"> / ${fmt(+c.bonus[k])}</label>`).join("")}</div>` : ""}
     ${!has ? `<div class="empty">Copie pas encore scannée. <button class="btn sm" data-go="scan">Scanner</button><br><span class="small">Tu peux aussi saisir les notes directement ci-dessous.</span></div>` : ""}
@@ -709,11 +900,11 @@ function vAnalyse(){
   const unval = rows.filter(r => !r.cp.validee).length;
   return `
   <div class="head"><div><h2>Classe & rattrapage</h2><p>${rows.length} copie(s) corrigée(s) sur ${studs.length}${unval ? ` · <span style="color:var(--warn)">${unval} pas encore validée(s)</span>` : ""}</p></div>
-    <select id="anSel" style="max-width:440px" aria-label="Contrôle">${selOpts(list, c.id, x => (x.type === "rattrapage" ? "Rattrapage · " : "") + x.titre + " · " + (classe(x.classeId)?.nom || ""), x => x.id)}</select></div>
+    <select id="anSel" style="max-width:440px" aria-label="Contrôle">${selOpts(list, c.id, x => (x.type === "rattrapage" ? "Rattrapage · " : x.type === "exercices" ? "Exercices · " : "") + x.titre + " · " + (classe(x.classeId)?.nom || ""), x => x.id)}</select></div>
   <div class="grid g3">
-    <div class="panel"><div class="label">Moyenne</div><div class="total num" style="color:var(--ink)">${fmt(avg)}<small>/20</small></div></div>
-    <div class="panel"><div class="label">Min – max</div><div class="total num" style="color:var(--ink)">${fmt(Math.min(...notes))} – ${fmt(Math.max(...notes))}</div></div>
-    <div class="panel"><div class="label">Sous 10/20</div><div class="total num" style="color:var(--ink)">${notes.filter(n => n < 10).length}<small>/${notes.length}</small></div></div>
+    <div class="panel"><div class="label">Moyenne</div><div class="total num" style="color:var(--ink)">${nv(avg)}<small>${sfxN(avg)}</small></div></div>
+    <div class="panel"><div class="label">Min – max</div><div class="total num" style="color:var(--ink)">${nv(Math.min(...notes))} – ${nv(Math.max(...notes))}</div></div>
+    <div class="panel"><div class="label">Sous ${noteS(10)}</div><div class="total num" style="color:var(--ink)">${notes.filter(n => n < 10).length}<small>/${notes.length}</small></div></div>
   </div>
   <section class="panel"><h3>Réussite et erreurs par question</h3>
     <div class="bars" style="margin-top:12px">${qs.map(x => `<div>
@@ -723,38 +914,44 @@ function vAnalyse(){
   <section class="panel grid"><div class="row between"><h3>Synthèse pédagogique</h3><button class="btn sm" id="synth">${c.analyse ? "Actualiser" : "Rédiger"} (IA)</button></div>
     <div class="status" id="syn-st"></div>
     ${c.analyse ? `<div style="white-space:pre-wrap">${esc(c.analyse)}</div>` : `<p class="muted small">L'IA repère les notions non comprises et propose quoi reprendre en classe.</p>`}</section>
-  <section class="panel"><div class="row between"><h3>Élèves</h3><button class="btn sm primary" id="rattAll">Rattrapages pour les élèves sous 10/20</button></div>
+  <section class="panel"><div class="row between"><h3>Élèves</h3><span class="small muted">Rattrapage individuel possible pour chaque élève sous ${noteS(SEUIL)}</span></div>
     <div class="status" id="ra-st"></div>
-    <div class="tbl-wrap" style="margin-top:6px"><table><thead><tr><th>Élève</th>${c.questions.map((q, k) => `<th class="c">Q${k + 1}</th>`).join("")}<th class="c">/20</th><th>Rattrapage</th></tr></thead><tbody>
+    <div class="tbl-wrap" style="margin-top:6px"><table><thead><tr><th>Élève</th>${c.questions.map((q, k) => `<th class="c">Q${k + 1}</th>`).join("")}<th class="c">${bareme() === "AF" ? "A–F" : sfx().trim()}</th><th>Rattrapage</th></tr></thead><tbody>
     ${studs.map(e => { const cp = f.copies[e.id]; const ok = copyDone(c, cp); const r = ratts.find(x => x.eleves?.includes(e.id));
       return `<tr><td><b>${esc(e.prenom)} ${esc(e.nom)}</b>${c.differencie ? ` <span class="lvl ${versionFor(c, e)}">${LVL[versionFor(c, e)][0]}</span>` : ""}</td>
       ${c.questions.map(q => { const n = noteOf(cp?.answers?.[q.id]); return `<td class="c"><span class="cell ${n == null ? "none" : tone(n / q.points)}">${fmt(n)}</span></td>`; }).join("")}
-      <td class="c num"><b>${ok ? fmt(final20(c, cp)) : "—"}</b></td>
-      <td>${r ? `<button class="btn sm" data-edit="${r.id}">${STATUT[r.statut]?.[0] || "Voir"}</button>` : ok ? `<button class="btn sm" data-ratt="${e.id}">Créer</button>` : ""}</td></tr>`; }).join("")}
+      <td class="c num"><b>${ok ? noteS(final20(c, cp)) : "—"}</b></td>
+      <td>${r ? `<button class="btn sm" data-edit="${r.id}">${STATUT[r.statut]?.[0] || "Voir"}</button>` : ok && final20(c, cp) < SEUIL ? `<button class="btn sm" data-ratt="${e.id}">Créer</button>` : ok ? `<span class="small muted">—</span>` : ""}</td></tr>`; }).join("")}
     </tbody></table></div></section>`;
 }
-async function createRattrapage(c, e){
+async function createRattrapage(c, e, replaceId){
   const f = feuille(c.id), cp = f?.copies?.[e.id]; if (!cp) throw {code:"no_copy"};
+  if (!copyDone(c, cp) || final20(c, cp) >= SEUIL) throw {code:"not_failed"};
+  if (!replaceId && store.controles.some(x => x.type === "rattrapage" && x.parentId === c.id && x.eleves?.includes(e.id))) throw {code:"ratt_exists"};
   const weak = c.questions.map(q => ({q, a:cp.answers[q.id]})).filter(x => x.a && noteOf(x.a) / x.q.points < 0.6);
   const target = weak.length ? weak : c.questions.map(q => ({q, a:cp.answers[q.id]})).sort((x, y) => noteOf(x.a) / x.q.points - noteOf(y.a) / y.q.points).slice(0, 1);
   const lvl = levelOf(e, c.matiere);
   const ctx = target.map(({q, a}) => { const v = vOf(q, cp.version?.[q.id] || "standard");
     return `- Notion : ${q.notion || "?"}\n  Question : ${v.enonce}\n  Corrigé-type : ${v.corrige}\n  Réponse de l'élève (${fmt(noteOf(a))}/${q.points}) : ${a?.transcription || "(vide)"}\n  Erreurs relevées : ${(a?.erreurs || []).join(", ") || "?"}\n  Commentaire : ${a?.commentaire || ""}`; }).join("\n");
-  const r = await ai(`Tu prépares une feuille de rattrapage individuelle pour un élève de ${c.niveau || ""} en ${c.matiere} (collège-lycée Beth Mena'hem).
+  const r = await ai(`Tu prépares une feuille de rattrapage individuelle pour un élève de ${c.niveau || ""} en ${c.matiere} .
 Niveau habituel de l'élève dans cette matière : ${LVL[lvl]}.
 Ses difficultés au contrôle « ${c.titre} » :
 ${ctx}
 
+${langueRule(c.langue)}
 Crée exactement 3 exercices NOUVEAUX, de difficulté croissante, qui ciblent précisément ces erreurs :
 1 = découverte (plus simple que le niveau de l'élève), 2 = application, 3 = retour au niveau ${LVL[lvl].toLowerCase()} du contrôle.
 Total 20 points (par ex. 5, 7, 8). Chaque exercice : un énoncé autonome (avec un coup de pouce entre parenthèses pour le 1), un corrigé-type, des critères de notation, 2 ou 3 erreurs types, un nombre de lignes de réponse (3 à 12).
 ${NOSRC}
-Réponds uniquement en JSON : {"titre":"…","questions":[{"notion":"…","points":5,"lignes":5,"enonce":"…","corrige":"…","criteres":"…","erreurs":["…"]}]}`);
+${replaceId ? "IMPORTANT : propose des exercices DIFFÉRENTS de ceux-ci : " + (ctrl(replaceId)?.questions || []).map(q => vOf(q, "standard").enonce).join(" / ") + "\n" : ""}Réponds uniquement en JSON : {"titre":"…","questions":[{"notion":"…","points":5,"lignes":5,"enonce":"…","corrige":"…","criteres":"…","erreurs":["…"]}]}`);
   const qs = (r?.questions || []).slice(0, 3).map(x => ({id:"q" + uid(5), notion:String(x.notion || ""), points:+x.points || 5, lignes:clamp(+x.lignes || 6, 2, 20), erreurs:(x.erreurs || []).map(String),
     v:{standard:{enonce:String(x.enonce || ""), corrige:String(x.corrige || ""), criteres:String(x.criteres || "")}}}));
   if (!qs.length) throw {code:"invalid_json"};
+  const old = replaceId && ctrl(replaceId), printed = old && feuille(replaceId) && Object.keys(feuille(replaceId).copies || {}).length;
+  if (old && !printed){ const o = structuredClone(old); o.questions = qs; o.titre = "Rattrapage · " + (r.titre || c.titre); await saveCtrl(o); return replaceId; }
+  const round = store.controles.filter(x => x.type === "rattrapage" && x.parentId === c.id && x.eleves?.includes(e.id)).length;
   const id = uid(12);
-  const doc = {type:"rattrapage", parentId:c.id, titre:"Rattrapage · " + (r.titre || c.titre), matiere:c.matiere, niveau:c.niveau, classeId:c.classeId, eleves:[e.id], coursId:c.coursId || null,
+  const doc = {type:"rattrapage", parentId:c.id, titre:"Rattrapage" + (round ? " " + (round + 1) : "") + " · " + (r.titre || c.titre), matiere:c.matiere, niveau:c.niveau, classeId:c.classeId, eleves:[e.id], coursId:c.coursId || null,
     duree:30, differencie:false, mise:{...(c.mise || {}), consignes:"Feuille de rattrapage personnelle. Prends ton temps et relis le coup de pouce."}, statut:"brouillon", date:today(), questions:qs, createdAt:new Date().toISOString()};
   await write("controles/" + id, doc);
   return id;
@@ -762,7 +959,7 @@ Réponds uniquement en JSON : {"titre":"…","questions":[{"notion":"…","point
 
 /* ================= Classes: level suggestions ================= */
 function suggestLevels(cl, mat){
-  const cs = store.controles.filter(c => c.classeId === cl.id && c.matiere === mat && c.type !== "rattrapage").sort((a, b) => (b.date || b.createdAt || "").localeCompare(a.date || a.createdAt || ""));
+  const cs = store.controles.filter(c => c.classeId === cl.id && c.matiere === mat && isCtrl(c)).sort((a, b) => (b.date || b.createdAt || "").localeCompare(a.date || a.createdAt || ""));
   const map = {};
   cl.eleves.forEach(e => {
     const ns = []; for (const c of cs){ const cp = feuille(c.id)?.copies?.[e.id]; if (cp?.validee && copyDone(c, cp)) ns.push(final20(c, cp)); if (ns.length === 3) break; }
@@ -780,6 +977,7 @@ async function importCourseFiles(files){
       st.innerHTML = `<span class="thinking">Lecture du PDF « ${esc(f.name)} »…</span>`;
       const pdf = await pdfjsLib.getDocument({data: await f.arrayBuffer()}).promise; let txt = "";
       for (let i = 1; i <= pdf.numPages; i++){ const tc = await (await pdf.getPage(i)).getTextContent(); txt += tc.items.map(x => x.str + (x.hasEOL ? "\n" : " ")).join("") + "\n\n"; }
+      if (hebRatio(txt) > .05){ txt = fixHebrewText(txt); S.hebPdf = [...(S.hebPdf || []), f]; }
       if (txt.replace(/\s/g, "").length > 150 * pdf.numPages) parts.push(txt.trim());
       else { for (let i = 1; i <= Math.min(pdf.numPages, 12); i++){ const pg = await pdf.getPage(i); const vp = pg.getViewport({scale: 1800 / Math.max(pg.view[2], pg.view[3])}); const cv = document.createElement("canvas"); cv.width = vp.width; cv.height = vp.height; await pg.render({canvasContext:cv.getContext("2d"), viewport:vp}).promise; pendingImgs.push(cv); } }
     } else { (await fileToCanvases(f)).forEach(cv => pendingImgs.push(cv)); }
@@ -791,7 +989,7 @@ async function importCourseFiles(files){
       for (let i = 0; i < pendingImgs.length; i += per){
         st.innerHTML = `<span class="thinking">Lecture des pages ${i + 1} à ${Math.min(i + per, pendingImgs.length)} sur ${pendingImgs.length}…</span>`;
         const blobs = await Promise.all(pendingImgs.slice(i, i + per).map(cv => toBlob(scaled(cv, 1800))));
-        const t = await aiText(`Transcris fidèlement le texte de ces pages de cours (dans l'ordre), en gardant titres, définitions, exemples et formules. Recopie l'hébreu en caractères hébreux, sans traduire. Pas de commentaire : uniquement le texte.`, {images:blobs});
+        const t = await aiText(`Transcris fidèlement le texte de ces pages de cours (dans l'ordre), en gardant titres, définitions, exemples et formules. Recopie l'hébreu en caractères hébreux, dans l'ordre de lecture (droite à gauche), sans traduire ni inverser, avec le nikoud s'il est présent. Pas de commentaire : uniquement le texte.`, {images:blobs});
         parts.push(t.trim());
       }
     }
@@ -799,17 +997,18 @@ async function importCourseFiles(files){
   const box = $("#c-texte"); const prev = box.value.trim();
   box.value = [prev, ...parts].filter(Boolean).join("\n\n").slice(0, 60000);
   S.coursDraft = {...(S.coursDraft || {}), texte:box.value};
-  if (parts.length) st.textContent = "Texte extrait : relis-le, corrige si besoin, puis enregistre.";
+  if (parts.length) st.innerHTML = S.hebPdf?.length ? `Hébreu détecté : vérifie le texte. Si des mots sont à l'envers ou mélangés, <button class="btn sm" id="c-heb-ai">Relire le PDF avec l'IA (fiable pour l'hébreu)</button>` : "Texte extrait : relis-le, corrige si besoin, puis enregistre.";
 }
 
 /* ================= Generation ================= */
 function genPrompt(co, p, n, extra){
   const T = {cours:"questions de cours", application:"exercices d'application", probleme:"problème ou rédaction", texte:"lecture / explication de texte", traduction:"traduction", qcm:"QCM"};
-  return `Tu es un professeur expérimenté de ${p.matiere} au collège-lycée Beth Mena'hem (Levallois-Perret). Prépare ${n === 1 ? "UNE question" : "un contrôle"} pour une classe de ${p.niveau}, à partir du cours ci-dessous.
+  return `Tu es un professeur expérimenté de ${p.matiere} en France. Prépare ${n === 1 ? "UNE question" : "un contrôle"} pour une classe de ${p.niveau}, à partir du cours ci-dessous.
 
 Durée : ${p.duree} minutes · Difficulté : ${p.difficulte} · Types : ${(p.types || []).map(t => T[t]).join(", ") || "variés"}
 ${n > 1 ? `Nombre de questions : ${n}. Total des points : 20 exactement.` : ""}
 ${p.consignes ? "Consignes du professeur : " + p.consignes : ""}
+${langueRule(p.langue)}
 ${extra || ""}
 Pour chaque question, rédige 3 versions de la même question, portant sur la même notion et notées sur les mêmes points :
 - "socle" : plus guidée (étapes, données simplifiées, coup de pouce), pour un élève en difficulté ;
@@ -828,6 +1027,45 @@ const mapQ = x => ({id:"q" + uid(5), ...(x.type === "qcm" ? {type:"qcm"} : {}), 
   v:Object.fromEntries(LEVELS.map(l => { const y = x.versions?.[l] || {}; const o = {enonce:String(y.enonce || ""), corrige:String(y.corrige || ""), criteres:String(y.criteres || "")};
     if (x.type === "qcm"){ o.choix = (y.choix || []).map(String).slice(0, 6); o.bonnes = (y.bonnes || []).map(Number).filter(n => n >= 0 && n < o.choix.length); o.corrige = "Bonne(s) réponse(s) : " + o.bonnes.map(n => "ABCDEF"[n]).join(", "); o.criteres = "Tout ou rien."; }
     return [l, o]; }))});
+
+/* Génère n questions ; si la réponse de l'IA a été coupée (trop longue), on garde les questions complètes et on demande la suite */
+async function genQuestions(co, p, n, extra, opts = {}){
+  let r = await ai(genPrompt(co, p, n, extra), opts), qs = (r?.questions || []).map(mapQ); const titre = r?.titre;
+  for (let k = 0; k < 3 && qs.length < n && qs.length; k++){
+    const reste = n - qs.length, deja = qs.map(q => vOf(q, "standard").enonce).join(" / ").slice(0, 3000);
+    const r2 = await ai(genPrompt(co, p, reste, (extra || "") + `\nCe contrôle contient déjà ces questions : ${deja}\nRédige UNIQUEMENT les ${reste} question(s) qui manquent, sur d'autres notions, pour un total de 20 points avec les précédentes.`), opts);
+    const add = (r2?.questions || []).map(mapQ); if (!add.length) break; qs = qs.concat(add.slice(0, reste));
+  }
+  if (!qs.length) throw {code:"invalid_json"};
+  return {titre, questions:qs};
+}
+const SEUIL = 10;
+const isCtrl = c => !c.type || c.type === "controle";
+const EXO_TXT = "IMPORTANT : il s'agit d'une FEUILLE D'EXERCICES D'ENTRAÎNEMENT (pas d'un contrôle) : exercices progressifs, du plus simple au plus complet, pour pratiquer les notions du cours. Le mot « contrôle » ne doit pas apparaître.";
+async function exercicesFrom(c){
+  const co = store.cours.find(x => x.id === c.coursId); if (!co) throw {code:"no_cours"};
+  const p = {matiere:c.matiere, niveau:c.niveau, duree:c.duree || 55, difficulte:c.gen?.difficulte || "moyen", types:c.gen?.types || [], consignes:""};
+  const r = await genQuestions(co, p, clamp((c.questions || []).length || 5, 1, 10), EXO_TXT + "\nNotions à travailler (celles du contrôle « " + c.titre + " ») : " + (c.questions || []).map(q => q.notion).filter(Boolean).join(", "), {feature:"exercices"}), qs = r.questions;
+  const id = uid(12);
+  await write("controles/" + id, {type:"exercices", srcCtrl:c.id, titre:"Exercices · " + (r.titre || c.titre), matiere:c.matiere, niveau:c.niveau, classeId:c.classeId, coursId:c.coursId, duree:c.duree || 55, differencie:!!c.differencie,
+    gen:{types:p.types, difficulte:p.difficulte, consignes:""}, statut:"brouillon", date:"", mise:{...(c.mise || {}), consignes:"Feuille d'exercices d'entraînement. Écris uniquement dans les cadres."}, questions:qs, createdAt:new Date().toISOString()});
+  return id;
+}
+async function regenExercices(c){
+  const co = store.cours.find(x => x.id === c.coursId);
+  if (!co) throw {code:"no_cours"};
+  const EXO = c.type === "exercices";
+  const g = c.gen || {}, p = {matiere:c.matiere, niveau:c.niveau, duree:c.duree || 55, difficulte:g.difficulte || "moyen", types:g.types || [], consignes:g.consignes || "", langue:c.langue || ""};
+  const deja = (c.questions || []).map(q => vOf(q, "standard").enonce).join(" / ").slice(0, 3000);
+  const r = await genQuestions(co, p, clamp((c.questions || []).length || 5, 1, 10), EXO ? EXO_TXT + "\nPropose des exercices NOUVEAUX et DIFFÉRENTS de ceux-ci : " + deja : "Propose des questions NOUVELLES et DIFFÉRENTES de celles-ci : " + deja, EXO ? {feature:"exercices"} : {}), qs = r.questions;
+  const f = feuille(c.id), printed = f && Object.keys(f.copies || {}).length;
+  if (!printed){ const o = structuredClone(c); o.questions = qs; if (!EXO && r.titre) o.titre = r.titre; await saveCtrl(o); return c.id; }
+  /* Feuilles déjà imprimées : on ne touche pas au contrôle d'origine (les copies doivent correspondre), on crée une nouvelle version */
+  const n = store.controles.filter(x => (x.type || "controle") === (c.type || "controle") && (x.srcId || x.id) === (c.srcId || c.id)).length + 1;
+  const id = uid(12), doc = structuredClone(c); delete doc.id; delete doc.owner;
+  Object.assign(doc, {srcId:c.srcId || c.id, titre:EXO ? "Exercices " + n + " · " + (r.titre || co.titre) : (r.titre || c.titre) + " · version " + n, statut:"brouillon", date:"", questions:qs, createdAt:new Date().toISOString()});
+  await write("controles/" + id, doc); return id;
+}
 
 /* ================= Demo ================= */
 async function loadDemo(){
@@ -867,10 +1105,14 @@ document.addEventListener("click", async ev => {
   const d = t.dataset;
   if (d.zoom){ const z = document.createElement("div"); z.className = "zoom"; z.innerHTML = `<img alt="" src="${esc(d.zoom)}">`; z.onclick = () => z.remove(); document.body.append(z); return; }
   if (t.classList.contains("tab")){ if (d.v === "new"){ S.wizStep = S.coursId ? S.wizStep : 1; if (S.view === "edit") S.wizStep = 1; } return go(d.v); }
+  if (d.newctrl){ S.params.kind = "controle"; S.wizStep = 1; return go("new"); }
+  if (d.newex){ location.hash = canEx() ? "#/exercices/nouveau" : "#/exercices"; return; }
+  if (d.exfrom){ if (!canEx()) return toast(aiErr("no_option")); const C = ctrl(d.exfrom);
+    S.qn = {...S.qn, coursId:C.coursId, classeId:C.classeId, titre:"Entraînement · " + C.titre, consignes:"Cible surtout ces notions du contrôle : " + (C.questions || []).map(q => q.notion).filter(Boolean).join(", ")}; location.hash = "#/exercices/nouveau"; return; }
   if (d.go) return go(d.go);
-  if (d.edit){ S.editId = d.edit; return go("edit"); }
-  if (d.corr){ S.corrCtrl = d.corr; S.corrEleve = d.el || null; return go("correct"); }
-  if (d.an){ S.anCtrl = d.an; return go("analyse"); }
+  if (d.edit){ return openCtrl(d.edit); }
+  if (d.corr){ S.corrCtrl = d.corr; S.corrEleve = d.el || null; return openCtrl(d.corr, "corriger"); }
+  if (d.an){ S.anCtrl = d.an; return openCtrl(d.an, "classe"); }
   if (t.id === "demo"){ t.disabled = true; await loadDemo(); return; }
 
   /* classes */
@@ -881,33 +1123,52 @@ document.addEventListener("click", async ev => {
     if (!lines.length) return; const add = lines.map(l => { const [p, ...n] = l.split(/\s+/); return {id:uid(8), prenom:p, nom:n.join(" "), niveaux:{}}; });
     $("#add-el").value = ""; await write("classes/" + cl.id, {eleves:[...(cl.eleves || []), ...add]}, "update"); toast(add.length + " élève(s) ajouté(s)."); return; }
   if (d.rmel){ const cl = classe(S.classeSel); await write("classes/" + cl.id, {eleves:cl.eleves.filter(e => e.id !== d.rmel)}, "update"); return; }
-  if (t.id === "del-cl"){ if (t.dataset.sure !== "1"){ t.dataset.sure = "1"; t.textContent = "Confirmer la suppression"; t.classList.add("pen"); return; }
-    await write("classes/" + S.classeSel, null, "delete"); S.classeSel = null; return; }
+  if (t.id === "del-cl"){ const cl = classe(S.classeSel); if (!cl) return;
+    const n = (cl.eleves || []).length, nc = store.controles.filter(c => c.classeId === cl.id).length;
+    if (!confirm(`Supprimer la classe « ${cl.nom} » et ses ${n} élève(s) ?` + (nc ? `\n\n${nc} contrôle(s) restent dans la liste des contrôles, sans classe.` : "") + "\n\nCette action est définitive.")) return;
+    try { await write("classes/" + cl.id, null, "delete"); S.classeSel = null; toast("Classe supprimée."); render(); } catch(e){ toast("Suppression impossible : " + (e?.message || "réessaie.")); }
+    return; }
   if (t.id === "sugg"){ const cl = classe(S.classeSel); S.suggestions = {classeId:cl.id, mat:S.levelMat, map:suggestLevels(cl, S.levelMat)};
     if (!Object.keys(S.suggestions.map).length) toast("Aucune copie validée en " + S.levelMat + " pour cette classe."); return render(); }
   if (t.id === "applySug"){ const cl = classe(S.classeSel), map = S.suggestions.map;
     await write("classes/" + cl.id, {eleves:cl.eleves.map(e => map[e.id] ? {...e, niveaux:{...(e.niveaux || {}), [S.levelMat]:map[e.id].lvl}} : e)}, "update"); S.suggestions = null; toast("Niveaux mis à jour."); return; }
 
   /* wizard */
+  if (t.id === "c-heb-ai"){ const st = $("#c-st"), files = S.hebPdf || []; if (!files.length) return;
+    if (!confirm("Remplacer le texte extrait du PDF par une lecture IA des pages ? (plus fiable pour l'hébreu, un peu plus coûteux)")) return;
+    try { const cvs = [];
+      for (const f of files){ const pdf = await pdfjsLib.getDocument({data: await f.arrayBuffer()}).promise;
+        for (let i = 1; i <= Math.min(pdf.numPages, 12); i++){ const pg = await pdf.getPage(i); const vp = pg.getViewport({scale: 2000 / Math.max(pg.view[2], pg.view[3])}); const cv = document.createElement("canvas"); cv.width = vp.width; cv.height = vp.height; await pg.render({canvasContext:cv.getContext("2d"), viewport:vp}).promise; cvs.push(cv); } }
+      const per = Math.max(1, LIM?.images?.maxCount || 1), out = [];
+      for (let i = 0; i < cvs.length; i += per){ st.innerHTML = `<span class="thinking">Lecture IA des pages ${i + 1} à ${Math.min(i + per, cvs.length)} sur ${cvs.length}…</span>`;
+        const blobs = await Promise.all(cvs.slice(i, i + per).map(cv => toBlob(scaled(cv, 2000))));
+        out.push((await aiText(`Transcris fidèlement le texte de ces pages de cours (dans l'ordre), en gardant titres, définitions, exemples et formules. Le texte contient de l'hébreu : recopie-le en caractères hébreux, dans l'ordre de lecture (droite à gauche), sans traduire ni inverser, avec le nikoud et les lettres finales tels qu'ils apparaissent. Pas de commentaire : uniquement le texte.`, {images:blobs})).trim()); }
+      $("#c-texte").value = out.join("\n\n").slice(0, 60000); S.coursDraft = {...(S.coursDraft || {}), texte:$("#c-texte").value}; S.hebPdf = [];
+      st.textContent = "Texte relu par l'IA : vérifie-le puis enregistre."; }
+    catch(e){ console.error(e); st.textContent = e?.code ? aiErr(e.code) : "Lecture impossible."; } return; }
   if (t.id === "c-save"){ const texte = $("#c-texte").value.trim(), titre = $("#c-titre").value.trim() || "Cours sans titre";
     if (texte.length < 80) return toast("Le texte du cours est trop court.");
     const id = uid(10); await write("cours/" + id, {titre, matiere:$("#c-mat").value, niveau:$("#c-niv").value, texte:texte.slice(0, 60000), createdAt:new Date().toISOString()});
+    if (S.params.kind === "quiz"){ S.coursDraft = null; S.params.kind = "controle"; S.qn.coursId = id; S.qn.classeId = ""; location.hash = "#/exercices/nouveau"; return; }
+    learnMatiere($("#c-mat").value); S.matChg = false;
     S.coursId = id; S.coursDraft = null; S.params.matiere = $("#c-mat").value; S.params.niveau = $("#c-niv").value; S.params.classeId = ""; S.wizStep = 2; return render(); }
+  if (d.usecours && S.params.kind === "quiz"){ S.params.kind = "controle"; S.qn.coursId = d.usecours; S.qn.classeId = ""; location.hash = "#/exercices/nouveau"; return; }
   if (d.usecours){ const co = store.cours.find(c => c.id === d.usecours); S.coursId = co.id; S.params.matiere = co.matiere; S.params.niveau = co.niveau; S.params.classeId = ""; S.wizStep = 2; return render(); }
   if (d.delcours){ await write("cours/" + d.delcours, null, "delete"); return; }
   if (t.id === "back1"){ S.wizStep = 1; return render(); }
   if (t.id === "gen" || t.id === "genBlank"){
+    if (!S.params.langue) S.params.langue = langueDef(store.cours.find(c => c.id === S.coursId)?.texte);
     const p = S.params, co = store.cours.find(c => c.id === S.coursId), st = $("#gen-st");
-    const id = uid(12); const base = {type:"controle", titre:p.titre || co?.titre || "Contrôle", matiere:p.matiere, niveau:p.niveau, classeId:p.classeId, coursId:S.coursId, duree:+p.duree || 55,
-      differencie:!!p.differencie, statut:"brouillon", date:"", mise:{entete:ECOLE, police:15, lh:30, bareme:true, consignes:"Écris uniquement dans les cadres."}, questions:[], createdAt:new Date().toISOString()};
-    if (t.id === "genBlank"){ base.questions = [mapQ({points:4, lignes:6})]; await write("controles/" + id, base); S.editId = id; S.wizStep = 1; return go("edit"); }
-    t.disabled = true; st.innerHTML = `<span class="thinking">L'IA rédige le contrôle en 3 niveaux (1 à 2 minutes)…</span>`;
+    const EXO = p.kind === "exercices" && canEx();
+    const id = uid(12); const base = {type:EXO ? "exercices" : "controle", titre:p.titre || (EXO ? "Exercices · " : "") + (co?.titre || "Contrôle"), gen:{types:p.types, difficulte:p.difficulte, consignes:p.consignes || ""}, matiere:p.matiere, niveau:p.niveau, classeId:p.classeId, coursId:S.coursId, duree:+p.duree || 55,
+      differencie:!!p.differencie, langue:p.langue || "", statut:"brouillon", date:"", mise:{affiche:S.me?.affichage || "les2", police:15, lh:30, bareme:true, consignes:EXO ? "Feuille d'exercices d'entraînement. Écris uniquement dans les cadres." : "Écris uniquement dans les cadres."}, questions:[], createdAt:new Date().toISOString()};
+    if (t.id === "genBlank"){ base.questions = [mapQ({points:4, lignes:6})]; await write("controles/" + id, base); S.editId = id; S.wizStep = 1; S.step = "preparer"; return go("edit"); }
+    t.disabled = true; st.innerHTML = `<span class="thinking">L'IA rédige ${EXO ? "les exercices" : "le contrôle"} en 3 niveaux (1 à 2 minutes)…</span>`;
     try{
-      const r = await ai(genPrompt(co, p, clamp(+p.nbq || 5, 1, 10)));
-      const qs = (r?.questions || []).map(mapQ); if (!qs.length) throw {code:"invalid_json"};
-      base.titre = p.titre || r.titre || base.titre; base.questions = qs;
-      await write("controles/" + id, base); S.editId = id; S.wizStep = 1; S.params.titre = ""; return go("edit");
-    }catch(e){ st.textContent = aiErr(e?.code); t.disabled = false; }
+      const r = await genQuestions(co, p, clamp(+p.nbq || 5, 1, 10), EXO ? EXO_TXT : "", EXO ? {feature:"exercices"} : {}), qs = r.questions;
+      base.titre = p.titre || (EXO && r.titre ? "Exercices · " + r.titre : r.titre) || base.titre; base.questions = qs;
+      await write("controles/" + id, base); S.editId = id; S.wizStep = 1; S.params.titre = ""; S.step = "preparer"; return go("edit");
+    }catch(e){ console.warn("gen", e); st.textContent = aiErr(e?.code) + (e?.message ? " (" + e.message + ")" : ""); t.disabled = false; }
     return;
   }
 
@@ -918,6 +1179,16 @@ document.addEventListener("click", async ev => {
     if (d.qup !== undefined){ const i = +d.qup; [c.questions[i - 1], c.questions[i]] = [c.questions[i], c.questions[i - 1]]; await saveCtrl(c); return; }
     if (d.qdown !== undefined){ const i = +d.qdown; [c.questions[i + 1], c.questions[i]] = [c.questions[i], c.questions[i + 1]]; await saveCtrl(c); return; }
     if (d.qdel !== undefined){ c.questions.splice(+d.qdel, 1); await saveCtrl(c); return; }
+    if (t.id === "regenCtrl"){ if (!confirm("Remplacer toutes les questions par un nouveau contrôle généré par l'IA ?")) return;
+      t.disabled = true; t.innerHTML = `<span class="thinking">Régénération (1 à 2 minutes)…</span>`;
+      try { const nid = await regenExercices(c); if (nid !== c.id){ toast("Feuilles déjà imprimées : une nouvelle version du contrôle a été créée."); S.editId = nid; S.step = "preparer"; return go("edit"); } toast("Nouveau contrôle généré."); render(); }
+      catch(er){ toast(aiErr(er?.code) + (er?.message ? " (" + er.message + ")" : ""), 7000); t.disabled = false; t.textContent = "↻ Régénérer le contrôle (IA)"; }
+      return; }
+    if (t.id === "regenEx"){ if (!canEx()) return toast(aiErr("no_option"));
+      t.disabled = true; t.textContent = "Régénération…";
+      try { const nid = await regenExercices(c); if (nid !== c.id){ toast("Feuille déjà imprimée : une nouvelle feuille d'exercices a été créée."); S.editId = nid; S.step = "preparer"; return go("edit"); } toast("Nouveaux exercices générés."); }
+      catch(er){ toast(aiErr(er?.code)); t.disabled = false; t.textContent = "↻ Régénérer les exercices (IA)"; }
+      return; }
     if (t.id === "addQ"){ c.questions.push(mapQ({points:4, lignes:6})); await saveCtrl(c); return; }
     if (t.id === "addQai" || d.qai !== undefined){
       const co = store.cours.find(x => x.id === c.coursId); const i = d.qai !== undefined ? +d.qai : -1; const q = c.questions[i];
@@ -936,13 +1207,13 @@ document.addEventListener("click", async ev => {
     if (t.id === "print") return printSheets(c, studentsOf(c));
     if (t.id === "print1") return printSheets(c, studentsOf(c).filter(e => e.id === S.previewEleve));
     if (t.id === "delCtrl"){ if (d.sure !== "1"){ d.sure = "1"; t.textContent = "Confirmer : supprimer contrôle et copies"; t.classList.add("pen"); return; }
-      await write("controles/" + c.id, null, "delete"); await write("feuilles/" + c.id, null, "delete"); return go("home"); }
+      await write("controles/" + c.id, null, "delete"); await write("feuilles/" + c.id, null, "delete"); return go("controles"); }
   }
 
   /* scan */
   if (t.id === "qclear"){ S.queue = S.queue.filter(x => ["attente","qr","lecture"].includes(x.status)); return render(); }
-  if (d.mgo){ const it = S.queue.find(x => x.id === d.mgo); it.status = "lecture"; render(); await processPage(it); return; }
-  if (d.retry){ const it = S.queue.find(x => x.id === d.retry); if (!it.cv){ toast("Image perdue : ajoute la photo à nouveau."); return; } it.status = it.ctrlId ? "lecture" : "attente"; render(); if (it.ctrlId) await processPage(it); else runQueue(); return; }
+  if (d.mgo){ const it = S.queue.find(x => x.id === d.mgo); it.status = "lecture"; render(); await processPage(it); freeCv(it); return; }
+  if (d.retry){ const it = S.queue.find(x => x.id === d.retry); if (!it.cv && !it.load){ toast("Image perdue : ajoute la photo à nouveau."); return; } it.status = it.ctrlId ? "lecture" : "attente"; render(); if (it.ctrlId) await processPage(it); else runQueue(); return; }
 
   /* correction */
   if (S.view === "correct"){
@@ -961,8 +1232,8 @@ document.addEventListener("click", async ev => {
         const blob = await getBlob(a.crop);
         const i = C.questions.indexOf(q);
         const smp = await sampleImages(S.corrEleve, C.matiere);
-        const r = await ai(`Relis très attentivement ce cadre de réponse manuscrit d'un élève (${C.matiere}, ${C.niveau || ""}), puis corrige. L'image 1 est le cadre à lire.${smp.txt}\n${qBlockPrompt(C, q, cp.version?.[qid] || "standard", i)}\n\nUne première lecture a donné : """${a.transcription}""" (jugée incertaine).\nTranscris ligne par ligne, sans corriger l'orthographe. ${MATH_RULE} Hébreu en caractères hébreux. Passage vraiment illisible : [illisible]. "annotee" = transcription avec chaque passage erroné entouré de ⟦ ⟧ (hors des $…$). Note par pas de 0,5. Commentaire 2 à 3 phrases, tutoiement. ${NOSRC}\nRéponds uniquement en JSON : {"transcription":"…","annotee":"…","lisible":true,"note":0,"commentaire":"…","erreurs":["…"],"acquis":["…"]}`, {images:[blob, ...smp.blobs], modelTier:"complex"});
-        await write("feuilles/" + C.id, {copies:{[S.corrEleve]:{validee:false, answers:{[qid]:{transcription:String(r.transcription || ""), annot:String(r.annotee || r.transcription || ""), lisible:r.lisible !== false,
+        const r = await ai(`Relis très attentivement ce cadre de réponse manuscrit d'un élève (${C.matiere}, ${C.niveau || ""}), puis corrige. L'image 1 est le cadre à lire.${smp.txt}${lectureTips()}\n${qBlockPrompt(C, q, cp.version?.[qid] || "standard", i)}\n\nUne première lecture a donné : """${a.transcription}""" (jugée incertaine).\nTranscris ligne par ligne, sans corriger l'orthographe. ${MATH_RULE} Hébreu en caractères hébreux. Passage vraiment illisible : [illisible]. "annotee" = transcription avec chaque passage erroné entouré de ⟦ ⟧ (hors des $…$). Note par pas de 0,5. Commentaire 2 à 3 phrases, tutoiement. ${NOSRC}\nRéponds uniquement en JSON : {"transcription":"…","annotee":"…","lisible":true,"note":0,"commentaire":"…","erreurs":["…"],"acquis":["…"]}`, {images:[blob, ...smp.blobs], modelTier:"complex"});
+        await write("feuilles/" + C.id, {copies:{[S.corrEleve]:{validee:false, answers:{[qid]:{transcription:String(r.transcription || ""), transcriptionIA:String(r.transcription || ""), annot:String(r.annotee || r.transcription || ""), lisible:r.lisible !== false,
           noteIA:clamp(half(+r.note || 0), 0, +q.points), note:null, commentaire:String(r.commentaire || ""), erreurs:(r.erreurs || []).map(String).slice(0, 4), acquis:(r.acquis || []).map(String).slice(0, 4), valide:false}}}}}, "update");
       }catch(e){ st.textContent = e?.code ? aiErr(e.code) : "Image du cadre introuvable."; t.disabled = false; }
       return;
@@ -976,11 +1247,17 @@ document.addEventListener("click", async ev => {
         await write("feuilles/" + C.id, {copies:{[S.corrEleve]:{validee:false, answers:{[qid]:{transcription:text, annot:String(r.annotee || text), lisible:true, noteIA:clamp(half(+r.note || 0), 0, +q.points), note:null,
           commentaire:String(r.commentaire || ""), erreurs:(r.erreurs || []).map(String).slice(0, 4), acquis:(r.acquis || []).map(String).slice(0, 4), valide:false}}}}}, "update");
         delete S.editTr[qid];
+        const a0 = cp.answers?.[qid]; if (a0?.crop && q.type !== "qcm") bankPush([{asset:a0.crop, texteIA:a0.transcriptionIA ?? a0.transcription ?? "", texte:text, source:"correction", ...bankMeta(C)}]);
       }catch(e){ st.textContent = aiErr(e?.code); t.disabled = false; }
       return;
     }
-    if (t.id === "validate"){ const cp = feuille(C.id).copies[S.corrEleve]; const answers = {}; C.questions.forEach(q => { answers[q.id] = {valide:true}; });
+    if (t.id === "validate"){ const cp = feuille(C.id).copies[S.corrEleve];
+      const miss = C.questions.map((q, k) => ({q, k})).filter(x => noteOf(cp?.answers?.[x.q.id]) == null);
+      if (miss.length && d.sure !== "1"){ d.sure = "1"; t.textContent = `Valider (${miss.map(x => "Q" + (x.k + 1)).join(", ")} à 0)`;
+        toast(`Pas de note pour ${miss.map(x => "Q" + (x.k + 1)).join(", ")} : page non scannée ? Scanne-la, saisis la note, ou reclique pour mettre 0.`, 7000); return; }
+      const answers = {}; C.questions.forEach(q => { answers[q.id] = noteOf(cp?.answers?.[q.id]) == null ? {valide:true, note:0, transcription:"", annot:"", commentaire:"Question non scannée ou sans réponse.", lisible:true} : {valide:true}; });
       await write("feuilles/" + C.id, {copies:{[S.corrEleve]:{validee:true, answers}}}, "update");
+      bankPush(C.questions.filter(q => q.type !== "qcm").map(q => cp?.answers?.[q.id]).filter(a => a?.crop && a.transcription && a.lisible !== false && !a.auto).map(a => ({asset:a.crop, texteIA:a.transcriptionIA ?? a.transcription, texte:a.transcription, source:"validation", ...bankMeta(C)})));
       const f = feuille(C.id), studs = studentsOf(C); const next = studs.find(e => e.id !== S.corrEleve && f.copies[e.id] && !f.copies[e.id].validee && copyDone(C, f.copies[e.id]));
       if (studs.every(e => e.id === S.corrEleve || f.copies[e.id]?.validee) && C.statut !== "corrige"){ C.statut = "corrige"; await saveCtrl(C); toast("Toutes les copies sont validées."); }
       if (next){ S.corrEleve = next.id; S.editTr = {}; S.editCom = {}; } return render(); }
@@ -994,7 +1271,7 @@ document.addEventListener("click", async ev => {
       if (!DL) return toast("Téléchargement indisponible dans cette vue.");
       try { await DL.save({filename:`Notes - ${C.titre}.csv`.replace(/[\\/:*?"<>|]/g, "-"), data:csv}); } catch(e){ if (e?.code !== "declined") toast("Téléchargement impossible."); } return; }
     if (t.id === "mkRatt"){ t.disabled = true; t.textContent = "Création…";
-      try { const id = await createRattrapage(C, eleveOf(C, S.corrEleve)); S.editId = id; return go("edit"); } catch(e){ toast(aiErr(e?.code)); t.disabled = false; t.textContent = "Rattrapage"; } return; }
+      try { const id = await createRattrapage(C, eleveOf(C, S.corrEleve)); S.editId = id; S.step = "preparer"; return go("edit"); } catch(e){ toast(aiErr(e?.code)); t.disabled = false; t.textContent = "Rattrapage"; } return; }
   }
 
   /* analyse */
@@ -1002,13 +1279,6 @@ document.addEventListener("click", async ev => {
     const C = ctrl(S.anCtrl);
     if (d.ratt){ t.disabled = true; t.textContent = "Création…";
       try { await createRattrapage(C, eleveOf(C, d.ratt)); toast("Rattrapage créé : ouvre-le pour l'imprimer."); } catch(e){ toast(aiErr(e?.code)); t.disabled = false; t.textContent = "Créer"; } return; }
-    if (t.id === "rattAll"){ const f = feuille(C.id), max = maxOf(C), st = $("#ra-st"); const ratts = store.controles.filter(x => x.type === "rattrapage" && x.parentId === C.id);
-      const who = studentsOf(C).filter(e => { const k = f.copies[e.id]; return copyDone(C, k) && final20(C, k) < 10 && !ratts.some(r => r.eleves?.includes(e.id)); });
-      if (!who.length){ st.textContent = "Aucun élève sous 10/20 sans rattrapage."; return; }
-      t.disabled = true;
-      for (let i = 0; i < who.length; i++){ st.innerHTML = `<span class="thinking">Rattrapage ${i + 1} / ${who.length} · ${esc(who[i].prenom)}…</span>`;
-        try { await createRattrapage(C, who[i]); } catch(e){ st.textContent = aiErr(e?.code); t.disabled = false; return; } }
-      st.textContent = who.length + " rattrapage(s) créé(s). Ouvre chacun pour l'imprimer."; t.disabled = false; return; }
     if (t.id === "synth"){ const f = feuille(C.id), max = maxOf(C), st = $("#syn-st"); t.disabled = true; st.innerHTML = `<span class="thinking">Analyse de la classe…</span>`;
       const rows = studentsOf(C).map(e => f.copies[e.id]).filter(k => copyDone(C, k));
       const lines = C.questions.map((q, k) => { const got = rows.map(r => noteOf(r.answers[q.id]) / q.points); const tags = {}; rows.forEach(r => (r.answers[q.id]?.erreurs || []).forEach(x => tags[x] = (tags[x] || 0) + 1));
@@ -1037,6 +1307,7 @@ document.addEventListener("change", async ev => {
   if (d.p){ S.params[d.p] = el.value; if (d.p === "niveau") S.params.classeId = S.params.classeId || ""; return; }
   if (d.type){ const s = new Set(S.params.types); el.checked ? s.add(d.type) : s.delete(d.type); S.params.types = [...s]; return; }
   if (el.id === "p-diff"){ S.params.differencie = el.checked; return; }
+  if (d.kind){ S.params.kind = d.kind; return render(); }
   if (el.id === "sc-files"){ const fs = Array.from(el.files); el.value = ""; if (fs.length) addScans(fs); return; }
   if (d.mq){ const it = S.queue.find(x => x.id === d.mq); it[d.f] = d.f === "page" ? +el.value : el.value; if (d.f === "ctrlId") it.eleveId = ""; return render(); }
   if (el.id === "lvlMat"){ S.levelMat = el.value; S.suggestions = null; return render(); }
@@ -1068,7 +1339,7 @@ document.addEventListener("change", async ev => {
 });
 
 /* ================= Boot ================= */
-render();
+applyRoute(); render();
 (async () => {
   if (!window.claude?.use){
     STANDALONE = true; $("#tabReglages").hidden = false;
@@ -1080,8 +1351,15 @@ render();
       if (SB_USER) await startCloud(); else { refreshCaps(); render(); }
       return;
     }
+    if (window.TIKOUN_CONFIG?.accounts){ await bootAccounts(); return; }
+    if (window.TIKOUN_CONFIG?.storage === "server"){
+      const ok = await fetch("/api/check", {credentials:"same-origin", headers:{"x-tikoun-code":accessCode()}}).then(r => r.ok).catch(() => false);
+      if (ok) await startServer(); else { NEED_CODE = true; refreshCaps(); render(); }
+      return;
+    }
     try { DB = await localDB(); ASSETS = await localAssets(); } catch(e){ console.warn(e); DB = memDB(); LOCAL = true; }
-    refreshCaps(); if (!cfg().key && S.view === "home") toast("Ajoute la clé API dans Réglages pour activer l'IA.", 6000);
+    NEED_CODE = !!(window.TIKOUN_CONFIG?.codeRequired && !accessCode());
+    refreshCaps(); render();
   } else {
     const use = n => window.claude.use(n).catch(() => null);
     [DB, AI, ASSETS, DL] = await Promise.all([use("db"), use("sample"), use("assets"), use("downloads")]);

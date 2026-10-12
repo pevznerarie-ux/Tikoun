@@ -1009,26 +1009,48 @@ function qcmAnswer(q, ver, coches, ambigu){
     erreurs:ok ? [] : ["incorrect MCQ answer"], acquis:ok ? [q.notion || "QCM"] : [], valide:false, auto:true};
 }
 const toBlob = (cv, q = 0.85) => new Promise(r => cv.toBlob(r, "image/jpeg", q));
-async function addScans(files){
-  for (const f of files){
-    let cvs; try { cvs = await fileToCanvases(f); } catch(e){ S.queue.push({id:uid(), name:f.name, thumb:"", status:"erreur", msg:"Unreadable file."}); continue; }
-    cvs.forEach((cv, i) => S.queue.push({id:uid(), name:f.name + (cvs.length > 1 ? " · p." + (i + 1) : ""), cv, thumb:scaled(cv, 160).toDataURL("image/jpeg", .7), status:"attente", msg:""}));
+/* Pages d'un fichier SANS les garder toutes en mémoire : chaque page n'est dessinée en grand qu'au moment d'être lue,
+   puis libérée. Un PDF de 20 contrôles (40 pages et plus) ne fait plus planter le navigateur. */
+async function pdfPage(pdf, i, side){ const pg = await pdf.getPage(i); const vp = pg.getViewport({scale: side / Math.max(pg.view[2], pg.view[3])});
+  const cv = document.createElement("canvas"); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height); await pg.render({canvasContext:cv.getContext("2d"), viewport:vp}).promise; pg.cleanup(); return cv; }
+async function lazyPages(file){
+  if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)){
+    const pdf = await pdfjsLib.getDocument({data: await file.arrayBuffer()}).promise, out = [];
+    for (let i = 1; i <= pdf.numPages; i++){ let thumb = ""; try { thumb = (await pdfPage(pdf, i, 120)).toDataURL("image/jpeg", .6); } catch(e){}
+      out.push({n:pdf.numPages, i, thumb, load:() => pdfPage(pdf, i, 2000)}); }
+    return out;
   }
+  const cv = (await fileToCanvases(file))[0]; const thumb = scaled(cv, 160).toDataURL("image/jpeg", .7);
+  return [{n:1, i:1, thumb, load:async () => (await fileToCanvases(file))[0]}];
+}
+async function addScans(files){
+  let n = 0;
+  for (const f of files){
+    let pages; try { pages = await lazyPages(f); } catch(e){ S.queue.push({id:uid(), name:f.name, thumb:"", status:"erreur", msg:"Unreadable file."}); continue; }
+    pages.forEach(pg => S.queue.push({id:uid(), name:f.name + (pg.n > 1 ? " · p." + pg.i : ""), load:pg.load, thumb:pg.thumb, status:"attente", msg:""})); n += pages.length;
+    scheduleRender();
+  }
+  if (n > 1) toast(n + " pages added: they are read one by one.", 4000);
   render(); runQueue();
 }
+async function pageCv(it){ if (!it.cv && it.load) it.cv = await it.load(); return it.cv; }
+/* iPhone/iPad : la mémoire d'un canvas n'est rendue qu'en le ramenant à 0 × 0 */
+const freeCv = it => { if (!it.load || !it.cv) return; try { it.cv._d = null; it.cv.width = it.cv.height = 0; } catch(e){} it.cv = null; };
 async function runQueue(){
   if (S.queueRunning) return; S.queueRunning = true;
   try{
     let it;
     while ((it = S.queue.find(x => x.status === "attente"))){
       it.status = "qr"; it.msg = ""; scheduleRender();
+      try { await pageCv(it); } catch(e){ it.status = "erreur"; it.msg = "Unreadable page."; continue; }
+      if (!it.cv){ it.status = "erreur"; it.msg = "Image lost: add the photo again."; continue; }
       it.found = await detectAll(it.cv);
       const data = it.found.find(f => /^TK1W?\|/.test(f.data))?.data || readQR(it.cv);
-      if (!data){ it.status = "manuel"; it.msg = "Choose the test, student, and page, or retake the photo with the QR code sharp and clear."; if (it.inbox){ const m = INBOX_ITEMS[it.inbox]; if (m) m.manuel = true; inboxPage(it, true); } scheduleRender(); continue; }
-      if (data.startsWith("TK1W|")){ if (it.inbox && !classe(data.split("|")[1])){ S.queue = S.queue.filter(x => x !== it); inboxPage(it, false); continue; } await processWriting(it, data); if (it.inbox) inboxPage(it, true); continue; }
+      if (!data){ freeCv(it); it.status = "manuel"; it.msg = "Choose the test, student, and page, or retake the photo with the QR code sharp and clear."; if (it.inbox){ const m = INBOX_ITEMS[it.inbox]; if (m) m.manuel = true; inboxPage(it, true); } scheduleRender(); continue; }
+      if (data.startsWith("TK1W|")){ if (it.inbox && !classe(data.split("|")[1])){ S.queue = S.queue.filter(x => x !== it); inboxPage(it, false); continue; } await processWriting(it, data); freeCv(it); if (it.inbox) inboxPage(it, true); continue; }
       const [, cid, eid, p] = data.split("|"); it.ctrlId = cid; it.eleveId = eid; it.page = +p || 1;
       if (it.inbox && !ctrl(cid)){ S.queue = S.queue.filter(x => x !== it); inboxPage(it, false); continue; }
-      await processPage(it); if (it.inbox) inboxPage(it, true);
+      await processPage(it); freeCv(it); if (it.inbox) inboxPage(it, true);
     }
   } finally { S.queueRunning = false; scheduleRender(); }
 }
@@ -1040,6 +1062,7 @@ async function processPage(it){
   if (!qids.length){ it.status = "erreur"; it.msg = "No question expected on this page."; return scheduleRender(); }
   it.status = "lecture"; it.msg = "Sending image…"; scheduleRender();
   try{
+    await pageCv(it); if (!it.cv){ it.status = "erreur"; it.msg = "Image lost: add the photo again."; return scheduleRender(); }
     const upd = {copies:{[it.eleveId]:{scans:{}, answers:{}}}};
     if (ASSETS){ try { const a = await ASSETS.upload(await toBlob(scaled(it.cv, 1700), .8)); upd.copies[it.eleveId].scans[it.page] = {asset:a.id, url:a.url, at:new Date().toISOString()}; } catch(e){ console.warn("asset", e); } }
     if (!AI){ it.status = "erreur"; it.msg = "QR read, but AI isn't available to read the answers."; if (Object.keys(upd.copies[it.eleveId].scans).length) await write("feuilles/" + c.id, upd, "update"); return scheduleRender(); }
@@ -1090,7 +1113,7 @@ async function processPage(it){
     upd.copies[it.eleveId].validee = false;
     await write("feuilles/" + c.id, upd, "update");
     if (c.statut === "imprime"){ c.statut = "correction"; await saveCtrl(c); }
-    it.status = "ok"; it.msg = `${qids.length} question(s) read${qcmB.length ? ` · ${qcmB.length} MCQ without AI` : ""}${Hm ? " · cropped frames" : " · full page (markers not found)"}` + (arr.some(r => r.lisible === false) ? " · hard-to-read passage flagged" : ""); it.cv = null;
+    it.status = "ok"; it.msg = `${qids.length} question(s) read${qcmB.length ? ` · ${qcmB.length} MCQ without AI` : ""}${Hm ? " · cropped frames" : " · full page (markers not found)"}` + (arr.some(r => r.lisible === false) ? " · hard-to-read passage flagged" : ""); if (it.load) freeCv(it); else it.cv = null;
   }catch(e){ console.error(e); it.status = "erreur"; it.msg = aiErr(e?.code); }
   scheduleRender();
 }
@@ -1520,8 +1543,8 @@ document.addEventListener("click", async ev => {
 
   /* scan */
   if (t.id === "qclear"){ S.queue = S.queue.filter(x => ["attente","qr","lecture"].includes(x.status)); return render(); }
-  if (d.mgo){ const it = S.queue.find(x => x.id === d.mgo); it.status = "lecture"; render(); await processPage(it); return; }
-  if (d.retry){ const it = S.queue.find(x => x.id === d.retry); if (!it.cv){ toast("Image lost: add the photo again."); return; } it.status = it.ctrlId ? "lecture" : "attente"; render(); if (it.ctrlId) await processPage(it); else runQueue(); return; }
+  if (d.mgo){ const it = S.queue.find(x => x.id === d.mgo); it.status = "lecture"; render(); await processPage(it); freeCv(it); return; }
+  if (d.retry){ const it = S.queue.find(x => x.id === d.retry); if (!it.cv && !it.load){ toast("Image lost: add the photo again."); return; } it.status = it.ctrlId ? "lecture" : "attente"; render(); if (it.ctrlId) await processPage(it); else runQueue(); return; }
 
   /* correction */
   if (S.view === "correct"){
@@ -3117,10 +3140,10 @@ async function pollInbox(){
     for (const x of items){
       S.inboxSeen.add(x.id);
       try { const blob = await getBlob(x.asset); const f = new File([blob], x.mime === "application/pdf" ? "scanner.pdf" : "scanner.jpg", {type:x.mime});
-        const cvs = await fileToCanvases(f); INBOX_ITEMS[x.id] = {left:cvs.length, mine:0, groupe:x.groupe};
+        const pgs = await lazyPages(f); INBOX_ITEMS[x.id] = {left:pgs.length, mine:0, groupe:x.groupe};
         const h = new Date(x.at).toLocaleTimeString(document.documentElement.lang === "en" ? "en-US" : "en-US", {hour:"2-digit", minute:"2-digit"});
-        cvs.forEach((cv, i) => S.queue.push({id:uid(), name:`Scanner · ${h}` + (cvs.length > 1 ? " · p." + (i + 1) : ""), cv, thumb:scaled(cv, 160).toDataURL("image/jpeg", .7), status:"attente", msg:"", inbox:x.id}));
-        pages += cvs.length; }
+        pgs.forEach(pg => S.queue.push({id:uid(), name:`Scanner · ${h}` + (pg.n > 1 ? " · p." + pg.i : ""), load:pg.load, thumb:pg.thumb, status:"attente", msg:"", inbox:x.id}));
+        pages += pgs.length; }
       catch(e){ console.warn("inbox", e); inboxMark(x.id, "manuel"); }
     }
     if (pages){ toast(`${pages} page(s) received from the scanner: grading in progress.`, 5000); scheduleRender(); runQueue(); }
