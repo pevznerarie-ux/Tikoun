@@ -541,12 +541,12 @@ const day = () => new Date().toISOString().slice(0, 10);
 let counter = {day:day(), n:0}; const perIp = new Map(), perUser = new Map();
 function allowCall(ip, uid){
   const k = day() + ":" + uid, nu = perUser.get(k) || 0;
-  if (nu >= (Number(env("AI_MAX_PER_USER_DAY")) || 80)) return "Plafond quotidien d'appels IA atteint pour ton compte : réessaie demain.";
+  if (nu >= (Number(env("AI_MAX_PER_USER_DAY")) || 1500)) return "Plafond quotidien d'appels IA atteint pour ton compte : réessaie demain.";
   if (perUser.size > 5000) perUser.clear();
   if (counter.day !== day()) counter = {day:day(), n:0};
-  if (counter.n >= (Number(env("AI_MAX_PER_DAY")) || 400)) return "Plafond quotidien d'appels IA atteint.";
+  if (counter.n >= (Number(env("AI_MAX_PER_DAY")) || 10000)) return "Plafond quotidien d'appels IA atteint.";
   const now = Date.now(), list = (perIp.get(ip) || []).filter(t => now - t < 3600e3);
-  if (list.length >= 120) return "Trop d'appels IA depuis cet appareil : réessaie dans une heure.";
+  if (list.length >= (Number(env("AI_MAX_PER_IP_HOUR")) || 900)) return "Trop d'appels IA depuis cet appareil : réessaie dans une heure.";
   list.push(now); perIp.set(ip, list); counter.n++; perUser.set(k, nu + 1); return null;
 }
 /* Confidentialité : les noms complets des élèves de l'espace ne partent jamais vers l'IA (remplacés par « l'élève »). */
@@ -581,6 +581,101 @@ async function aiProxy(req, res, u){
   if (r.ok){ try { const us = JSON.parse(txt).usage; console.log(`IA ${model} · ${u.email} · entrée ${us?.input_tokens} · sortie ${us?.output_tokens}`); } catch(e){} }
   else console.warn("IA erreur", r.status, txt.slice(0, 300));
   send(res, r.status, txt, TYPES[".json"]);
+}
+
+/* ---------- Correction en arrière-plan (sur le serveur) ----------
+   L'application prépare chaque page (QR, découpe des cadres, images envoyées) puis confie la lecture et la correction
+   au serveur : elles continuent même si le professeur change d'onglet, ferme l'application ou verrouille son téléphone. */
+const JOBS_F = path.join(DATA, "jobs.json"); let JOBS = readJ(JOBS_F, []);
+for (const j of JOBS) if (j.status === "en_cours") j.status = "attente";
+let jobsTimer = null; const saveJobs = () => { clearTimeout(jobsTimer); jobsTimer = setTimeout(() => writeAtomic(JOBS_F, JOBS), 300); };
+const jobPub = j => ({id:j.id, status:j.status, name:j.name, ctrlId:j.ctrlId, eleveId:j.eleveId, page:j.page, msg:j.msg || "", createdAt:j.createdAt, doneAt:j.doneAt || null});
+const NO_ANS = /^\s*(je\s*(ne)?\s*sais\s*pas|j'?\s*sais\s*pas|jsp|aucune\s*id[ée]e|pas\s*d'?\s*id[ée]e|je\s*n'?\s*ai\s*pas\s*compris|rien|néant|\?+|-+|\.+|x|i\s*don'?t\s*know|n[ãa]o\s*sei)\s*[.!?]*\s*$/i;
+const isNoAns = t => !String(t || "").replace(/\[illisible\]/g, "").replace(/\$/g, "").trim() || NO_ANS.test(String(t).replace(/\$/g, ""));
+const halfN = x => Math.round(x * 2) / 2, clampN = (v, a, b) => Math.max(a, Math.min(b, v));
+function looseJSON(t){
+  try { return JSON.parse(t); } catch(e){}
+  const f = t.match(/```(?:json)?\s*([\s\S]*?)```/); if (f){ try { return JSON.parse(f[1]); } catch(e){} }
+  const a = t.search(/[\[{]/), b = Math.max(t.lastIndexOf("}"), t.lastIndexOf("]")); if (a >= 0 && b > a){ try { return JSON.parse(t.slice(a, b + 1)); } catch(e){} }
+  return null;
+}
+function markF(t, fautes){ let out = t; for (const f of (Array.isArray(fautes) ? fautes : []).map(String).filter(x => x.trim()).slice(0, 8)){ const i = out.indexOf(f); if (i >= 0 && !out.slice(0, i).endsWith("⟦")) out = out.slice(0, i) + "⟦" + f + "⟧" + out.slice(i + f.length); } return out; }
+function jobAnswers(j, res){
+  const T = j.txt || {}, arr = Array.isArray(res?.reponses) ? res.reponses : Array.isArray(res) ? res : [], answers = {};
+  for (const q of j.qs || []){
+    const r = arr.find(x => x && x.id === q.id) || {}; let ans;
+    if (q.type === "qcm"){ const L = "ABCDEFGH", good = new Set((q.good || []).map(Number)), got = [...new Set((r.coches || []).map(Number))].sort(), ok = got.length === good.size && got.every(n => good.has(n));
+      ans = {transcription:(T.coche || "Coché : ") + (got.map(n => L[n]).join(", ") || T.aucune || "aucune case"), annot:(T.coche || "Coché : ") + (got.map(n => good.has(n) ? L[n] : `⟦${L[n]}⟧`).join(", ") || `⟦${T.aucune || "aucune case"}⟧`),
+        lisible:r.lisible !== false, noteIA:ok ? +q.points : 0, note:null, commentaire:ok ? (T.bonne || "Bonne réponse.") : (T.etait || "La bonne réponse était : ") + [...good].sort().map(n => L[n]).join(", ") + ".",
+        erreurs:ok ? [] : [T.qcmFaux || "réponse QCM incorrecte"], acquis:ok ? [q.notion || "QCM"] : [], valide:false, auto:true}; }
+    else { const tr = String(r.transcription ?? "");
+      ans = {transcription:tr, transcriptionIA:tr, annot:r.annotee != null ? String(r.annotee) : markF(tr, r.fautes), lisible:r.lisible !== false, noteIA:clampN(halfN(Number(r.note) || 0), 0, +q.points), note:null,
+        commentaire:String(r.commentaire ?? ""), erreurs:(r.erreurs || []).map(String).slice(0, 4), acquis:(r.acquis || []).map(String).slice(0, 4), valide:false};
+      if (isNoAns(tr)){ ans.noteIA = 0; ans.commentaire = T.vide || "Pas de réponse : revois cette notion."; ans.erreurs = [T.videTag || "pas de réponse"]; ans.acquis = []; } }
+    ans.crop = q.crop || null; answers[q.id] = ans;
+  }
+  return {answers, lisibleKo:arr.some(r => r && r.lisible === false)};
+}
+async function runJob(j){
+  const u = USERS.find(x => x.id === j.user); if (!u){ j.status = "erreur"; j.msg = "Compte introuvable"; return; }
+  if (!access(u).ok){ j.status = "erreur"; j.msg = NO_ACCESS; return; }
+  const stop = allowCall("job:" + u.id, u.id); if (stop){ j.status = "erreur"; j.msg = stop; return; }
+  const content = [];
+  for (const id of j.images || []){ const f = path.join(FILEDIR, id + ".jpg"); if (!fs.existsSync(f)){ j.status = "erreur"; j.msg = "Image introuvable"; return; }
+    content.push({type:"image", source:{type:"base64", media_type:"image/jpeg", data:fs.readFileSync(f).toString("base64")}}); }
+  content.push({type:"text", text:String(j.prompt || "")});
+  const body = {messages:[{role:"user", content}]}; scrubNames(body, u);
+  const M = MODELS(), model = M[j.tier] || M.default;
+  const r = await fetch((env("ANTHROPIC_BASE_URL") || "https://api.anthropic.com") + "/v1/messages", {method:"POST", signal:AbortSignal.timeout(240000),
+    headers:{"content-type":"application/json", "x-api-key":env("ANTHROPIC_API_KEY"), "anthropic-version":"2023-06-01"},
+    body:JSON.stringify({model, max_tokens:Math.min(32000, Math.max(1000, +env("AI_MAX_TOKENS") || 16000)), messages:body.messages})}).catch(e => null);
+  if (!r || r.status === 429 || r.status >= 500){ j.tries = (j.tries || 0) + 1; j.status = j.tries >= 4 ? "erreur" : "attente"; j.msg = j.tries >= 4 ? "IA indisponible, relance plus tard" : "Nouvel essai bientôt"; j.notBefore = Date.now() + 20000 * j.tries; return; }
+  const txt = await r.text(); let jr = null; try { jr = JSON.parse(txt); } catch(e){}
+  if (!r.ok){ j.status = "erreur"; j.msg = "IA : " + (jr?.error?.message || r.status); console.warn("Tâche IA", r.status, txt.slice(0, 200)); return; }
+  console.log(`IA (tâche) ${model} · ${u.email} · entrée ${jr?.usage?.input_tokens} · sortie ${jr?.usage?.output_tokens}`);
+  const res = looseJSON((jr?.content || []).filter(b => b.type === "text").map(b => b.text).join(""));
+  if (!res){ j.tries = (j.tries || 0) + 1; j.status = j.tries >= 3 ? "erreur" : "attente"; j.msg = "Réponse de l'IA illisible"; return; }
+  const dp = "feuilles/" + j.ctrlId, cur = DOCS.get(dp); if (!cur){ j.status = "erreur"; j.msg = "Feuilles du contrôle introuvables"; return; }
+  const {answers, lisibleKo} = jobAnswers(j, res);
+  const patch = {copies:{[j.eleveId]:{answers, validee:false}}};
+  if (j.bonus) patch.copies[j.eleveId].bonusPages = {[j.page]:{proprete:clampN(+res?.proprete || 0, 0, 1), orthographe:clampN(+res?.orthographe || 0, 0, 1)}};
+  persist(dp, merge(cur, patch));
+  j.status = "fait"; j.doneAt = new Date().toISOString(); j.msg = Object.keys(answers).length + " question(s) corrigée(s)" + (lisibleKo ? " · passage peu lisible signalé" : "");
+  delete j.prompt; delete j.qs;
+}
+let jobsRunning = 0;
+async function pumpJobs(){
+  const now = Date.now(), MAX = +env("AI_JOBS_PARALLEL") || 3;
+  while (jobsRunning < MAX){
+    const j = JOBS.find(x => x.status === "attente" && (!x.notBefore || x.notBefore <= now)); if (!j) break;
+    j.status = "en_cours"; jobsRunning++; saveJobs();
+    runJob(j).catch(e => { j.status = "erreur"; j.msg = "Erreur : " + e.message; }).finally(() => { jobsRunning--; saveJobs(); setTimeout(pumpJobs, 50); });
+  }
+  const old = Date.now() - 3 * 864e5; const n = JOBS.length; JOBS = JOBS.filter(j => !(j.status !== "attente" && j.status !== "en_cours" && Date.parse(j.createdAt) < old)); if (JOBS.length !== n) saveJobs();
+}
+setInterval(pumpJobs, 3000);
+async function jobsApi(req, res, url, p, u){
+  if (!u) return sendJ(res, 401, {error:{message:"Connexion requise"}});
+  if (p === "/api/jobs" && req.method === "GET"){ const since = Date.now() - 864e5;
+    return sendJ(res, 200, {jobs:JOBS.filter(j => j.user === u.id && (Date.parse(j.createdAt) > since || j.status === "attente" || j.status === "en_cours")).map(jobPub)}); }
+  if (p === "/api/jobs" && req.method === "POST"){
+    if (!env("ANTHROPIC_API_KEY")) return sendJ(res, 503, {error:{message:"IA non configurée"}});
+    if (!access(u).ok) return sendJ(res, 402, {error:{message:NO_ACCESS, code:"no_access"}});
+    const b = await readJSON(req, 2e6) || {};
+    if (!/^[A-Za-z0-9_-]{2,40}$/.test(String(b.ctrlId || "")) || !/^[A-Za-z0-9_-]{2,40}$/.test(String(b.eleveId || ""))) return sendJ(res, 400, {error:{message:"Tâche invalide"}});
+    if (!canWrite(u, "feuilles/" + b.ctrlId)) return sendJ(res, 403, {error:{message:"Ce contrôle appartient à un autre professeur"}});
+    if (JOBS.filter(j => j.user === u.id && (j.status === "attente" || j.status === "en_cours")).length > 400) return sendJ(res, 429, {error:{message:"Trop de pages en attente"}});
+    const j = {id:crypto.randomBytes(8).toString("hex"), user:u.id, status:"attente", createdAt:new Date().toISOString(), name:String(b.name || "").slice(0, 120),
+      ctrlId:b.ctrlId, eleveId:b.eleveId, page:Math.max(1, +b.page || 1), prompt:String(b.prompt || "").slice(0, 200000), tier:["quick","default","complex"].includes(b.tier) ? b.tier : "default",
+      images:(Array.isArray(b.images) ? b.images : []).filter(x => /^[a-z0-9]{8,40}$/.test(x)).slice(0, 20), bonus:!!b.bonus, txt:isObj(b.txt) ? b.txt : {},
+      qs:(Array.isArray(b.qs) ? b.qs : []).slice(0, 40).map(q => ({id:String(q.id), points:+q.points || 0, type:q.type === "qcm" ? "qcm" : "", good:Array.isArray(q.good) ? q.good.map(Number) : [], notion:String(q.notion || "").slice(0, 80), crop:/^[a-z0-9]{8,40}$/.test(q.crop || "") ? q.crop : null}))};
+    if (!j.images.length || !j.qs.length) return sendJ(res, 400, {error:{message:"Tâche vide"}});
+    JOBS.push(j); saveJobs(); setTimeout(pumpJobs, 10); return sendJ(res, 200, {id:j.id});
+  }
+  const m = p.match(/^\/api\/jobs\/([a-f0-9]{16})\/retry$/);
+  if (m && req.method === "POST"){ const j = JOBS.find(x => x.id === m[1] && x.user === u.id); if (!j || !j.prompt) return sendJ(res, 404, {error:{message:"Tâche introuvable"}}); j.status = "attente"; j.tries = 0; j.msg = ""; saveJobs(); setTimeout(pumpJobs, 10); return sendJ(res, 200, {}); }
+  if (p === "/api/jobs/clear" && req.method === "POST"){ JOBS = JOBS.filter(j => j.user !== u.id || j.status === "attente" || j.status === "en_cours"); saveJobs(); return sendJ(res, 200, {}); }
+  return sendJ(res, 404, {error:{message:"Route inconnue"}});
 }
 
 /* ---------- Routes ---------- */
@@ -808,6 +903,7 @@ http.createServer(async (req, res) => {
     if (p.startsWith("/api/")){
       if (req.method === "POST" && p === "/api/ai") return await aiProxy(req, res, u);
       if (p.startsWith("/api/backups")) return backups(req, res, p, u);
+      if (p === "/api/jobs" || p.startsWith("/api/jobs/")) return await jobsApi(req, res, url, p, u);
       if (p === "/api/banque" || p.startsWith("/api/banque/")) return await banqueApi(req, res, url, p, u);
       if (p === "/api/devices" || p.startsWith("/api/devices/") || p.startsWith("/api/scan/")) return await scanApi(req, res, url, p, u);
       if (p === "/api/etab" || p.startsWith("/api/etab/") || p.startsWith("/api/billing/")){ try { return await billingApi(req, res, url, p, u); } catch(e){ console.warn("Abonnement :", e.message); return sendJ(res, 502, {error:{message:"Paiement indisponible pour le moment : réessaie dans un instant."}}); } }
@@ -816,7 +912,7 @@ http.createServer(async (req, res) => {
     }
     if (req.method !== "GET" && req.method !== "HEAD") return send(res, 405, "Méthode non autorisée");
     if (p === "/config.js")
-      return send(res, 200, "window.TIKOUN_CONFIG = " + JSON.stringify({aiEndpoint:env("ANTHROPIC_API_KEY") ? "/api/ai" : "", storage:"server", accounts:true, signup:signupOpen(), persistent:PERSISTENT, billing:BILLING(), trialDays:TRIAL_DAYS(),
+      return send(res, 200, "window.TIKOUN_CONFIG = " + JSON.stringify({aiEndpoint:env("ANTHROPIC_API_KEY") ? "/api/ai" : "", jobs:!!env("ANTHROPIC_API_KEY"), storage:"server", accounts:true, signup:signupOpen(), persistent:PERSISTENT, billing:BILLING(), trialDays:TRIAL_DAYS(),
         prix:res._lang === "pt" ? {essentiel:env("PRICE_LABEL_ESSENTIEL_PT") || "US$ 14/mês", pro:env("PRICE_LABEL_PRO_PT") || "US$ 22/mês", essentielAn:env("PRICE_LABEL_ESSENTIEL_AN_PT") || "US$ 119/ano", proAn:env("PRICE_LABEL_PRO_AN_PT") || "US$ 189/ano", ecole:env("PRICE_LABEL_ECOLE_PT") || "Sob consulta"}
           : res._lang === "en" ? {essentiel:env("PRICE_LABEL_ESSENTIEL_EN") || "$14/month", pro:env("PRICE_LABEL_PRO_EN") || "$22/month", essentielAn:env("PRICE_LABEL_ESSENTIEL_AN_EN") || "$119/year", proAn:env("PRICE_LABEL_PRO_AN_EN") || "$189/year", ecole:env("PRICE_LABEL_ECOLE_EN") || "Custom quote"}
           : {essentiel:env("PRICE_LABEL_ESSENTIEL") || "12 €/mois", pro:env("PRICE_LABEL_PRO") || "19 €/mois", essentielAn:env("PRICE_LABEL_ESSENTIEL_AN") || "99 €/an", proAn:env("PRICE_LABEL_PRO_AN") || "159 €/an", ecole:env("PRICE_LABEL_ECOLE") || "Sur devis"}}) + ";\n", TYPES[".js"], {"Cache-Control":"no-store"});

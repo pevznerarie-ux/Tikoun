@@ -295,6 +295,13 @@ h2{font-size:26px} h3{font-size:21px;font-weight:600}
 p,li,td,label,textarea,input,.t,.s,.answer,.sh-qt,.sh-opt,.sh-cons,.sh-title,.item .t,.q-text,.bank-q,h1,h2,h3{unicode-bidi:plaintext}
 textarea,input{text-align:start}
 :lang(he),[dir=rtl]{font-family:"Noto Sans Hebrew","Frank Ruhl Libre",var(--body)}
+#jobs-pill{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:12px;width:min(560px,calc(100vw - 32px));background:var(--ink,#15233F);color:#fff;border-radius:14px;padding:12px 14px;box-shadow:0 14px 40px -12px rgba(0,0,0,.45);font-size:13px}
+#jobs-pill>div{flex:1;min-width:0;display:grid;gap:3px;position:relative}
+#jobs-pill b{font-weight:600;font-size:14px}#jobs-pill span{opacity:.8;line-height:1.35}
+#jobs-pill i{display:block;height:4px;border-radius:4px;background:rgba(255,255,255,.18);margin-top:4px;overflow:hidden;position:relative}
+#jobs-pill i::after{content:"";position:absolute;inset:0;width:var(--p,0%);background:#D9B26A;transition:width .6s}
+#jobs-pill .btn{flex:none;background:#fff;color:#15233F;border-color:transparent}#jobs-pill .btn.ghost{background:transparent;color:#fff}#jobs-pill.done{background:#1E5C3E}
+@media print{#jobs-pill{display:none}}
 </style>
 
 </head>
@@ -503,7 +510,7 @@ function fixHebrewText(t){
 /* ================= Render loop (keeps focus while data arrives) ================= */
 let rq = false, skipped = false;
 document.addEventListener("focusout", () => { if (skipped) setTimeout(scheduleRender, 0); });
-function scheduleRender(){ if (rq) return; rq = true; requestAnimationFrame(() => { rq = false; render(); }); }
+function scheduleRender(){ if (rq) return; rq = true; requestAnimationFrame(() => { rq = false; render(); }); try { jobsPill(); } catch(e){} }
 function render(){
   const a = document.activeElement, keep = a && a.id && $("#view").contains(a) ? {id:a.id, s:a.selectionStart, e:a.selectionEnd, v:a.value, typing: ["INPUT","TEXTAREA"].includes(a.tagName) && a.type !== "file"} : null;
   if (keep?.typing && a.dataset.live !== undefined){ skipped = true; return; } // don't clobber a field being typed
@@ -854,7 +861,7 @@ function vScan(){
 }
 function qItem(it){
   const c = it.ctrlId && ctrl(it.ctrlId), e = c && eleveOf(c, it.eleveId);
-  const chip = {attente:["Aguardando",""], qr:["Lendo o QR…","blue"], lecture:["Lendo e corrigindo…","blue"], ok:["Corrigida","ok"], manuel:["QR não lido","warn"], erreur:["Erro","bad"]}[it.status];
+  const chip = {attente:["Aguardando",""], qr:["Lendo o QR…","blue"], lecture:["Lendo e corrigindo…","blue"], ok:["Corrigida","ok"], manuel:["QR não lido","warn"], erreur:["Erro","bad"], serveur:["Correção no servidor","blue"]}[it.status];
   const printed = store.controles.filter(x => x.statut !== "brouillon");
   return `<div class="qi"><img alt="" src="${it.thumb}"><div><div class="t"><b>${it.label ? esc(it.label) : e ? esc(e.prenom + " " + e.nom) : esc(it.name)}</b>${c ? ` <span class="muted small">· ${esc(c.titre)} · p. ${it.page}</span>` : ""}</div>
     <div class="small ${it.status === "erreur" ? "err" : "muted"}">${esc(it.msg || "")}</div>
@@ -981,7 +988,7 @@ async function footerId(cv){
     const cid = closest(m[1], store.controles.map(c => c.id)); if (!cid) return null;
     const eid = closest(m[2], Object.keys(feuille(cid)?.copies || {})); if (!eid) return null;
     return `TK1|${cid}|${eid}|${Math.max(1, Math.round(+r.page) || 1)}`;
-  } catch(e){ return null; }
+  } catch(e){ S.footErr = e?.message || aiErr(e?.code); console.warn("Rodapé", e); return null; }
 }
 function solve(A, b){ const n = b.length; A = A.map((r, i) => [...r, b[i]]);
   for (let i = 0; i < n; i++){ let m = i; for (let k = i + 1; k < n; k++) if (Math.abs(A[k][i]) > Math.abs(A[m][i])) m = k; [A[i], A[m]] = [A[m], A[i]];
@@ -1063,9 +1070,9 @@ async function pdfPage(pdf, i, side){ const pg = await pdf.getPage(i); const vp 
   const cv = document.createElement("canvas"); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height); await pg.render({canvasContext:cv.getContext("2d"), viewport:vp}).promise; pg.cleanup(); return cv; }
 async function lazyPages(file){
   if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)){
-    const pdf = await pdfjsLib.getDocument({data: await file.arrayBuffer()}).promise, out = [];
+    const pdf = await pdfjsLib.getDocument({data: await file.arrayBuffer()}).promise, out = [], src = {qrBad:0};
     for (let i = 1; i <= pdf.numPages; i++){ let thumb = ""; try { thumb = (await pdfPage(pdf, i, 120)).toDataURL("image/jpeg", .6); } catch(e){}
-      out.push({n:pdf.numPages, i, thumb, load:() => pdfPage(pdf, i, 2000)}); }
+      out.push({n:pdf.numPages, i, thumb, src, load:() => pdfPage(pdf, i, 2000)}); }
     return out;
   }
   const cv = (await fileToCanvases(file))[0]; const thumb = scaled(cv, 160).toDataURL("image/jpeg", .7);
@@ -1075,7 +1082,7 @@ async function addScans(files){
   let n = 0;
   for (const f of files){
     let pages; try { pages = await lazyPages(f); } catch(e){ S.queue.push({id:uid(), name:f.name, thumb:"", status:"erreur", msg:"Arquivo ilegível."}); continue; }
-    pages.forEach(pg => S.queue.push({id:uid(), name:f.name + (pg.n > 1 ? " · p." + pg.i : ""), load:pg.load, thumb:pg.thumb, status:"attente", msg:""})); n += pages.length;
+    pages.forEach(pg => S.queue.push({id:uid(), name:f.name + (pg.n > 1 ? " · p." + pg.i : ""), load:pg.load, src:pg.src, thumb:pg.thumb, status:"attente", msg:""})); n += pages.length;
     scheduleRender();
   }
   if (n > 1) toast(n + " páginas adicionadas: são lidas uma por uma.", 4000);
@@ -1092,10 +1099,14 @@ async function runQueue(){
       it.status = "qr"; it.msg = ""; scheduleRender();
       try { await pageCv(it); } catch(e){ it.status = "erreur"; it.msg = "Página ilegível."; continue; }
       if (!it.cv){ it.status = "erreur"; it.msg = "Imagem perdida: adicione a foto novamente."; continue; }
-      it.found = await detectAll(it.cv);
-      let data = it.found.find(f => /^TK1W?\|/.test(f.data))?.data || readQR(it.cv);
-      if (!data){ it.msg = "QR ilegível: lendo o rodapé da página…"; scheduleRender(); data = await footerId(it.cv); if (data) it.viaPied = true; }
-      if (!data){ freeCv(it); it.status = "manuel"; it.msg = "Escolha a prova, o aluno e a página, ou tire a foto de novo com o QR code bem nítido."; if (it.inbox){ const m = INBOX_ITEMS[it.inbox]; if (m) m.manuel = true; inboxPage(it, true); } scheduleRender(); continue; }
+      let data = null;
+      /* Même fichier dont les QR précédents étaient illisibles : on lit directement le bas de page (bien plus rapide) */
+      if (it.src?.qrBad >= 2){ it.msg = "Lendo o rodapé da página…"; scheduleRender(); data = await footerId(it.cv); if (data){ it.found = []; it.viaPied = true; } }
+      if (!data){ it.found = await detectAll(it.cv);
+        data = it.found.find(f => /^TK1W?\|/.test(f.data))?.data || readQR(it.cv);
+        if (data){ if (it.src) it.src.qrBad = 0; }
+        else { it.msg = "QR ilegível: lendo o rodapé da página…"; scheduleRender(); data = await footerId(it.cv); if (data){ it.viaPied = true; if (it.src) it.src.qrBad++; } } }
+      if (!data){ freeCv(it); it.status = "manuel"; it.msg = (S.footErr ? "IA indisponível para ler o rodapé (" + S.footErr + "). " : "") + "Escolha a prova, o aluno e a página, ou tire a foto de novo com o QR code bem nítido."; S.footErr = null; if (it.inbox){ const m = INBOX_ITEMS[it.inbox]; if (m) m.manuel = true; inboxPage(it, true); } scheduleRender(); continue; }
       if (data.startsWith("TK1W|")){ if (it.inbox && !classe(data.split("|")[1])){ S.queue = S.queue.filter(x => x !== it); inboxPage(it, false); continue; } await processWriting(it, data); freeCv(it); if (it.inbox) inboxPage(it, true); continue; }
       const [, cid, eid, p] = data.split("|"); it.ctrlId = cid; it.eleveId = eid; it.page = +p || 1;
       if (it.inbox && !ctrl(cid)){ S.queue = S.queue.filter(x => x !== it); inboxPage(it, false); continue; }
@@ -1132,6 +1143,28 @@ async function processPage(it){
     const cropMode = Hm && aiB.length && aiB.length <= Math.max(1, maxImg);
     if (cropMode) for (const b of aiB) crops[b.q] = warpBox(it.cv, Hm, b);
     if (ASSETS){ for (const k in crops){ try { const a = await ASSETS.upload(await toBlob(crops[k], .82)); crops[k].asset = a.id; } catch(e){} } }
+    const localAns = qid => { const q = c.questions.find(x => x.id === qid); if (!q) return null; const ver = cp.version?.[qid] || "standard";
+      if (blank.has(qid)) return {transcription:"", annot:"", lisible:true, noteIA:0, note:null, commentaire:"Sem resposta.", erreurs:["sem resposta"], acquis:[], valide:false, auto:true};
+      if (marks[qid]) return qcmAnswer(q, ver, marks[qid].coches, marks[qid].ambigu); return null; };
+    /* Correction confiée au serveur : elle continue même si on quitte la page ou l'application */
+    if (aiQ.length && jobsOn()){
+      try {
+        let images = [], mode;
+        if (cropMode){ const aiB2 = aiB.filter(b => aiQ.includes(b.q)); if (aiB2.some(b => !crops[b.q]?.asset)) throw new Error("crop"); images = aiB2.map(b => crops[b.q].asset); mode = "crops"; }
+        else { const big = scaled(Hm ? maskHeader(it.cv, Hm, boxes) : it.cv, 1600), W = big.width, H = big.height, many = maxImg >= 2;
+          const blobs = many ? [await toBlob(crop(big, 0, 0, W, H * 0.56)), await toBlob(crop(big, 0, H * 0.44, W, H * 0.56))] : [await toBlob(big)];
+          for (const bl of blobs) images.push((await ASSETS.upload(bl)).id); mode = many ? "halves" : "page"; }
+        const qs = aiQ.map(qid => { const q = c.questions.find(x => x.id === qid); if (!q) return null; const ver = cp.version?.[qid] || "standard";
+          return {id:qid, points:+q.points, type:q.type === "qcm" ? "qcm" : "", good:vOf(q, ver).bonnes || [], notion:q.notion || "", crop:crops[qid]?.asset || null}; }).filter(Boolean);
+        for (const qid of qids){ if (aiQ.includes(qid)) continue; const a = localAns(qid); if (a){ a.crop = crops[qid]?.asset || null; upd.copies[it.eleveId].answers[qid] = a; } }
+        upd.copies[it.eleveId].validee = false;
+        await write("feuilles/" + c.id, upd, "update");
+        if (c.statut === "imprime"){ c.statut = "correction"; await saveCtrl(c); }
+        const j = await api("/api/jobs", {method:"POST", body:JSON.stringify({ctrlId:c.id, eleveId:it.eleveId, page:it.page, name:it.name, prompt:gradePrompt(c, cp, aiQ, mode) + JSON_ONLY, images, qs, bonus:!!bonusMax(c), txt:jobTxt()})});
+        it.status = "serveur"; it.jobId = j.id; it.msg = "Página pronta: a correção continua no servidor, você pode sair do aplicativo."; if (it.load) freeCv(it); else it.cv = null;
+        watchJobs(); return scheduleRender();
+      } catch(e){ console.warn("Tarefa no servidor indisponível, correção aqui", e); }
+    }
     if (aiQ.length){
       if (!AI){ it.status = "erreur"; it.msg = "QR lido, mas a IA não está disponível para ler as respostas dissertativas."; await write("feuilles/" + c.id, upd, "update"); return scheduleRender(); }
       it.msg = cropMode ? "Lendo os " + aiQ.length + " quadro(s) recortado(s) e corrigindo…" : "Lendo a página e corrigindo (30 s a 1 min)…"; scheduleRender();
@@ -1152,9 +1185,8 @@ async function processPage(it){
       const q = c.questions.find(x => x.id === qid); if (!q) continue;
       const ver = cp.version?.[qid] || "standard";
       const r = arr.find(x => x.id === qid) || {};
-      let ans;
-      if (blank.has(qid)) ans = {transcription:"", annot:"", lisible:true, noteIA:0, note:null, commentaire:"Sem resposta.", erreurs:["sem resposta"], acquis:[], valide:false, auto:true};
-      else if (marks[qid]) ans = qcmAnswer(q, ver, marks[qid].coches, marks[qid].ambigu);
+      let ans = localAns(qid);
+      if (ans);
       else if (q.type === "qcm") ans = qcmAnswer(q, ver, (r.coches || []).map(Number), r.lisible === false);
       else ans = {transcription:String(r.transcription ?? ""), transcriptionIA:String(r.transcription ?? ""), annot:r.annotee != null ? String(r.annotee) : markFautes(String(r.transcription ?? ""), r.fautes), lisible:r.lisible !== false,
         noteIA:clamp(half(Number(r.note) || 0), 0, +q.points), note:null, commentaire:String(r.commentaire ?? ""), erreurs:(r.erreurs || []).map(String).slice(0, 4), acquis:(r.acquis || []).map(String).slice(0, 4), valide:false};
@@ -1591,6 +1623,8 @@ document.addEventListener("click", async ev => {
   /* scan */
   if (t.id === "qclear"){ S.queue = S.queue.filter(x => ["attente","qr","lecture"].includes(x.status)); return render(); }
   if (d.mgo){ const it = S.queue.find(x => x.id === d.mgo); it.status = "lecture"; render(); await processPage(it); freeCv(it); return; }
+  if (d.retry && S.queue.find(x => x.id === d.retry)?.jobErr){ const it = S.queue.find(x => x.id === d.retry);
+    try { await api("/api/jobs/" + it.jobId + "/retry", {method:"POST", body:"{}"}); it.status = "serveur"; it.jobErr = false; it.msg = "Reiniciada no servidor."; watchJobs(); } catch(e){ toast(e.message || "Não foi possível reiniciar."); } return render(); }
   if (d.retry){ const it = S.queue.find(x => x.id === d.retry); if (!it.cv && !it.load){ toast("Imagem perdida: adicione a foto novamente."); return; } it.status = it.ctrlId ? "lecture" : "attente"; render(); if (it.ctrlId) await processPage(it); else runQueue(); return; }
 
   /* correction */
@@ -3244,6 +3278,42 @@ document.addEventListener("click", async ev => {
     if (d.devsheet){ const x = (S.dev.list || []).find(y => y.id === d.devsheet); if (x) devSheet(x); return; }
   } catch(e){ toast(e.message || "Erro"); }
 });
+
+/* ================= Correction en arrière-plan : suivi des pages confiées au serveur =================
+   Un encart « Correction en cours » reste visible sur toutes les pages de l'application. */
+const JSON_ONLY = "\n\n(Responda apenas com o JSON solicitado, sem texto em volta.)";
+const jobsOn = () => !!(window.TIKOUN_CONFIG?.jobs && ASSETS && typeof SERVERSTORE !== "undefined" && SERVERSTORE);
+const jobTxt = () => ({coche:"Marcado: ", aucune:"nenhuma caixa", bonne:"Resposta correta.", etait:"A resposta correta era: ", qcmFaux:"resposta de múltipla escolha incorreta", vide:"Sem resposta: revise este conteúdo.", videTag:"sem resposta"});
+S.jobs = []; S.jobsHide = 0; let jobsTimer = null;
+async function pollJobs(){
+  try { const r = await fetch("/api/jobs", {credentials:"same-origin"}); if (!r.ok) return; S.jobs = (await r.json()).jobs || []; } catch(e){ return; }
+  for (const it of S.queue) if (it.jobId){ const j = S.jobs.find(x => x.id === it.jobId); if (!j) continue;
+    if (j.status === "fait" && it.status !== "ok"){ it.status = "ok"; it.msg = j.msg || "Corrigida."; }
+    else if (j.status === "erreur" && it.status !== "erreur"){ it.status = "erreur"; it.msg = j.msg || "Falha na correção."; it.jobErr = true; } }
+  jobsPill(); if (S.view === "scanner" || S.step === "scanner") scheduleRender();
+  const pending = S.jobs.some(j => j.status === "attente" || j.status === "en_cours");
+  if (pending) watchJobs(); else { clearTimeout(jobsTimer); jobsTimer = null; }
+}
+function watchJobs(){ clearTimeout(jobsTimer); jobsTimer = setTimeout(pollJobs, document.hidden ? 30000 : 6000); jobsPill(); }
+document.addEventListener("visibilitychange", () => { if (!document.hidden && jobsOn()) pollJobs(); });
+setTimeout(() => { if (jobsOn()) pollJobs(); }, 2500);
+function jobsPill(){
+  let el = document.getElementById("jobs-pill");
+  const prep = S.queue.filter(x => ["attente", "qr", "lecture"].includes(x.status)).length, prepTot = S.queue.length;
+  const recent = S.jobs.filter(j => Date.parse(j.createdAt) > S.jobsHide), tot = recent.length, done = recent.filter(j => j.status === "fait").length, err = recent.filter(j => j.status === "erreur").length;
+  const pend = tot - done - err;
+  if (!prep && !tot){ if (el) el.remove(); return; }
+  if (!el){ el = document.createElement("div"); el.id = "jobs-pill"; el.setAttribute("role", "status"); document.body.append(el);
+    el.addEventListener("click", ev => { const b = ev.target.closest("button"); if (!b) return;
+      if (b.dataset.jp === "hide"){ S.jobsHide = Date.now(); jobsPill(); }
+      if (b.dataset.jp === "voir"){ const ids = [...new Set(recent.map(j => j.ctrlId))]; if (ids.length === 1){ S.corrCtrl = ids[0]; S.corrEleve = null; openCtrl(ids[0], "corriger"); } else go("controles"); }
+      if (b.dataset.jp === "scan") go("scanner"); }); }
+  const pct = tot ? Math.round(100 * (done + err) / tot) : 0;
+  el.className = !prep && !pend ? "done" : "";
+  el.innerHTML = prep ? `<div><b>Preparando as páginas: ${prepTot - prep} / ${prepTot}</b><span>Mantenha o Mastery aberto por alguns instantes; depois a correção continua sozinha.</span></div><button class="btn sm" data-jp="scan">Ver</button>`
+    : pend ? `<div><b>Correção em andamento: ${done} / ${tot} page(s)</b><span>Ela continua no servidor: você pode mudar de página ou fechar o aplicativo.</span><i style="--p:${pct}%"></i></div><button class="btn sm" data-jp="scan">Detalhes</button>`
+    : `<div><b>✓ Correção concluída: ${done} page(s)${err ? ` · ${err} a revisar` : ""}</b><span>As notas estão prontas para validar.</span></div><button class="btn sm primary" data-jp="voir">Ver</button><button class="btn sm ghost" data-jp="hide" aria-label="Fechar">×</button>`;
+}
 
 /* ================= Boot ================= */
 applyRoute(); render();

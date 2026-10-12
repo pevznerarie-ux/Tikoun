@@ -70,3 +70,39 @@ document.addEventListener("click", async ev => {
     if (d.devsheet){ const x = (S.dev.list || []).find(y => y.id === d.devsheet); if (x) devSheet(x); return; }
   } catch(e){ toast(e.message || "Erreur"); }
 });
+
+/* ================= Correction en arrière-plan : suivi des pages confiées au serveur =================
+   Un encart « Correction en cours » reste visible sur toutes les pages de l'application. */
+const JSON_ONLY = "\n\n(Réponds uniquement avec le JSON demandé, sans texte autour.)";
+const jobsOn = () => !!(window.TIKOUN_CONFIG?.jobs && ASSETS && typeof SERVERSTORE !== "undefined" && SERVERSTORE);
+const jobTxt = () => ({coche:"Coché : ", aucune:"aucune case", bonne:"Bonne réponse.", etait:"La bonne réponse était : ", qcmFaux:"réponse QCM incorrecte", vide:"Pas de réponse : revois cette notion.", videTag:"pas de réponse"});
+S.jobs = []; S.jobsHide = 0; let jobsTimer = null;
+async function pollJobs(){
+  try { const r = await fetch("/api/jobs", {credentials:"same-origin"}); if (!r.ok) return; S.jobs = (await r.json()).jobs || []; } catch(e){ return; }
+  for (const it of S.queue) if (it.jobId){ const j = S.jobs.find(x => x.id === it.jobId); if (!j) continue;
+    if (j.status === "fait" && it.status !== "ok"){ it.status = "ok"; it.msg = j.msg || "Corrigée."; }
+    else if (j.status === "erreur" && it.status !== "erreur"){ it.status = "erreur"; it.msg = j.msg || "Échec de la correction."; it.jobErr = true; } }
+  jobsPill(); if (S.view === "scanner" || S.step === "scanner") scheduleRender();
+  const pending = S.jobs.some(j => j.status === "attente" || j.status === "en_cours");
+  if (pending) watchJobs(); else { clearTimeout(jobsTimer); jobsTimer = null; }
+}
+function watchJobs(){ clearTimeout(jobsTimer); jobsTimer = setTimeout(pollJobs, document.hidden ? 30000 : 6000); jobsPill(); }
+document.addEventListener("visibilitychange", () => { if (!document.hidden && jobsOn()) pollJobs(); });
+setTimeout(() => { if (jobsOn()) pollJobs(); }, 2500);
+function jobsPill(){
+  let el = document.getElementById("jobs-pill");
+  const prep = S.queue.filter(x => ["attente", "qr", "lecture"].includes(x.status)).length, prepTot = S.queue.length;
+  const recent = S.jobs.filter(j => Date.parse(j.createdAt) > S.jobsHide), tot = recent.length, done = recent.filter(j => j.status === "fait").length, err = recent.filter(j => j.status === "erreur").length;
+  const pend = tot - done - err;
+  if (!prep && !tot){ if (el) el.remove(); return; }
+  if (!el){ el = document.createElement("div"); el.id = "jobs-pill"; el.setAttribute("role", "status"); document.body.append(el);
+    el.addEventListener("click", ev => { const b = ev.target.closest("button"); if (!b) return;
+      if (b.dataset.jp === "hide"){ S.jobsHide = Date.now(); jobsPill(); }
+      if (b.dataset.jp === "voir"){ const ids = [...new Set(recent.map(j => j.ctrlId))]; if (ids.length === 1){ S.corrCtrl = ids[0]; S.corrEleve = null; openCtrl(ids[0], "corriger"); } else go("controles"); }
+      if (b.dataset.jp === "scan") go("scanner"); }); }
+  const pct = tot ? Math.round(100 * (done + err) / tot) : 0;
+  el.className = !prep && !pend ? "done" : "";
+  el.innerHTML = prep ? `<div><b>Préparation des pages : ${prepTot - prep} / ${prepTot}</b><span>Garde Mastery ouvert quelques instants, puis la correction continue seule.</span></div><button class="btn sm" data-jp="scan">Voir</button>`
+    : pend ? `<div><b>Correction en cours : ${done} / ${tot} page(s)</b><span>Elle continue sur le serveur : tu peux changer de page ou fermer l'application.</span><i style="--p:${pct}%"></i></div><button class="btn sm" data-jp="scan">Détail</button>`
+    : `<div><b>✓ Correction terminée : ${done} page(s)${err ? ` · ${err} à revoir` : ""}</b><span>Les notes sont prêtes à valider.</span></div><button class="btn sm primary" data-jp="voir">Voir</button><button class="btn sm ghost" data-jp="hide" aria-label="Fermer">×</button>`;
+}
