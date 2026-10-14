@@ -861,16 +861,18 @@ function vScan(){
 }
 function qItem(it){
   const c = it.ctrlId && ctrl(it.ctrlId), e = c && eleveOf(c, it.eleveId);
-  const chip = {attente:["Pending",""], qr:["Reading QR…","blue"], lecture:["Reading and grading…","blue"], ok:["Graded","ok"], manuel:["QR not read","warn"], erreur:["Error","bad"], serveur:["Grading on the server","blue"]}[it.status];
+  const chip = {attente:["Pending",""], qr:["Reading QR…","blue"], lecture:["Reading and grading…","blue"], ok:["Graded","ok"], manuel:["QR not read","warn"], erreur:["Error","bad"], serveur:["Grading on the server","blue"], envoi:["Uploading…","blue"], lot:["On the server","blue"]}[it.status];
+  if (it.lot && it.status === "manuel") chip[0] = "To redo";
   const printed = store.controles.filter(x => x.statut !== "brouillon");
-  return `<div class="qi"><img alt="" src="${it.thumb}"><div><div class="t"><b>${it.label ? esc(it.label) : e ? esc(e.prenom + " " + e.nom) : esc(it.name)}</b>${c ? ` <span class="muted small">· ${esc(c.titre)} · p. ${it.page}</span>` : ""}</div>
+  return `<div class="qi">${it.thumb ? `<img alt="" src="${it.thumb}">` : `<div style="width:48px;height:64px;border:1px solid var(--line);border-radius:6px;display:grid;place-items:center;font-size:20px" aria-hidden="true">📄</div>`}<div><div class="t"><b>${it.label ? esc(it.label) : e ? esc(e.prenom + " " + e.nom) : esc(it.name)}</b>${c ? ` <span class="muted small">· ${esc(c.titre)} · p. ${it.page}</span>` : ""}</div>
     <div class="small ${it.status === "erreur" ? "err" : "muted"}">${esc(it.msg || "")}</div>
-    ${it.status === "manuel" ? `<div class="row" style="margin-top:6px">
+    ${it.lot && it.status === "envoi" ? `<div class="bar" style="margin-top:6px;height:4px;background:var(--line);border-radius:4px;overflow:hidden"><i style="display:block;height:100%;width:${it.pct || 0}%;background:var(--gold,#B7862B)"></i></div>` : ""}
+    ${it.status === "manuel" && !it.lot ? `<div class="row" style="margin-top:6px">
       <select data-mq="${it.id}" data-f="ctrlId" style="width:auto" aria-label="Test"><option value="">Test…</option>${selOpts(printed, it.ctrlId || "", x => x.titre + " · " + (classe(x.classeId)?.nom || ""), x => x.id)}</select>
       ${c ? `<select data-mq="${it.id}" data-f="eleveId" style="width:auto" aria-label="Student"><option value="">Student…</option>${selOpts(studentsOf(c), it.eleveId || "", x => x.prenom + " " + x.nom, x => x.id)}</select>` : ""}
       <select data-mq="${it.id}" data-f="page" style="width:auto" aria-label="Page">${selOpts(["1","2","3","4"], String(it.page || 1), x => "page " + x)}</select>
       <button class="btn sm primary" data-mgo="${it.id}" ${c && it.eleveId ? "" : "disabled"}>Process</button></div>` : ""}
-  </div><div class="row">${chip ? `<span class="chip ${chip[1]}">${chip[0]}</span>` : ""}${it.status === "ok" && it.ctrlId ? `<button class="btn sm" data-corr="${it.ctrlId}" data-el="${it.eleveId}">View</button>` : ""}${it.status === "erreur" ? `<button class="btn sm" data-retry="${it.id}">Retry</button>` : ""}</div></div>`;
+  </div><div class="row">${chip ? `<span class="chip ${chip[1]}">${chip[0]}</span>` : ""}${it.status === "ok" && it.ctrlId ? `<button class="btn sm" data-corr="${it.ctrlId}" data-el="${it.eleveId}">View</button>` : ""}${it.status === "erreur" && !it.lot ? `<button class="btn sm" data-retry="${it.id}">Retry</button>` : ""}${it.lotFix ? `<button class="btn sm primary" data-lotfix="${it.lotFix}">Redo here</button>` : ""}</div></div>`;
 }
 async function fileToCanvases(file){
   if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)){
@@ -979,11 +981,12 @@ function markersOk(found){
 const levD = (a, b) => { const d = Array.from({length:a.length + 1}, (_, i) => [i]); for (let j = 1; j <= b.length; j++) d[0][j] = j;
   for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); return d[a.length][b.length]; };
 function closest(id, list){ let best = null, bd = 99; for (const x of list){ const v = levD(id, x); if (v < bd){ bd = v; best = x; } } return bd <= 2 ? best : null; }
+const FOOTER_PROMPT = `Image: bottom of a printed sheet. Copy exactly the line that starts with “Mastery” (two codes of lowercase letters and digits separated by a dot) and the page number “page X / Y”. Beware of l/1, o/0, q/g confusions. In "page", put only the number X (an integer). Reply only in JSON: {"ligne":"…","page":1}`;
 async function footerId(cv){
   if (!AI) return null;
   const W = cv.width, H = cv.height, strip = crop(cv, 0, H * 0.9, W, H * 0.1);
   try {
-    const r = await ai(`Image: bottom of a printed sheet. Copy exactly the line that starts with “Mastery” (two codes of lowercase letters and digits separated by a dot) and the page number “page X / Y”. Beware of l/1, o/0, q/g confusions. In "page", put only the number X (an integer). Reply only in JSON: {"ligne":"…","page":1}`, {images:[await toBlob(scaled(strip, 1600), .9)], modelTier:"quick"});
+    const r = await ai(FOOTER_PROMPT, {images:[await toBlob(scaled(strip, 1600), .9)], modelTier:"quick"});
     const m = String(r?.ligne || "").toLowerCase().replace(/\s+/g, "").match(/([a-z0-9]{8,16})[·.•:\-|,]+([a-z0-9]{5,12})/); if (!m) return null;
     const cid = closest(m[1], store.controles.map(c => c.id)); if (!cid) return null;
     const eid = closest(m[2], Object.keys(feuille(cid)?.copies || {})); if (!eid) return null;
@@ -1095,6 +1098,7 @@ async function lazyPages(file){
   return [{n:1, i:1, thumb, load:async () => (await fileToCanvases(file))[0]}];
 }
 async function addScans(files){
+  if (lotsOn()){ for (const f of files) await uploadLot(f); return; }
   let n = 0;
   for (const f of files){
     let pages; try { pages = await lazyPages(f); } catch(e){ S.queue.push({id:uid(), name:f.name, thumb:"", status:"erreur", msg:"Unreadable file."}); continue; }
@@ -1650,7 +1654,8 @@ document.addEventListener("click", async ev => {
   }
 
   /* scan */
-  if (t.id === "qclear"){ S.queue = S.queue.filter(x => ["attente","qr","lecture"].includes(x.status)); return render(); }
+  if (d.lotfix) return lotFix(d.lotfix);
+  if (t.id === "qclear"){ S.queue.forEach(x => { if (x.lot && !["envoi"].includes(x.status)) S.lotGone.add(x.lot); }); S.queue = S.queue.filter(x => ["attente","qr","lecture","envoi"].includes(x.status)); return render(); }
   if (d.mgo){ const it = S.queue.find(x => x.id === d.mgo); it.status = "lecture"; render(); await processPage(it); freeCv(it); return; }
   if (d.retry && S.queue.find(x => x.id === d.retry)?.jobErr){ const it = S.queue.find(x => x.id === d.retry);
     try { await api("/api/jobs/" + it.jobId + "/retry", {method:"POST", body:"{}"}); it.status = "serveur"; it.jobErr = false; it.msg = "Restarted on the server."; watchJobs(); } catch(e){ toast(e.message || "Could not retry."); } return render(); }
@@ -3316,11 +3321,12 @@ const jobTxt = () => ({coche:"Checked: ", aucune:"no box", bonne:"Correct answer
 S.jobs = []; S.jobsHide = 0; let jobsTimer = null;
 async function pollJobs(){
   try { const r = await fetch("/api/jobs", {credentials:"same-origin"}); if (!r.ok) return; S.jobs = (await r.json()).jobs || []; } catch(e){ return; }
+  if (window.TIKOUN_CONFIG?.lots){ try { const r = await fetch("/api/lots", {credentials:"same-origin"}); if (r.ok) S.lots = (await r.json()).lots || []; } catch(e){} lotItems(); }
   for (const it of S.queue) if (it.jobId){ const j = S.jobs.find(x => x.id === it.jobId); if (!j) continue;
     if (j.status === "fait" && it.status !== "ok"){ it.status = "ok"; it.msg = j.msg || "Graded."; }
     else if (j.status === "erreur" && it.status !== "erreur"){ it.status = "erreur"; it.msg = j.msg || "Grading failed."; it.jobErr = true; } }
-  jobsPill(); if (S.view === "scanner" || S.step === "scanner") scheduleRender();
-  const pending = S.jobs.some(j => j.status === "attente" || j.status === "en_cours");
+  jobsPill(); if (S.view === "scan") scheduleRender();
+  const pending = S.jobs.some(j => j.status === "attente" || j.status === "en_cours") || (S.lots || []).some(l => ["envoi", "attente", "analyse"].includes(l.status));
   if (pending) watchJobs(); else { clearTimeout(jobsTimer); jobsTimer = null; }
 }
 function watchJobs(){ clearTimeout(jobsTimer); jobsTimer = setTimeout(pollJobs, document.hidden ? 30000 : 6000); jobsPill(); }
@@ -3328,20 +3334,73 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden && jo
 setTimeout(() => { if (jobsOn()) pollJobs(); }, 2500);
 function jobsPill(){
   let el = document.getElementById("jobs-pill");
-  const prep = S.queue.filter(x => ["attente", "qr", "lecture"].includes(x.status)).length, prepTot = S.queue.length;
+  const prep = S.queue.filter(x => ["attente", "qr", "lecture", "envoi"].includes(x.status)).length, prepTot = S.queue.length;
+  const up = S.queue.filter(x => x.status === "envoi");
+  const lotsRun = (S.lots || []).filter(l => ["attente", "analyse"].includes(l.status) && Date.parse(l.createdAt) > S.jobsHide);
+  const lt = lotsRun.reduce((a, l) => a + (l.total || 0), 0), ld = lotsRun.reduce((a, l) => a + l.done, 0);
   const recent = S.jobs.filter(j => Date.parse(j.createdAt) > S.jobsHide), tot = recent.length, done = recent.filter(j => j.status === "fait").length, err = recent.filter(j => j.status === "erreur").length;
+  const lotIssues = (S.lots || []).filter(l => Date.parse(l.createdAt) > S.jobsHide).reduce((a, l) => a + l.pages.filter(p => p.status !== "fait").length, 0);
   const pend = tot - done - err;
-  if (!prep && !tot){ if (el) el.remove(); return; }
+  if (!prep && !tot && !lotsRun.length && !lotIssues){ if (el) el.remove(); return; }
   if (!el){ el = document.createElement("div"); el.id = "jobs-pill"; el.setAttribute("role", "status"); document.body.append(el);
     el.addEventListener("click", ev => { const b = ev.target.closest("button"); if (!b) return;
       if (b.dataset.jp === "hide"){ S.jobsHide = Date.now(); jobsPill(); }
-      if (b.dataset.jp === "voir"){ const ids = [...new Set(recent.map(j => j.ctrlId))]; if (ids.length === 1){ S.corrCtrl = ids[0]; S.corrEleve = null; openCtrl(ids[0], "corriger"); } else go("controles"); }
+      if (b.dataset.jp === "voir"){ const ids = [...new Set(S.jobs.filter(j => Date.parse(j.createdAt) > S.jobsHide).map(j => j.ctrlId))]; if (ids.length === 1){ S.corrCtrl = ids[0]; S.corrEleve = null; openCtrl(ids[0], "corriger"); } else go("controles"); }
       if (b.dataset.jp === "scan") go("scanner"); }); }
   const pct = tot ? Math.round(100 * (done + err) / tot) : 0;
-  el.className = !prep && !pend ? "done" : "";
-  el.innerHTML = prep ? `<div><b>Preparing pages: ${prepTot - prep} / ${prepTot}</b><span>Keep Mastery open a few moments, then grading continues on its own.</span></div><button class="btn sm" data-jp="scan">View</button>`
+  el.className = !prep && !pend && !lotsRun.length ? "done" : "";
+  const upPct = up.length ? Math.round(up.reduce((a, x) => a + (x.pct || 0), 0) / up.length) : 0;
+  el.innerHTML = up.length ? `<div><b>Uploading file: ${upPct} %</b><span>Keep Mastery open until the upload ends; then you can close it, everything continues on the server.</span><i style="--p:${upPct}%"></i></div>`
+    : prep ? `<div><b>Preparing pages: ${prepTot - prep} / ${prepTot}</b><span>Keep Mastery open a few moments, then grading continues on its own.</span></div><button class="btn sm" data-jp="scan">View</button>`
+    : lotsRun.length ? `<div><b>Analyzing pages: ${ld} / ${lt || "…"}${tot ? ` · graded: ${done}` : ""}</b><span>Everything happens on the server: you can close the app.</span><i style="--p:${lt ? Math.round(100 * ld / lt) : 0}%"></i></div><button class="btn sm" data-jp="scan">Details</button>`
     : pend ? `<div><b>Grading in progress: ${done} / ${tot} page(s)</b><span>It keeps running on the server: you can switch pages or close the app.</span><i style="--p:${pct}%"></i></div><button class="btn sm" data-jp="scan">Details</button>`
-    : `<div><b>✓ Grading done: ${done} page(s)${err ? ` · ${err} to check` : ""}</b><span>Grades are ready to review.</span></div><button class="btn sm primary" data-jp="voir">View</button><button class="btn sm ghost" data-jp="hide" aria-label="Close">×</button>`;
+    : `<div><b>✓ Grading done: ${done} page(s)${err + lotIssues ? ` · ${err + lotIssues} to check` : ""}</b><span>${lotIssues ? "Unrecognized pages: open the Scanner to redo them." : "Grades are ready to review."}</span></div>${lotIssues ? `<button class="btn sm" data-jp="scan">Scan</button>` : ""}<button class="btn sm primary" data-jp="voir">View</button><button class="btn sm ghost" data-jp="hide" aria-label="Close">×</button>`;
+}
+
+/* ================= Dépôt d'un fichier entier, analysé sur le serveur ================= */
+const lotsOn = () => !!(window.TIKOUN_CONFIG?.lots && jobsOn());
+S.lots = []; S.lotFixed = {}; S.lotGone = new Set();
+/* Tout ce dont le serveur a besoin pour corriger sans l'application : le texte des consignes de correction de chaque page de chaque copie */
+function buildKit(){
+  const ids = S.scanCtrl ? [S.scanCtrl] : store.controles.filter(c => c.statut !== "brouillon" && Object.keys(feuille(c.id)?.copies || {}).length)
+    .sort((a, b) => (b.date || b.createdAt || "").localeCompare(a.date || a.createdAt || "")).slice(0, 8).map(c => c.id);
+  const prompts = {};
+  for (const cid of ids){ const c = ctrl(cid), f = feuille(cid); if (!c || !f) continue; prompts[cid] = {};
+    for (const [eid, cp] of Object.entries(f.copies || {})){ prompts[cid][eid] = {};
+      (cp.pages || []).forEach((pg, i) => { const qids = pageQ(pg).filter(id => c.questions.some(q => q.id === id)); if (!qids.length) return; const boxes = pg?.b || [];
+        const cq = qids.filter(id => !boxes.some(b => b.q === id && b.type === "qcm"));
+        prompts[cid][eid][i + 1] = {crops:cq.length ? {qids:cq, prompt:gradePrompt(c, cp, cq, "crops")} : null, halves:{qids, prompt:gradePrompt(c, cp, qids, "halves")}}; }); } }
+  return {prompts, footerPrompt:FOOTER_PROMPT, jsonOnly:JSON_ONLY, txt:{...jobTxt(), vide0:"No answer."}};
+}
+async function uploadLot(file){
+  const it = {id:uid(), name:file.name, thumb:"", status:"envoi", pct:0, msg:"Uploading file…"}; S.queue.push(it); scheduleRender();
+  try {
+    const j = await api("/api/lots", {method:"POST", body:JSON.stringify({name:file.name, mime:file.type || (/\.pdf$/i.test(file.name) ? "application/pdf" : "image/jpeg"), kit:buildKit()})});
+    it.lot = j.id;
+    await new Promise((ok, ko) => { const x = new XMLHttpRequest(); x.open("PUT", "/api/lots/" + j.id + "/file"); x.withCredentials = true;
+      x.upload.onprogress = e => { if (e.lengthComputable){ it.pct = Math.round(100 * e.loaded / e.total); it.msg = `Uploading file: ${it.pct} %`; jobsPill(); scheduleRender(); } };
+      x.onload = () => x.status < 300 ? ok() : ko(new Error("HTTP " + x.status)); x.onerror = () => ko(new Error("network")); x.send(file); });
+    it.status = "lot"; it.msg = "File received: analysis and grading on the server. You can close the app."; it.pct = 100;
+    toast("File sent: the rest happens on the server, you can close the app.", 6000);
+  } catch(e){ it.status = "erreur"; it.msg = "Upload failed (" + (e.message || "erreur") + "): try again."; }
+  scheduleRender(); watchJobs(); pollJobs();
+}
+const LOT_MSG = {qr:"QR and footer unreadable", inconnu:"paper from another or deleted test", page:"page of the paper not recognized", kit:"test not prepared for this upload", ecriture:"handwriting sheet"};
+function lotItems(){
+  for (const l of S.lots || []){ let it = S.queue.find(x => x.lot === l.id);
+    if (!it){ if (Date.parse(l.createdAt) <= S.jobsHide || S.lotGone.has(l.id)) continue; it = {id:uid(), name:l.name, lot:l.id, thumb:"", status:"lot", msg:""}; S.queue.push(it); }
+    const js = S.jobs.filter(j => l.jobs.includes(j.id)), d = js.filter(j => j.status === "fait").length;
+    const bad = l.pages.filter(p => p.status !== "fait"), nb = S.lotFixed[l.id] ? 0 : bad.length;
+    it.status = l.status === "erreur" ? "erreur" : (l.status === "fini" && d === js.length) ? (nb ? "manuel" : "ok") : "lot";
+    it.msg = l.status === "erreur" ? "Analysis failed: " + l.msg : `Pages analyzed: ${l.done} / ${l.total || "…"} · graded: ${d} / ${js.length}` + (nb ? ` · ${nb} page(s) to redo (${[...new Set(bad.map(p => LOT_MSG[String(p.msg).split(":")[0]] || p.msg))].join(", ")})` : "");
+    it.lotFix = nb ? l.id : null; }
+}
+async function lotFix(lid){
+  const l = (S.lots || []).find(x => x.id === lid); if (!l) return; S.lotFixed[lid] = true; toast("Fetching the file…");
+  try { const r = await fetch("/api/lots/" + lid + "/file", {credentials:"same-origin"}); if (!r.ok) throw new Error("HTTP " + r.status);
+    const blob = await r.blob(), f = new File([blob], l.name, {type:blob.type}); const pages = await lazyPages(f), want = new Set(l.pages.filter(p => p.status !== "fait").map(p => p.i));
+    for (const pg of pages) if (want.has(pg.i)) S.queue.push({id:uid(), name:l.name + " · p." + pg.i, load:pg.load, src:pg.src, thumb:pg.thumb, status:"attente", msg:""});
+    lotItems(); render(); runQueue(); } catch(e){ S.lotFixed[lid] = false; toast("Could not fetch: " + e.message); }
 }
 
 /* ================= Boot ================= */

@@ -79,11 +79,12 @@ const jobTxt = () => ({coche:"Coché : ", aucune:"aucune case", bonne:"Bonne ré
 S.jobs = []; S.jobsHide = 0; let jobsTimer = null;
 async function pollJobs(){
   try { const r = await fetch("/api/jobs", {credentials:"same-origin"}); if (!r.ok) return; S.jobs = (await r.json()).jobs || []; } catch(e){ return; }
+  if (window.TIKOUN_CONFIG?.lots){ try { const r = await fetch("/api/lots", {credentials:"same-origin"}); if (r.ok) S.lots = (await r.json()).lots || []; } catch(e){} lotItems(); }
   for (const it of S.queue) if (it.jobId){ const j = S.jobs.find(x => x.id === it.jobId); if (!j) continue;
     if (j.status === "fait" && it.status !== "ok"){ it.status = "ok"; it.msg = j.msg || "Corrigée."; }
     else if (j.status === "erreur" && it.status !== "erreur"){ it.status = "erreur"; it.msg = j.msg || "Échec de la correction."; it.jobErr = true; } }
-  jobsPill(); if (S.view === "scanner" || S.step === "scanner") scheduleRender();
-  const pending = S.jobs.some(j => j.status === "attente" || j.status === "en_cours");
+  jobsPill(); if (S.view === "scan") scheduleRender();
+  const pending = S.jobs.some(j => j.status === "attente" || j.status === "en_cours") || (S.lots || []).some(l => ["envoi", "attente", "analyse"].includes(l.status));
   if (pending) watchJobs(); else { clearTimeout(jobsTimer); jobsTimer = null; }
 }
 function watchJobs(){ clearTimeout(jobsTimer); jobsTimer = setTimeout(pollJobs, document.hidden ? 30000 : 6000); jobsPill(); }
@@ -91,18 +92,71 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden && jo
 setTimeout(() => { if (jobsOn()) pollJobs(); }, 2500);
 function jobsPill(){
   let el = document.getElementById("jobs-pill");
-  const prep = S.queue.filter(x => ["attente", "qr", "lecture"].includes(x.status)).length, prepTot = S.queue.length;
+  const prep = S.queue.filter(x => ["attente", "qr", "lecture", "envoi"].includes(x.status)).length, prepTot = S.queue.length;
+  const up = S.queue.filter(x => x.status === "envoi");
+  const lotsRun = (S.lots || []).filter(l => ["attente", "analyse"].includes(l.status) && Date.parse(l.createdAt) > S.jobsHide);
+  const lt = lotsRun.reduce((a, l) => a + (l.total || 0), 0), ld = lotsRun.reduce((a, l) => a + l.done, 0);
   const recent = S.jobs.filter(j => Date.parse(j.createdAt) > S.jobsHide), tot = recent.length, done = recent.filter(j => j.status === "fait").length, err = recent.filter(j => j.status === "erreur").length;
+  const lotIssues = (S.lots || []).filter(l => Date.parse(l.createdAt) > S.jobsHide).reduce((a, l) => a + l.pages.filter(p => p.status !== "fait").length, 0);
   const pend = tot - done - err;
-  if (!prep && !tot){ if (el) el.remove(); return; }
+  if (!prep && !tot && !lotsRun.length && !lotIssues){ if (el) el.remove(); return; }
   if (!el){ el = document.createElement("div"); el.id = "jobs-pill"; el.setAttribute("role", "status"); document.body.append(el);
     el.addEventListener("click", ev => { const b = ev.target.closest("button"); if (!b) return;
       if (b.dataset.jp === "hide"){ S.jobsHide = Date.now(); jobsPill(); }
-      if (b.dataset.jp === "voir"){ const ids = [...new Set(recent.map(j => j.ctrlId))]; if (ids.length === 1){ S.corrCtrl = ids[0]; S.corrEleve = null; openCtrl(ids[0], "corriger"); } else go("controles"); }
+      if (b.dataset.jp === "voir"){ const ids = [...new Set(S.jobs.filter(j => Date.parse(j.createdAt) > S.jobsHide).map(j => j.ctrlId))]; if (ids.length === 1){ S.corrCtrl = ids[0]; S.corrEleve = null; openCtrl(ids[0], "corriger"); } else go("controles"); }
       if (b.dataset.jp === "scan") go("scanner"); }); }
   const pct = tot ? Math.round(100 * (done + err) / tot) : 0;
-  el.className = !prep && !pend ? "done" : "";
-  el.innerHTML = prep ? `<div><b>Préparation des pages : ${prepTot - prep} / ${prepTot}</b><span>Garde Mastery ouvert quelques instants, puis la correction continue seule.</span></div><button class="btn sm" data-jp="scan">Voir</button>`
+  el.className = !prep && !pend && !lotsRun.length ? "done" : "";
+  const upPct = up.length ? Math.round(up.reduce((a, x) => a + (x.pct || 0), 0) / up.length) : 0;
+  el.innerHTML = up.length ? `<div><b>Envoi du fichier : ${upPct} %</b><span>Garde Mastery ouvert jusqu'à la fin de l'envoi ; ensuite tu peux fermer, tout continue sur le serveur.</span><i style="--p:${upPct}%"></i></div>`
+    : prep ? `<div><b>Préparation des pages : ${prepTot - prep} / ${prepTot}</b><span>Garde Mastery ouvert quelques instants, puis la correction continue seule.</span></div><button class="btn sm" data-jp="scan">Voir</button>`
+    : lotsRun.length ? `<div><b>Analyse des pages : ${ld} / ${lt || "…"}${tot ? ` · corrigées : ${done}` : ""}</b><span>Tout se passe sur le serveur : tu peux fermer l'application.</span><i style="--p:${lt ? Math.round(100 * ld / lt) : 0}%"></i></div><button class="btn sm" data-jp="scan">Détail</button>`
     : pend ? `<div><b>Correction en cours : ${done} / ${tot} page(s)</b><span>Elle continue sur le serveur : tu peux changer de page ou fermer l'application.</span><i style="--p:${pct}%"></i></div><button class="btn sm" data-jp="scan">Détail</button>`
-    : `<div><b>✓ Correction terminée : ${done} page(s)${err ? ` · ${err} à revoir` : ""}</b><span>Les notes sont prêtes à valider.</span></div><button class="btn sm primary" data-jp="voir">Voir</button><button class="btn sm ghost" data-jp="hide" aria-label="Fermer">×</button>`;
+    : `<div><b>✓ Correction terminée : ${done} page(s)${err + lotIssues ? ` · ${err + lotIssues} à revoir` : ""}</b><span>${lotIssues ? "Pages non reconnues : ouvre le Scanner pour les reprendre." : "Les notes sont prêtes à valider."}</span></div>${lotIssues ? `<button class="btn sm" data-jp="scan">Scanner</button>` : ""}<button class="btn sm primary" data-jp="voir">Voir</button><button class="btn sm ghost" data-jp="hide" aria-label="Fermer">×</button>`;
+}
+
+/* ================= Dépôt d'un fichier entier, analysé sur le serveur ================= */
+const lotsOn = () => !!(window.TIKOUN_CONFIG?.lots && jobsOn());
+S.lots = []; S.lotFixed = {}; S.lotGone = new Set();
+/* Tout ce dont le serveur a besoin pour corriger sans l'application : le texte des consignes de correction de chaque page de chaque copie */
+function buildKit(){
+  const ids = S.scanCtrl ? [S.scanCtrl] : store.controles.filter(c => c.statut !== "brouillon" && Object.keys(feuille(c.id)?.copies || {}).length)
+    .sort((a, b) => (b.date || b.createdAt || "").localeCompare(a.date || a.createdAt || "")).slice(0, 8).map(c => c.id);
+  const prompts = {};
+  for (const cid of ids){ const c = ctrl(cid), f = feuille(cid); if (!c || !f) continue; prompts[cid] = {};
+    for (const [eid, cp] of Object.entries(f.copies || {})){ prompts[cid][eid] = {};
+      (cp.pages || []).forEach((pg, i) => { const qids = pageQ(pg).filter(id => c.questions.some(q => q.id === id)); if (!qids.length) return; const boxes = pg?.b || [];
+        const cq = qids.filter(id => !boxes.some(b => b.q === id && b.type === "qcm"));
+        prompts[cid][eid][i + 1] = {crops:cq.length ? {qids:cq, prompt:gradePrompt(c, cp, cq, "crops")} : null, halves:{qids, prompt:gradePrompt(c, cp, qids, "halves")}}; }); } }
+  return {prompts, footerPrompt:FOOTER_PROMPT, jsonOnly:JSON_ONLY, txt:{...jobTxt(), vide0:"Pas de réponse."}};
+}
+async function uploadLot(file){
+  const it = {id:uid(), name:file.name, thumb:"", status:"envoi", pct:0, msg:"Envoi du fichier…"}; S.queue.push(it); scheduleRender();
+  try {
+    const j = await api("/api/lots", {method:"POST", body:JSON.stringify({name:file.name, mime:file.type || (/\.pdf$/i.test(file.name) ? "application/pdf" : "image/jpeg"), kit:buildKit()})});
+    it.lot = j.id;
+    await new Promise((ok, ko) => { const x = new XMLHttpRequest(); x.open("PUT", "/api/lots/" + j.id + "/file"); x.withCredentials = true;
+      x.upload.onprogress = e => { if (e.lengthComputable){ it.pct = Math.round(100 * e.loaded / e.total); it.msg = `Envoi du fichier : ${it.pct} %`; jobsPill(); scheduleRender(); } };
+      x.onload = () => x.status < 300 ? ok() : ko(new Error("HTTP " + x.status)); x.onerror = () => ko(new Error("réseau")); x.send(file); });
+    it.status = "lot"; it.msg = "Fichier reçu : analyse et correction sur le serveur. Tu peux fermer l'application."; it.pct = 100;
+    toast("Fichier envoyé : la suite se fait sur le serveur, tu peux fermer l'application.", 6000);
+  } catch(e){ it.status = "erreur"; it.msg = "Envoi impossible (" + (e.message || "erreur") + ") : réessaie."; }
+  scheduleRender(); watchJobs(); pollJobs();
+}
+const LOT_MSG = {qr:"QR et bas de page illisibles", inconnu:"copie d'un autre contrôle ou supprimée", page:"page de la copie non reconnue", kit:"contrôle non préparé pour ce dépôt", ecriture:"fiche d'écriture"};
+function lotItems(){
+  for (const l of S.lots || []){ let it = S.queue.find(x => x.lot === l.id);
+    if (!it){ if (Date.parse(l.createdAt) <= S.jobsHide || S.lotGone.has(l.id)) continue; it = {id:uid(), name:l.name, lot:l.id, thumb:"", status:"lot", msg:""}; S.queue.push(it); }
+    const js = S.jobs.filter(j => l.jobs.includes(j.id)), d = js.filter(j => j.status === "fait").length;
+    const bad = l.pages.filter(p => p.status !== "fait"), nb = S.lotFixed[l.id] ? 0 : bad.length;
+    it.status = l.status === "erreur" ? "erreur" : (l.status === "fini" && d === js.length) ? (nb ? "manuel" : "ok") : "lot";
+    it.msg = l.status === "erreur" ? "Analyse impossible : " + l.msg : `Pages analysées : ${l.done} / ${l.total || "…"} · corrigées : ${d} / ${js.length}` + (nb ? ` · ${nb} page(s) à reprendre (${[...new Set(bad.map(p => LOT_MSG[String(p.msg).split(":")[0]] || p.msg))].join(", ")})` : "");
+    it.lotFix = nb ? l.id : null; }
+}
+async function lotFix(lid){
+  const l = (S.lots || []).find(x => x.id === lid); if (!l) return; S.lotFixed[lid] = true; toast("Récupération du fichier…");
+  try { const r = await fetch("/api/lots/" + lid + "/file", {credentials:"same-origin"}); if (!r.ok) throw new Error("HTTP " + r.status);
+    const blob = await r.blob(), f = new File([blob], l.name, {type:blob.type}); const pages = await lazyPages(f), want = new Set(l.pages.filter(p => p.status !== "fait").map(p => p.i));
+    for (const pg of pages) if (want.has(pg.i)) S.queue.push({id:uid(), name:l.name + " · p." + pg.i, load:pg.load, src:pg.src, thumb:pg.thumb, status:"attente", msg:""});
+    lotItems(); render(); runQueue(); } catch(e){ S.lotFixed[lid] = false; toast("Récupération impossible : " + e.message); }
 }

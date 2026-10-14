@@ -6,7 +6,12 @@
   "scripts": {
     "start": "node server.js"
   },
+  "dependencies": {
+    "@napi-rs/canvas": "^0.1.100",
+    "jsqr": "1.4.0",
+    "pdfjs-dist": "5.7.284"
+  },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   }
 }

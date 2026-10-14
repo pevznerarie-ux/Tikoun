@@ -528,16 +528,18 @@ function vScan(){
 }
 function qItem(it){
   const c = it.ctrlId && ctrl(it.ctrlId), e = c && eleveOf(c, it.eleveId);
-  const chip = {attente:["En attente",""], qr:["Lecture du QR…","blue"], lecture:["Lecture et correction…","blue"], ok:["Corrigée","ok"], manuel:["QR non lu","warn"], erreur:["Erreur","bad"], serveur:["Correction sur le serveur","blue"]}[it.status];
+  const chip = {attente:["En attente",""], qr:["Lecture du QR…","blue"], lecture:["Lecture et correction…","blue"], ok:["Corrigée","ok"], manuel:["QR non lu","warn"], erreur:["Erreur","bad"], serveur:["Correction sur le serveur","blue"], envoi:["Envoi…","blue"], lot:["Sur le serveur","blue"]}[it.status];
+  if (it.lot && it.status === "manuel") chip[0] = "À reprendre";
   const printed = store.controles.filter(x => x.statut !== "brouillon");
-  return `<div class="qi"><img alt="" src="${it.thumb}"><div><div class="t"><b>${it.label ? esc(it.label) : e ? esc(e.prenom + " " + e.nom) : esc(it.name)}</b>${c ? ` <span class="muted small">· ${esc(c.titre)} · p. ${it.page}</span>` : ""}</div>
+  return `<div class="qi">${it.thumb ? `<img alt="" src="${it.thumb}">` : `<div style="width:48px;height:64px;border:1px solid var(--line);border-radius:6px;display:grid;place-items:center;font-size:20px" aria-hidden="true">📄</div>`}<div><div class="t"><b>${it.label ? esc(it.label) : e ? esc(e.prenom + " " + e.nom) : esc(it.name)}</b>${c ? ` <span class="muted small">· ${esc(c.titre)} · p. ${it.page}</span>` : ""}</div>
     <div class="small ${it.status === "erreur" ? "err" : "muted"}">${esc(it.msg || "")}</div>
-    ${it.status === "manuel" ? `<div class="row" style="margin-top:6px">
+    ${it.lot && it.status === "envoi" ? `<div class="bar" style="margin-top:6px;height:4px;background:var(--line);border-radius:4px;overflow:hidden"><i style="display:block;height:100%;width:${it.pct || 0}%;background:var(--gold,#B7862B)"></i></div>` : ""}
+    ${it.status === "manuel" && !it.lot ? `<div class="row" style="margin-top:6px">
       <select data-mq="${it.id}" data-f="ctrlId" style="width:auto" aria-label="Contrôle"><option value="">Contrôle…</option>${selOpts(printed, it.ctrlId || "", x => x.titre + " · " + (classe(x.classeId)?.nom || ""), x => x.id)}</select>
       ${c ? `<select data-mq="${it.id}" data-f="eleveId" style="width:auto" aria-label="Élève"><option value="">Élève…</option>${selOpts(studentsOf(c), it.eleveId || "", x => x.prenom + " " + x.nom, x => x.id)}</select>` : ""}
       <select data-mq="${it.id}" data-f="page" style="width:auto" aria-label="Page">${selOpts(["1","2","3","4"], String(it.page || 1), x => "page " + x)}</select>
       <button class="btn sm primary" data-mgo="${it.id}" ${c && it.eleveId ? "" : "disabled"}>Traiter</button></div>` : ""}
-  </div><div class="row">${chip ? `<span class="chip ${chip[1]}">${chip[0]}</span>` : ""}${it.status === "ok" && it.ctrlId ? `<button class="btn sm" data-corr="${it.ctrlId}" data-el="${it.eleveId}">Voir</button>` : ""}${it.status === "erreur" ? `<button class="btn sm" data-retry="${it.id}">Relancer</button>` : ""}</div></div>`;
+  </div><div class="row">${chip ? `<span class="chip ${chip[1]}">${chip[0]}</span>` : ""}${it.status === "ok" && it.ctrlId ? `<button class="btn sm" data-corr="${it.ctrlId}" data-el="${it.eleveId}">Voir</button>` : ""}${it.status === "erreur" && !it.lot ? `<button class="btn sm" data-retry="${it.id}">Relancer</button>` : ""}${it.lotFix ? `<button class="btn sm primary" data-lotfix="${it.lotFix}">Reprendre ici</button>` : ""}</div></div>`;
 }
 async function fileToCanvases(file){
   if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)){
@@ -646,11 +648,12 @@ function markersOk(found){
 const levD = (a, b) => { const d = Array.from({length:a.length + 1}, (_, i) => [i]); for (let j = 1; j <= b.length; j++) d[0][j] = j;
   for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); return d[a.length][b.length]; };
 function closest(id, list){ let best = null, bd = 99; for (const x of list){ const v = levD(id, x); if (v < bd){ bd = v; best = x; } } return bd <= 2 ? best : null; }
+const FOOTER_PROMPT = `Image : bas d'une feuille imprimée. Recopie exactement la ligne qui commence par « Mastery » (deux codes de lettres minuscules et chiffres séparés par un point) et le numéro de page « page X / Y ». Attention aux confusions l/1, o/0, q/g. Dans "page", mets seulement le nombre X (un entier). Réponds uniquement en JSON : {"ligne":"…","page":1}`;
 async function footerId(cv){
   if (!AI) return null;
   const W = cv.width, H = cv.height, strip = crop(cv, 0, H * 0.9, W, H * 0.1);
   try {
-    const r = await ai(`Image : bas d'une feuille imprimée. Recopie exactement la ligne qui commence par « Mastery » (deux codes de lettres minuscules et chiffres séparés par un point) et le numéro de page « page X / Y ». Attention aux confusions l/1, o/0, q/g. Dans "page", mets seulement le nombre X (un entier). Réponds uniquement en JSON : {"ligne":"…","page":1}`, {images:[await toBlob(scaled(strip, 1600), .9)], modelTier:"quick"});
+    const r = await ai(FOOTER_PROMPT, {images:[await toBlob(scaled(strip, 1600), .9)], modelTier:"quick"});
     const m = String(r?.ligne || "").toLowerCase().replace(/\s+/g, "").match(/([a-z0-9]{8,16})[·.•:\-|,]+([a-z0-9]{5,12})/); if (!m) return null;
     const cid = closest(m[1], store.controles.map(c => c.id)); if (!cid) return null;
     const eid = closest(m[2], Object.keys(feuille(cid)?.copies || {})); if (!eid) return null;
@@ -762,6 +765,7 @@ async function lazyPages(file){
   return [{n:1, i:1, thumb, load:async () => (await fileToCanvases(file))[0]}];
 }
 async function addScans(files){
+  if (lotsOn()){ for (const f of files) await uploadLot(f); return; }
   let n = 0;
   for (const f of files){
     let pages; try { pages = await lazyPages(f); } catch(e){ S.queue.push({id:uid(), name:f.name, thumb:"", status:"erreur", msg:"Fichier illisible."}); continue; }
@@ -1312,7 +1316,8 @@ document.addEventListener("click", async ev => {
   }
 
   /* scan */
-  if (t.id === "qclear"){ S.queue = S.queue.filter(x => ["attente","qr","lecture"].includes(x.status)); return render(); }
+  if (d.lotfix) return lotFix(d.lotfix);
+  if (t.id === "qclear"){ S.queue.forEach(x => { if (x.lot && !["envoi"].includes(x.status)) S.lotGone.add(x.lot); }); S.queue = S.queue.filter(x => ["attente","qr","lecture","envoi"].includes(x.status)); return render(); }
   if (d.mgo){ const it = S.queue.find(x => x.id === d.mgo); it.status = "lecture"; render(); await processPage(it); freeCv(it); return; }
   if (d.retry && S.queue.find(x => x.id === d.retry)?.jobErr){ const it = S.queue.find(x => x.id === d.retry);
     try { await api("/api/jobs/" + it.jobId + "/retry", {method:"POST", body:"{}"}); it.status = "serveur"; it.jobErr = false; it.msg = "Relancée sur le serveur."; watchJobs(); } catch(e){ toast(e.message || "Relance impossible."); } return render(); }

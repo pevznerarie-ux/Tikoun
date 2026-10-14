@@ -678,6 +678,79 @@ async function jobsApi(req, res, url, p, u){
   return sendJ(res, 404, {error:{message:"Route inconnue"}});
 }
 
+/* ---------- Dépôt de copies analysé sur le serveur ----------
+   Le professeur envoie le fichier tel quel (PDF du copieur, photos) : c'est tout ce qui demande l'application ouverte.
+   Le serveur le découpe en pages, les identifie, découpe les cadres et lance la correction. */
+let ENGINE = null; try { ENGINE = require("./scan-engine.js"); } catch(e){ console.warn("Analyse serveur indisponible (npm install ?) :", e.message); }
+const LOTDIR = path.join(DATA, "lots"); fs.mkdirSync(LOTDIR, {recursive:true});
+const LOTS_F = path.join(DATA, "lots.json"); let LOTS = readJ(LOTS_F, []);
+for (const l of LOTS) if (l.status === "analyse") l.status = "attente";
+let lotsTimer = null; const saveLots = () => { clearTimeout(lotsTimer); lotsTimer = setTimeout(() => writeAtomic(LOTS_F, LOTS), 400); };
+const lotPub = l => ({id:l.id, name:l.name, status:l.status, total:l.total || 0, done:Object.keys(l.pages || {}).length, msg:l.msg || "", createdAt:l.createdAt,
+  pages:Object.entries(l.pages || {}).filter(([, r]) => r.status !== "serveur" && r.status !== "fait").map(([i, r]) => ({i:+i, status:r.status, msg:r.msg || "", cid:r.cid || null, eid:r.eid || null})),
+  jobs:Object.values(l.pages || {}).map(r => r.job).filter(Boolean)});
+async function claude(u, content, tier, maxTok){
+  const stop = allowCall("lot:" + u.id, u.id); if (stop){ const e = new Error(stop); e.quota = true; throw e; }
+  const body = {messages:[{role:"user", content}]}; scrubNames(body, u);
+  const M = MODELS(), model = M[tier] || M.default;
+  const r = await fetch((env("ANTHROPIC_BASE_URL") || "https://api.anthropic.com") + "/v1/messages", {method:"POST", signal:AbortSignal.timeout(120000),
+    headers:{"content-type":"application/json", "x-api-key":env("ANTHROPIC_API_KEY"), "anthropic-version":"2023-06-01"},
+    body:JSON.stringify({model, max_tokens:maxTok || 1000, messages:body.messages})});
+  const txt = await r.text(); let j = null; try { j = JSON.parse(txt); } catch(e){}
+  if (!r.ok) throw new Error("IA " + r.status + " " + (j?.error?.message || ""));
+  return (j?.content || []).filter(b => b.type === "text").map(b => b.text).join("");
+}
+let lotRunning = false;
+async function pumpLots(){
+  if (lotRunning || !ENGINE) return; const l = LOTS.find(x => x.status === "attente" && x.file); if (!l) return;
+  const u = USERS.find(x => x.id === l.user); if (!u){ l.status = "erreur"; l.msg = "Compte introuvable"; saveLots(); return; }
+  lotRunning = true; l.status = "analyse"; l.pages = l.pages || {}; saveLots();
+  let kit = {}; try { kit = JSON.parse(fs.readFileSync(path.join(LOTDIR, l.id + ".kit.json"), "utf8")); } catch(e){}
+  const ctx = {kit, user:u,
+    doc:p => DOCS.get(p),
+    controls:() => [...DOCS.keys()].filter(k => k.startsWith("feuilles/") && visible(u, DOCS.get(k))).map(k => k.slice(9)),
+    allowed:cid => canWrite(u, "feuilles/" + cid),
+    saveAsset:async buf => { const id = crypto.randomBytes(10).toString("hex"); fs.writeFileSync(path.join(FILEDIR, id + ".jpg"), buf); return id; },
+    patch:(dp, upd) => { const cur = DOCS.get(dp); if (cur) persist(dp, merge(cur, upd)); },
+    addJob:b => { const j = {id:crypto.randomBytes(8).toString("hex"), user:u.id, status:"attente", createdAt:new Date().toISOString(), name:l.name, lot:l.id,
+      ctrlId:b.ctrlId, eleveId:b.eleveId, page:b.page, prompt:b.prompt, tier:"default", images:b.images, bonus:b.bonus, txt:b.txt, qs:b.qs}; JOBS.push(j); saveJobs(); setTimeout(pumpJobs, 10); return j.id; },
+    footerAI:async jpg => looseJSON(await claude(u, [{type:"image", source:{type:"base64", media_type:"image/jpeg", data:jpg.toString("base64")}}, {type:"text", text:String(kit.footerPrompt || "")}], "quick", 300)),
+    setTotal:n => { l.total = n; saveLots(); },
+    done:i => !!l.pages[i],
+    pageDone:(i, r) => { l.pages[i] = {status:r.status, msg:r.msg || "", cid:r.cid, eid:r.eid, page:r.page, job:r.job || null}; saveLots(); }};
+  try {
+    const buf = fs.readFileSync(path.join(LOTDIR, l.id + ".bin"));
+    await ENGINE.analyseFile(buf, l.mime, ctx);
+    l.status = "fini";
+  } catch(e){ console.warn("Lot", l.id, e.message); l.status = e.quota ? "attente" : "erreur"; l.msg = e.message; if (e.quota) l.notBefore = Date.now() + 3600e3; }
+  finally { lotRunning = false; saveLots(); setTimeout(pumpLots, 100); }
+}
+setInterval(() => { const now = Date.now(); for (const l of LOTS) if (l.notBefore && l.notBefore <= now) delete l.notBefore; pumpLots();
+  const old = now - 3 * 864e5; for (const l of LOTS.filter(x => Date.parse(x.createdAt) < old && x.status !== "attente" && x.status !== "analyse")){ for (const ext of [".bin", ".kit.json"]) fs.rmSync(path.join(LOTDIR, l.id + ext), {force:true}); }
+  const n = LOTS.length; LOTS = LOTS.filter(x => !(Date.parse(x.createdAt) < old && x.status !== "attente" && x.status !== "analyse")); if (LOTS.length !== n) saveLots(); }, 5000);
+async function lotsApi(req, res, url, p, u){
+  if (!u) return sendJ(res, 401, {error:{message:"Connexion requise"}});
+  if (p === "/api/lots" && req.method === "GET"){ const since = Date.now() - 864e5;
+    return sendJ(res, 200, {lots:LOTS.filter(l => l.user === u.id && (Date.parse(l.createdAt) > since || l.status === "attente" || l.status === "analyse")).map(lotPub)}); }
+  if (p === "/api/lots" && req.method === "POST"){
+    if (!ENGINE || !env("ANTHROPIC_API_KEY")) return sendJ(res, 503, {error:{message:"Analyse serveur indisponible"}});
+    if (!access(u).ok) return sendJ(res, 402, {error:{message:NO_ACCESS, code:"no_access"}});
+    const b = await readJSON(req, 30e6) || {};
+    const l = {id:crypto.randomBytes(8).toString("hex"), user:u.id, status:"envoi", name:String(b.name || "copies").slice(0, 120), mime:String(b.mime || "").slice(0, 60), createdAt:new Date().toISOString(), pages:{}};
+    fs.writeFileSync(path.join(LOTDIR, l.id + ".kit.json"), JSON.stringify(isObj(b.kit) ? b.kit : {}));
+    LOTS.push(l); saveLots(); return sendJ(res, 200, {id:l.id});
+  }
+  const m = p.match(/^\/api\/lots\/([a-f0-9]{16})(\/file)?$/); const l = m && LOTS.find(x => x.id === m[1] && x.user === u.id);
+  if (m && !l) return sendJ(res, 404, {error:{message:"Dépôt introuvable"}});
+  if (m && m[2] && req.method === "PUT"){
+    const buf = await readBody(req, 120e6); if (buf.length < 100) return sendJ(res, 400, {error:{message:"Fichier vide"}});
+    fs.writeFileSync(path.join(LOTDIR, l.id + ".bin"), buf); l.file = true; l.status = "attente"; saveLots(); setTimeout(pumpLots, 10); return sendJ(res, 200, {});
+  }
+  if (m && m[2] && req.method === "GET"){ const f = path.join(LOTDIR, l.id + ".bin"); if (!fs.existsSync(f)) return send(res, 404, "Introuvable");
+    res.writeHead(200, {"Content-Type":l.mime || "application/octet-stream"}); return fs.createReadStream(f).pipe(res); }
+  return sendJ(res, 404, {error:{message:"Route inconnue"}});
+}
+
 /* ---------- Routes ---------- */
 /* Sécurité : si aucun compte n'existe (ex. données perdues sans Volume), recrée l'administrateur depuis ADMIN_EMAIL / ADMIN_PASSWORD */
 if (!USERS.length && validEmail(env("ADMIN_EMAIL").toLowerCase()) && env("ADMIN_PASSWORD").length >= 8){
@@ -904,6 +977,7 @@ http.createServer(async (req, res) => {
       if (req.method === "POST" && p === "/api/ai") return await aiProxy(req, res, u);
       if (p.startsWith("/api/backups")) return backups(req, res, p, u);
       if (p === "/api/jobs" || p.startsWith("/api/jobs/")) return await jobsApi(req, res, url, p, u);
+      if (p === "/api/lots" || p.startsWith("/api/lots/")) return await lotsApi(req, res, url, p, u);
       if (p === "/api/banque" || p.startsWith("/api/banque/")) return await banqueApi(req, res, url, p, u);
       if (p === "/api/devices" || p.startsWith("/api/devices/") || p.startsWith("/api/scan/")) return await scanApi(req, res, url, p, u);
       if (p === "/api/etab" || p.startsWith("/api/etab/") || p.startsWith("/api/billing/")){ try { return await billingApi(req, res, url, p, u); } catch(e){ console.warn("Abonnement :", e.message); return sendJ(res, 502, {error:{message:"Paiement indisponible pour le moment : réessaie dans un instant."}}); } }
@@ -912,7 +986,7 @@ http.createServer(async (req, res) => {
     }
     if (req.method !== "GET" && req.method !== "HEAD") return send(res, 405, "Méthode non autorisée");
     if (p === "/config.js")
-      return send(res, 200, "window.TIKOUN_CONFIG = " + JSON.stringify({aiEndpoint:env("ANTHROPIC_API_KEY") ? "/api/ai" : "", jobs:!!env("ANTHROPIC_API_KEY"), storage:"server", accounts:true, signup:signupOpen(), persistent:PERSISTENT, billing:BILLING(), trialDays:TRIAL_DAYS(),
+      return send(res, 200, "window.TIKOUN_CONFIG = " + JSON.stringify({aiEndpoint:env("ANTHROPIC_API_KEY") ? "/api/ai" : "", jobs:!!env("ANTHROPIC_API_KEY"), lots:!!(ENGINE && env("ANTHROPIC_API_KEY")), storage:"server", accounts:true, signup:signupOpen(), persistent:PERSISTENT, billing:BILLING(), trialDays:TRIAL_DAYS(),
         prix:res._lang === "pt" ? {essentiel:env("PRICE_LABEL_ESSENTIEL_PT") || "US$ 14/mês", pro:env("PRICE_LABEL_PRO_PT") || "US$ 22/mês", essentielAn:env("PRICE_LABEL_ESSENTIEL_AN_PT") || "US$ 119/ano", proAn:env("PRICE_LABEL_PRO_AN_PT") || "US$ 189/ano", ecole:env("PRICE_LABEL_ECOLE_PT") || "Sob consulta"}
           : res._lang === "en" ? {essentiel:env("PRICE_LABEL_ESSENTIEL_EN") || "$14/month", pro:env("PRICE_LABEL_PRO_EN") || "$22/month", essentielAn:env("PRICE_LABEL_ESSENTIEL_AN_EN") || "$119/year", proAn:env("PRICE_LABEL_PRO_AN_EN") || "$189/year", ecole:env("PRICE_LABEL_ECOLE_EN") || "Custom quote"}
           : {essentiel:env("PRICE_LABEL_ESSENTIEL") || "12 €/mois", pro:env("PRICE_LABEL_PRO") || "19 €/mois", essentielAn:env("PRICE_LABEL_ESSENTIEL_AN") || "99 €/an", proAn:env("PRICE_LABEL_PRO_AN") || "159 €/an", ecole:env("PRICE_LABEL_ECOLE") || "Sur devis"}}) + ";\n", TYPES[".js"], {"Cache-Control":"no-store"});
