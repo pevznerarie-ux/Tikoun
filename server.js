@@ -635,7 +635,9 @@ async function runJob(j){
   console.log(`IA (tâche) ${model} · ${u.email} · entrée ${jr?.usage?.input_tokens} · sortie ${jr?.usage?.output_tokens}`);
   const res = looseJSON((jr?.content || []).filter(b => b.type === "text").map(b => b.text).join(""));
   if (!res){ j.tries = (j.tries || 0) + 1; j.status = j.tries >= 3 ? "erreur" : "attente"; j.msg = "Réponse de l'IA illisible"; return; }
+  if (j.status === "annule" || cancelled(j.ctrlId, j.eleveId, j.createdAt)){ j.status = "annule"; j.msg = "Annulée (scan recommencé)"; return; }
   const dp = "feuilles/" + j.ctrlId, cur = DOCS.get(dp); if (!cur){ j.status = "erreur"; j.msg = "Feuilles du contrôle introuvables"; return; }
+  if (j.status === "annule" || cancelled(j.ctrlId, j.eleveId, j.createdAt)){ j.status = "annule"; j.msg = "Annulée (scan recommencé)"; return; }
   const {answers, lisibleKo} = jobAnswers(j, res);
   const patch = {copies:{[j.eleveId]:{answers, validee:false}}};
   if (j.bonus) patch.copies[j.eleveId].bonusPages = {[j.page]:{proprete:clampN(+res?.proprete || 0, 0, 1), orthographe:clampN(+res?.orthographe || 0, 0, 1)}};
@@ -643,6 +645,9 @@ async function runJob(j){
   j.status = "fait"; j.doneAt = new Date().toISOString(); j.msg = Object.keys(answers).length + " question(s) corrigée(s)" + (lisibleKo ? " · passage peu lisible signalé" : "");
   delete j.prompt; delete j.qs;
 }
+/* « Recommencer le scan » : ce qui était en route pour ce contrôle (ou cet élève) avant la remise à zéro est abandonné */
+const CANCEL = {};
+const cancelled = (cid, eid, at) => { const t = Math.max(CANCEL[cid] || 0, CANCEL[cid + "|" + eid] || 0); return t && Date.parse(at) <= t; };
 let jobsRunning = 0;
 async function pumpJobs(){
   const now = Date.now(), MAX = +env("AI_JOBS_PARALLEL") || 3;
@@ -674,6 +679,11 @@ async function jobsApi(req, res, url, p, u){
   }
   const m = p.match(/^\/api\/jobs\/([a-f0-9]{16})\/retry$/);
   if (m && req.method === "POST"){ const j = JOBS.find(x => x.id === m[1] && x.user === u.id); if (!j || !j.prompt) return sendJ(res, 404, {error:{message:"Tâche introuvable"}}); j.status = "attente"; j.tries = 0; j.msg = ""; saveJobs(); setTimeout(pumpJobs, 10); return sendJ(res, 200, {}); }
+  if (p === "/api/jobs/cancel" && req.method === "POST"){ const b = await readJSON(req, 2e3) || {}; const cid = String(b.ctrlId || ""), eid = b.eleveId ? String(b.eleveId) : "";
+    if (!canWrite(u, "feuilles/" + cid)) return sendJ(res, 403, {error:{message:"Ce contrôle appartient à un autre professeur"}});
+    const now = Date.now(); CANCEL[eid ? cid + "|" + eid : cid] = now; let n = 0;
+    for (const j of JOBS) if (j.ctrlId === cid && (!eid || j.eleveId === eid) && (j.status === "attente" || j.status === "en_cours")){ j.status = "annule"; j.msg = "Annulée (scan recommencé)"; n++; }
+    saveJobs(); return sendJ(res, 200, {annulees:n}); }
   if (p === "/api/jobs/clear" && req.method === "POST"){ JOBS = JOBS.filter(j => j.user !== u.id || j.status === "attente" || j.status === "en_cours"); saveJobs(); return sendJ(res, 200, {}); }
   return sendJ(res, 404, {error:{message:"Route inconnue"}});
 }
@@ -711,8 +721,8 @@ async function pumpLots(){
     controls:() => [...DOCS.keys()].filter(k => k.startsWith("feuilles/") && visible(u, DOCS.get(k))).map(k => k.slice(9)),
     allowed:cid => canWrite(u, "feuilles/" + cid),
     saveAsset:async buf => { const id = crypto.randomBytes(10).toString("hex"); fs.writeFileSync(path.join(FILEDIR, id + ".jpg"), buf); return id; },
-    patch:(dp, upd) => { const cur = DOCS.get(dp); if (cur) persist(dp, merge(cur, upd)); },
-    addJob:b => { const j = {id:crypto.randomBytes(8).toString("hex"), user:u.id, status:"attente", createdAt:new Date().toISOString(), name:l.name, lot:l.id,
+    patch:(dp, upd) => { const cid = dp.split("/")[1], eid = Object.keys(upd.copies || {})[0]; if (cancelled(cid, eid, l.createdAt)) return; const cur = DOCS.get(dp); if (cur) persist(dp, merge(cur, upd)); },
+    addJob:b => { if (cancelled(b.ctrlId, b.eleveId, l.createdAt)) return null; const j = {id:crypto.randomBytes(8).toString("hex"), user:u.id, status:"attente", createdAt:new Date().toISOString(), name:l.name, lot:l.id,
       ctrlId:b.ctrlId, eleveId:b.eleveId, page:b.page, prompt:b.prompt, tier:"default", images:b.images, bonus:b.bonus, txt:b.txt, qs:b.qs}; JOBS.push(j); saveJobs(); setTimeout(pumpJobs, 10); return j.id; },
     footerAI:async jpg => looseJSON(await claude(u, [{type:"image", source:{type:"base64", media_type:"image/jpeg", data:jpg.toString("base64")}}, {type:"text", text:String(kit.footerPrompt || "")}], "quick", 300)),
     setTotal:n => { l.total = n; saveLots(); },

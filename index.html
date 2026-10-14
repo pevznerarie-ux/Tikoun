@@ -846,6 +846,30 @@ async function printSheets(c, list){
 }
 
 /* ================= SCAN ================= */
+/* Recommencer le scan : efface les pages scannées et les corrections (toute la classe ou un élève), pour tout redéposer */
+function resetPanel(printed){
+  const done = printed.filter(c => Object.values(feuille(c.id)?.copies || {}).some(cp => Object.keys(cp.scans || {}).length || Object.keys(cp.answers || {}).length));
+  if (!done.length) return "";
+  const cid = done.some(c => c.id === S.rsCtrl) ? S.rsCtrl : done.some(c => c.id === S.scanCtrl) ? S.scanCtrl : done[0].id; S.rsCtrl = cid; const c = ctrl(cid);
+  return `<section class="panel grid"><h3>Recommencer le scan</h3>
+    <p class="small muted" style="margin:0">Efface les pages scannées et les corrections déjà faites (y compris celles que tu as validées), puis redépose les copies. Les feuilles imprimées restent valables.</p>
+    <div class="row"><select id="rs-ctrl" style="width:auto" aria-label="Contrôle">${selOpts(done, cid, x => x.titre + " · " + (classe(x.classeId)?.nom || ""), x => x.id)}</select>
+      <select id="rs-el" style="width:auto" aria-label="Élève"><option value="">Toute la classe</option>${selOpts(studentsOf(c).filter(e => feuille(cid)?.copies?.[e.id]), S.rsEl || "", e => e.prenom + " " + e.nom, e => e.id)}</select>
+      <button class="btn" id="rs-go">Effacer et recommencer</button></div></section>`;
+}
+async function resetScan(cid, eid){
+  const c = ctrl(cid), f = feuille(cid); if (!c || !f) return;
+  const who = eid ? (studentsOf(c).find(e => e.id === eid) || {}) : null;
+  if (!confirm(who ? `Effacer le scan et la correction de ${who.prenom} ${who.nom} pour « ${c.titre} » ?` : `Effacer tous les scans et toutes les corrections de « ${c.titre} » ? Les notes déjà validées seront aussi effacées.`)) return;
+  try { await api("/api/jobs/cancel", {method:"POST", body:JSON.stringify({ctrlId:cid, eleveId:eid || ""})}); } catch(e){}
+  const doc = structuredClone(f); delete doc.owner; delete doc.espace; delete doc.id;
+  for (const [k, cp] of Object.entries(doc.copies || {})){ if (eid && k !== eid) continue;
+    for (const x of ["scans", "answers", "validee", "bonusPages", "bonusProf"]) delete cp[x]; }
+  await write("feuilles/" + cid, doc);
+  if (!eid && c.statut !== "imprime" && c.statut !== "brouillon"){ c.statut = "imprime"; await saveCtrl(c); }
+  S.queue = S.queue.filter(x => x.ctrlId !== cid || (eid && x.eleveId !== eid));
+  toast(who ? "Copie remise à zéro : redépose ses pages." : "Contrôle remis à zéro : redépose les copies.", 5000); render();
+}
 function vScan(){
   const printed = store.controles.filter(c => c.statut !== "brouillon");
   return `
@@ -856,6 +880,7 @@ function vScan(){
     ${!AI ? `<p class="banner">L'IA n'est pas disponible dans cette vue : les QR codes seront lus, mais pas les réponses.</p>` : ""}
     ${!printed.length ? `<p class="muted small">Aucun contrôle imprimé pour l'instant.</p>` : ""}
   </section>
+  ${resetPanel(printed)}
   ${S.queue.length ? `<section class="panel"><div class="row between"><h3>File de traitement</h3><button class="btn sm ghost" id="qclear">Vider la liste</button></div>
     <div class="queue" style="margin-top:6px">${S.queue.map(qItem).join("")}</div></section>` : ""}`;
 }
@@ -1650,6 +1675,7 @@ document.addEventListener("click", async ev => {
 
   /* scan */
   if (d.lotfix) return lotFix(d.lotfix);
+  if (t.id === "rs-go") return resetScan($("#rs-ctrl").value, $("#rs-el").value);
   if (t.id === "qclear"){ S.queue.forEach(x => { if (x.lot && !["envoi"].includes(x.status)) S.lotGone.add(x.lot); }); S.queue = S.queue.filter(x => ["attente","qr","lecture","envoi"].includes(x.status)); return render(); }
   if (d.mgo){ const it = S.queue.find(x => x.id === d.mgo); it.status = "lecture"; render(); await processPage(it); freeCv(it); return; }
   if (d.retry && S.queue.find(x => x.id === d.retry)?.jobErr){ const it = S.queue.find(x => x.id === d.retry);
@@ -1751,6 +1777,8 @@ document.addEventListener("change", async ev => {
   if (d.kind){ S.params.kind = d.kind; return render(); }
   if (el.id === "sc-files"){ const fs = Array.from(el.files); el.value = ""; if (fs.length) addScans(fs); return; }
   if (d.mq){ const it = S.queue.find(x => x.id === d.mq); it[d.f] = d.f === "page" ? +el.value : el.value; if (d.f === "ctrlId") it.eleveId = ""; return render(); }
+  if (el.id === "rs-ctrl"){ S.rsCtrl = el.value; S.rsEl = ""; return render(); }
+  if (el.id === "rs-el"){ S.rsEl = el.value; return; }
   if (el.id === "lvlMat"){ S.levelMat = el.value; S.suggestions = null; return render(); }
   if (d.lvl){ const cl = classe(S.classeSel); await write("classes/" + cl.id, {eleves:cl.eleves.map(e => e.id === d.lvl ? {...e, niveaux:{...(e.niveaux || {}), [S.levelMat]:el.value}} : e)}, "update"); return; }
   if (el.id === "corrSel"){ S.corrCtrl = el.value; S.corrEleve = null; return render(); }
