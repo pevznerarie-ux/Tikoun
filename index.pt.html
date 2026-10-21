@@ -302,6 +302,21 @@ textarea,input{text-align:start}
 #jobs-pill i::after{content:"";position:absolute;inset:0;width:var(--p,0%);background:#D9B26A;transition:width .6s}
 #jobs-pill .btn{flex:none;background:#fff;color:#15233F;border-color:transparent}#jobs-pill .btn.ghost{background:transparent;color:#fff}#jobs-pill.done{background:#1E5C3E}
 @media print{#jobs-pill{display:none}}
+.seg{display:inline-flex;gap:4px;padding:4px;border-radius:10px;background:var(--surface-2);margin:0 0 12px;max-width:100%}
+.seg button{border:0;background:none;padding:8px 14px;border-radius:8px;font:inherit;font-weight:600;color:var(--muted);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.qbq{display:grid;gap:12px}
+.qnav{position:sticky;top:0;z-index:5;display:grid;gap:8px;padding:10px 12px}
+.qnav select{flex:1;min-width:0}
+.qchips{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;-webkit-overflow-scrolling:touch}
+.qchips .chip{border:1px solid var(--line);cursor:pointer;font-size:13px;padding:5px 10px}
+.qchips .chip.cur{background:var(--blue);color:var(--on-blue);border-color:var(--blue)}
+.qchips .chip.ok:not(.cur){background:var(--ok-soft,#E6F4EA);color:var(--ok,#1E7B45)}
+.qcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:grid;gap:10px;scroll-margin-top:120px}
+.score .qs{min-width:40px;min-height:36px;border:1px solid var(--line);background:var(--surface);border-radius:8px;font-family:var(--mono);font-weight:700;cursor:pointer;color:var(--ink)}
+.score .qs.on{background:var(--pen);border-color:var(--pen);color:#fff}
+.copy-nav{padding:8px 12px;border-bottom:1px solid var(--line);gap:8px}
+@media (max-width:760px){.score input{width:58px;font-size:16px;min-height:36px}.qcard .row.between{flex-wrap:wrap}.seg{display:flex}.seg button{flex:1;padding:8px 6px;font-size:14px}.q{padding:12px}.copy-h{flex-wrap:wrap}}
 </style>
 
 </head>
@@ -1059,7 +1074,7 @@ function sheetToPhoto(found){
 function warpBox(cv, H, bx, pad = 8){
   const x0 = bx.x - pad, y0 = bx.y - pad, w = bx.w + 2 * pad, h = bx.h + 2 * pad;
   const [ax, ay] = applyH(H, x0, y0), [bx2, by2] = applyH(H, x0 + w, y0);
-  const srcScale = Math.hypot(bx2 - ax, by2 - ay) / w; const k = clamp(srcScale, 1, 900 / w);
+  const srcScale = Math.hypot(bx2 - ax, by2 - ay) / w; const k = clamp(srcScale, 1, 1400 / w);
   const W = Math.round(w * k), Hh = Math.round(h * k);
   const src = pix(cv), SW = cv.width, SH = cv.height;
   const out = document.createElement("canvas"); out.width = W; out.height = Hh; const oc = out.getContext("2d"), od = oc.createImageData(W, Hh);
@@ -1195,7 +1210,7 @@ async function processPage(it){
     const aiB = boxes.filter(b => aiQ.includes(b.q));
     const cropMode = Hm && aiB.length && aiB.length <= Math.max(1, maxImg);
     if (cropMode) for (const b of aiB) crops[b.q] = warpBox(it.cv, Hm, b);
-    if (ASSETS){ for (const k in crops){ try { const a = await ASSETS.upload(await toBlob(crops[k], .82)); crops[k].asset = a.id; } catch(e){} } }
+    if (ASSETS){ for (const k in crops){ try { const a = await ASSETS.upload(await toBlob(crops[k], .88)); crops[k].asset = a.id; } catch(e){} } }
     const localAns = qid => { const q = c.questions.find(x => x.id === qid); if (!q) return null; const ver = cp.version?.[qid] || "standard";
       if (blank.has(qid)) return {transcription:"", annot:"", lisible:true, noteIA:0, note:null, commentaire:"Sem resposta.", erreurs:["sem resposta"], acquis:[], valide:false, auto:true};
       if (marks[qid]) return qcmAnswer(q, ver, marks[qid].coches, marks[qid].ambigu); return null; };
@@ -1204,7 +1219,7 @@ async function processPage(it){
       try {
         let images = [], mode;
         if (cropMode){ const aiB2 = aiB.filter(b => aiQ.includes(b.q)); if (aiB2.some(b => !crops[b.q]?.asset)) throw new Error("crop"); images = aiB2.map(b => crops[b.q].asset); mode = "crops"; }
-        else { const big = scaled(Hm ? maskHeader(it.cv, Hm, boxes) : it.cv, 1600), W = big.width, H = big.height, many = maxImg >= 2;
+        else { const big = scaled(Hm ? maskHeader(it.cv, Hm, boxes) : it.cv, 2200), W = big.width, H = big.height, many = maxImg >= 2;
           const blobs = many ? [await toBlob(crop(big, 0, 0, W, H * 0.56)), await toBlob(crop(big, 0, H * 0.44, W, H * 0.56))] : [await toBlob(big)];
           for (const bl of blobs) images.push((await ASSETS.upload(bl)).id); mode = many ? "halves" : "page"; }
         const qs = aiQ.map(qid => { const q = c.questions.find(x => x.id === qid); if (!q) return null; const ver = cp.version?.[qid] || "standard";
@@ -1223,13 +1238,13 @@ async function processPage(it){
       it.msg = cropMode ? "Lendo os " + aiQ.length + " quadro(s) recortado(s) e corrigindo…" : "Lendo a página e corrigindo (30 s a 1 min)…"; scheduleRender();
       if (cropMode){
         const aiB2 = aiB.filter(b => aiQ.includes(b.q));
-        const res = await ai(gradePrompt(c, cp, aiQ, "crops"), {images: await Promise.all(aiB2.map(b => toBlob(crops[b.q], .8)))});
+        const res = await ai(gradePrompt(c, cp, aiQ, "crops"), {images: await Promise.all(aiB2.map(b => toBlob(crops[b.q], .88))), modelTier:"complex"});
         arr = Array.isArray(res?.reponses) ? res.reponses : []; bon = res;
       } else {
-        const big = scaled(Hm ? maskHeader(it.cv, Hm, boxes) : it.cv, 1600), W = big.width, H = big.height;
+        const big = scaled(Hm ? maskHeader(it.cv, Hm, boxes) : it.cv, 2200), W = big.width, H = big.height;
         const many = maxImg >= 2;
         const imgs = many ? [await toBlob(crop(big, 0, 0, W, H * 0.56)), await toBlob(crop(big, 0, H * 0.44, W, H * 0.56))] : [await toBlob(big)];
-        const res = await ai(gradePrompt(c, cp, aiQ, many ? "halves" : "page"), {images:imgs});
+        const res = await ai(gradePrompt(c, cp, aiQ, many ? "halves" : "page"), {images:imgs, modelTier:"complex"});
         arr = Array.isArray(res?.reponses) ? res.reponses : Array.isArray(res) ? res : []; bon = res;
       }
       if (bonusMax(c)) upd.copies[it.eleveId].bonusPages = {[it.page]:{proprete:clamp(+bon?.proprete || 0, 0, 1), orthographe:clamp(+bon?.orthographe || 0, 0, 1)}};
@@ -1300,7 +1315,8 @@ function vCorrect(){
   return `
   <div class="head"><div><h2>Correção</h2><p>A IA propõe; você valida. Os trechos sublinhados em vermelho são os que a IA considera errados.</p></div>
     <select id="corrSel" style="max-width:440px" aria-label="Prova">${selOpts(list, c.id, x => (x.type === "rattrapage" ? "Recuperação · " : x.type === "exercices" ? "Exercícios · " : "") + x.titre + " · " + (classe(x.classeId)?.nom || ""), x => x.id)}</select></div>
-  <div class="split">
+  <div class="seg" role="tablist"><button data-cmode="copie" aria-pressed="${S.corrMode !== "question"}">Por aluno</button><button data-cmode="question" aria-pressed="${S.corrMode === "question"}">Por questão (turma inteira)</button></div>
+  ${S.corrMode === "question" ? vByQuestion(c, f, studs) : `<div class="split">
     <aside class="panel" style="padding:8px">
       <div class="row between" style="padding:4px 8px 8px"><span class="label">Provas dos alunos</span>
         ${nAlert ? `<button class="btn sm" id="valAll">Validar as ${nAlert} sem alerta</button>` : ""}</div>
@@ -1309,57 +1325,141 @@ function vCorrect(){
         ${!n ? `<span class="chip">não escaneada</span>` : done ? `<span class="num">${noteS(final20(c, k))}</span>${k.validee ? `<span class="chip ok">✓</span>` : `<span class="chip ${warn ? "bad" : "warn"}">${warn ? "a verificar" : "a validar"}</span>`}` : `<span class="chip warn">${n}/${c.questions.length} q.</span>`}</span></button>`; }).join("")}
       <div style="padding:10px 8px 4px;border-top:1px solid var(--line);margin-top:6px" class="row"><button class="btn sm" id="csv">Exportar as notas (CSV)</button><button class="btn sm" id="renduAll">Provas entregues da turma (PDF)</button></div>
     </aside>
-    ${e ? copyView(c, e, cp) : `<div class="panel empty">Nenhum aluno.</div>`}
-  </div>`;
+    ${e ? copyView(c, e, cp, studs) : `<div class="panel empty">Nenhum aluno.</div>`}
+  </div>`}`;
 }
-function renderAnnot(s, qid){
+/* Note : boutons rapides (0, moitié, tout) + saisie libre, faciles à toucher sur téléphone */
+function scoreCtl(q, a, eid, k){
+  const n = noteOf(a), P = +q.points, opts = [...new Set([0, half(P / 2), P])];
+  return `<div class="score">${opts.map(v => `<button class="qs${n === v ? " on" : ""}" data-qset="${v}" data-q="${q.id}" data-eid="${eid}" aria-label="${fmt(v)} point(s)">${fmt(v)}</button>`).join("")}
+    <input type="number" inputmode="decimal" min="0" max="${q.points}" step="0.5" data-score="${q.id}" data-eid="${eid}" value="${n ?? ""}" aria-label="Note question ${k + 1}"><span class="den">/${fmt(P)}</span></div>`;
+}
+/* Correction question par question, pour toute la classe */
+function vByQuestion(c, f, studs){
+  const qs = c.questions || []; if (!qs.length) return `<div class="panel empty">Nenhuma questão.</div>`;
+  let qi = qs.findIndex(q => q.id === S.corrQ); if (qi < 0) qi = 0; const q = qs[qi]; S.corrQ = q.id;
+  const rows = studs.map(e => ({e, cp:f.copies?.[e.id]})), withCp = rows.filter(r => r.cp && (Object.keys(r.cp.answers || {}).length || Object.keys(r.cp.scans || {}).length)), none = rows.filter(r => !withCp.includes(r));
+  const noted = withCp.filter(r => noteOf(r.cp.answers?.[q.id]) != null), avg = noted.length ? noted.reduce((t, r) => t + noteOf(r.cp.answers[q.id]), 0) / noted.length : null;
+  const ptsTo = qs.slice(0, qi + 1).reduce((t, x) => t + +x.points, 0);
+  return `<section class="qbq">
+    <div class="qnav panel">
+      <div class="row between" style="gap:8px;flex-wrap:nowrap"><button class="btn sm" data-qgo="${qi - 1}" ${qi ? "" : "disabled"} aria-label="Questão anterior">←</button>
+        <select id="qbqSel" aria-label="Questão">${qs.map((x, k) => `<option value="${x.id}" ${k === qi ? "selected" : ""}>Questão ${k + 1}${x.notion ? " · " + esc(x.notion) : ""} (/${fmt(+x.points)})</option>`).join("")}</select>
+        <button class="btn sm" data-qgo="${qi + 1}" ${qi < qs.length - 1 ? "" : "disabled"} aria-label="Próxima questão">→</button></div>
+      <div class="qchips">${qs.map((x, k) => { const all = withCp.length && withCp.every(r => noteOf(r.cp.answers?.[x.id]) != null); return `<button class="chip${k === qi ? " cur" : ""}${all ? " ok" : ""}" data-qgo="${k}">Q${k + 1}</button>`; }).join("")}</div>
+      <details><summary class="small"><b>Enunciado e gabarito</b> · ${noted.length}/${withCp.length} corrigido(s)${avg != null ? ` · média ${fmt(Math.round(avg * 10) / 10)}/${fmt(+q.points)}` : ""}</summary>
+        <div dir="auto" style="margin-top:6px">${esc(vOf(q, "standard").enonce)}</div>${vOf(q, "standard").corrige ? `<div class="small muted" dir="auto" style="margin-top:6px;white-space:pre-wrap"><b>Gabarito:</b> ${esc(vOf(q, "standard").corrige)}</div>` : ""}</details>
+    </div>
+    ${withCp.map(({e, cp}, i) => { const a = cp.answers?.[q.id];
+      const sofar = qs.slice(0, qi + 1).reduce((t, x) => t + (noteOf(cp.answers?.[x.id]) ?? 0), 0);
+      return `<article class="qcard" id="qc-${e.id}">
+      <div class="row between" style="gap:8px"><div><b>${esc(e.prenom)} ${esc(e.nom)}</b>${cp.validee ? ` <span class="chip ok">✓</span>` : ""}
+        <div class="small muted num">Até aqui ${fmt(sofar)} / ${fmt(ptsTo)} pts${copyDone(c, cp) ? ` · total ${noteS(final20(c, cp))}` : ""}</div></div>
+        ${scoreCtl(q, a, e.id, qi)}</div>
+      ${a ? `${a.crop ? `<img class="crop" alt="Campo digitalizado" src="${esc(blobSrc(a.crop))}" data-zoom="${esc(blobSrc(a.crop))}">` : ""}
+        <div class="answer" dir="auto">${renderAnnot(a.annot || a.transcription, q.id, e.id) || '<span class="muted">(quadro vazio)</span>'}</div>
+        ${!a.lisible ? `<div class="small" style="color:var(--warn)">⚠ Leitura incerta: compare com a foto.</div>` : ""}
+        ${a.commentaire ? `<div class="small note" dir="auto">${esc(a.commentaire)}</div>` : ""}
+        ${(a.erreurs || []).length ? `<div class="tags">${a.erreurs.map((t, j) => `<span class="chip bad">${esc(t)} <button class="btn sm ghost" style="padding:0 4px;min-height:0" data-unerr="${q.id}|${j}" data-eid="${e.id}" aria-label="Remover este erro">×</button></span>`).join("")}</div>` : ""}`
+        : `<div class="small muted">Nenhuma resposta lida para esta questão ainda.</div>`}
+      <div class="row" style="gap:6px">${pageScanOf(cp, q.id) ? `<button class="btn sm ghost" data-recrop="${q.id}" data-eid="${e.id}">✂ Recortar</button>` : ""}${a?.crop ? `<button class="btn sm ghost" data-precise="${q.id}" data-eid="${e.id}">Reler (IA)</button>` : ""}<span class="status" data-st="${e.id}|${q.id}"></span>
+        <button class="btn sm ghost" data-opencopy="${e.id}">Ver a prova</button></div>
+    </article>`; }).join("") || `<div class="panel empty">Nenhuma prova digitalizada para esta avaliação.</div>`}
+    ${none.length ? `<div class="small muted" style="padding:8px 4px">Ainda não digitalizado(s): ${none.map(r => esc(r.e.prenom + " " + r.e.nom)).join(", ")}</div>` : ""}
+    ${qi < qs.length - 1 ? `<div class="row" style="justify-content:center;padding:8px"><button class="btn primary" data-qgo="${qi + 1}">Próxima questão →</button></div>` : ""}
+  </section>`;
+}
+function renderAnnot(s, qid, eid){
   let n = 0;
-  return esc(s).replace(/⟦([\s\S]*?)⟧/g, (m, x) => qid ? `<mark data-unmark="${qid}|${n++}" title="Clique para remover este destaque" style="cursor:pointer">${x}</mark>` : `<mark>${x}</mark>`).replace(/\[(?:illisible|illegible|ilegível)\]/g, m => `<span class="illisible">${m}</span>`);
+  return esc(s).replace(/⟦([\s\S]*?)⟧/g, (m, x) => qid ? `<mark data-unmark="${qid}|${n++}${eid ? "|" + eid : ""}" title="Clique para remover este destaque" style="cursor:pointer">${x}</mark>` : `<mark>${x}</mark>`).replace(/\[(?:illisible|illegible|ilegível)\]/g, m => `<span class="illisible">${m}</span>`);
 }
 /* Page scannée où se trouve la question (pour recadrer) */
 function pageScanOf(cp, qid){ const i = (cp?.pages || []).findIndex(pg => pageQ(pg).includes(qid)); const s = i >= 0 ? cp?.scans?.[i + 1] : null; return s ? {page:i + 1, scan:s, box:(cp.pages[i]?.b || []).find(b => b.q === qid)} : null; }
 /* Retirer un soulignement rouge en cliquant dessus */
 document.addEventListener("click", async ev => { const m = ev.target.closest("[data-unmark]"); if (!m) return; const C = ctrl(S.corrCtrl); if (!C) return;
-  const [qid, n] = m.dataset.unmark.split("|"), a = feuille(C.id)?.copies?.[S.corrEleve]?.answers?.[qid]; if (!a) return;
+  const [qid, n, e0] = m.dataset.unmark.split("|"), eid = e0 || S.corrEleve, a = feuille(C.id)?.copies?.[eid]?.answers?.[qid]; if (!a) return;
   let k = 0; const annot = String(a.annot || "").replace(/⟦([\s\S]*?)⟧/g, (all, x) => k++ === +n ? x : all);
-  await write("feuilles/" + C.id, {copies:{[S.corrEleve]:{answers:{[qid]:{annot}}}}}, "update"); });
+  await write("feuilles/" + C.id, {copies:{[eid]:{answers:{[qid]:{annot}}}}}, "update"); });
 /* Recadrer un cadre de réponse à la main sur la page scannée */
+/* Page redressée (coordonnées de la feuille × k) à partir des repères des coins */
+function rectifySheet(cv, H, k){
+  const W = Math.round(794 * k), Hh = Math.round(1123 * k), src = pix(cv), SW = cv.width, SH = cv.height;
+  const out = document.createElement("canvas"); out.width = W; out.height = Hh; const oc = out.getContext("2d"), od = oc.createImageData(W, Hh), D = od.data;
+  for (let j = 0; j < Hh; j++) for (let i = 0; i < W; i++){
+    const [sx, sy] = applyH(H, (i + .5) / k, (j + .5) / k), X = sx | 0, Y = sy | 0, o = (j * W + i) * 4;
+    if (X < 0 || Y < 0 || X >= SW || Y >= SH){ D[o] = D[o + 1] = D[o + 2] = D[o + 3] = 255; continue; }
+    const q = (Y * SW + X) * 4; D[o] = src[q]; D[o + 1] = src[q + 1]; D[o + 2] = src[q + 2]; D[o + 3] = 255; }
+  oc.putImageData(od, 0, 0); return out;
+}
+async function sheetOfScan(cv, boxes){
+  try {
+    const found = await detectAll(cv);
+    const have = found.map(x => /^TK1W?\|/.test(x.data) ? "tl" : x.data.startsWith("TK1C|") ? x.data.slice(5) : "").filter(Boolean);
+    let fnd = found; if (have.length < 4){ const extra = blobMarkers(cv, have), all = fnd.concat(extra); if (extra.length && markersOk(all)) fnd = all; }
+    const Hm = sheetToPhoto(fnd); if (!Hm) return null;
+    if ((boxes || []).length && boxScore(cv, Hm, boxes) < 0.45) return null;
+    return Hm;
+  } catch(e){ console.warn("Endireitamento", e); return null; }
+}
 async function recropOpen(C, eid, qid){
   const cp = feuille(C.id)?.copies?.[eid], ps = pageScanOf(cp, qid); if (!ps) return toast("Página escaneada não encontrada.");
-  const k = C.questions.findIndex(q => q.id === qid);
+  const k = C.questions.findIndex(q => q.id === qid), e = eleveOf(C, eid);
   const ov = document.createElement("div"); ov.id = "rc-modal";
-  ov.style.cssText = "position:fixed;inset:0;z-index:80;background:rgba(10,16,30,.82);display:flex;flex-direction:column;align-items:center;padding:14px;gap:10px;overflow:auto";
-  ov.innerHTML = `<div style="color:#fff;font-weight:600;text-align:center">Questão ${k + 1} · página ${ps.page} — desenhe um retângulo em volta da resposta</div>
-    <div id="rc-wrap" style="position:relative;touch-action:none;user-select:none;max-width:min(900px,100%)"><img id="rc-img" alt="Página escaneada" style="display:block;max-width:100%;max-height:72vh"><div id="rc-sel" style="position:absolute;border:3px solid #D9B26A;background:rgba(217,178,106,.18);display:none;pointer-events:none"></div></div>
-    <div class="row" style="justify-content:center"><button class="btn primary" id="rc-ok2">Salvar e reler (IA)</button><button class="btn" id="rc-ok">Salvar o quadro</button><button class="btn ghost" id="rc-x" style="color:#fff">Cancelar</button></div>`;
-  document.body.append(ov);
-  const img = $("#rc-img"), sel = $("#rc-sel"), wrap = $("#rc-wrap");
-  try { img.src = URL.createObjectURL(ps.scan.asset ? await getBlob(ps.scan.asset) : await (await fetch(ps.scan.url)).blob()); } catch(e){ ov.remove(); return toast("Imagem da página não encontrada."); }
-  await new Promise(r => img.complete ? r() : (img.onload = r));
+  ov.style.cssText = "position:fixed;inset:0;z-index:80;background:rgba(10,16,30,.9);display:flex;flex-direction:column;align-items:center;padding:10px;gap:8px;overflow:auto;overscroll-behavior:contain";
+  ov.innerHTML = `<div style="color:#fff;font-weight:600;text-align:center">${e ? esc(e.prenom + " " + e.nom) + " · " : ""}Questão ${k + 1} · página ${ps.page}</div>
+    <div id="rc-tip" class="small" style="color:#cfd6e4;text-align:center">Preparando a página…</div>
+    <div id="rc-wrap" style="position:relative;display:inline-block;touch-action:none;user-select:none;-webkit-user-select:none;line-height:0"><canvas id="rc-img" style="display:block;max-width:min(900px,calc(100vw - 20px));max-height:70vh;width:auto;height:auto;background:#fff"></canvas>
+      <div id="rc-sel" style="position:absolute;border:3px solid #D9B26A;background:rgba(217,178,106,.18);display:none;pointer-events:none;box-sizing:border-box">${["nw","ne","sw","se"].map(h => `<span data-h="${h}" style="position:absolute;width:18px;height:18px;border-radius:50%;background:#D9B26A;border:2px solid #fff;${h[0] === "n" ? "top" : "bottom"}:-11px;${h[1] === "w" ? "left" : "right"}:-11px"></span>`).join("")}</div></div>
+    <div class="row" style="justify-content:center;flex-wrap:wrap"><button class="btn primary" id="rc-ok2">Salvar e reler (IA)</button><button class="btn" id="rc-ok">Salvar o quadro</button><button class="btn ghost" id="rc-x" style="color:#fff">Cancelar</button></div>`;
+  document.body.append(ov); const prevOv = document.body.style.overflow; document.body.style.overflow = "hidden";
+  const close = () => { ov.remove(); document.body.style.overflow = prevOv; window.removeEventListener("resize", show); };
+  const view = $("#rc-img"), sel = $("#rc-sel"), wrap = $("#rc-wrap"), tip = $("#rc-tip");
+  $("#rc-x").onclick = close;
+  let src;
+  try { const bl = ps.scan.asset ? await getBlob(ps.scan.asset) : await (await fetch(ps.scan.url)).blob(); const bmp = await createImageBitmap(bl);
+    src = document.createElement("canvas"); src.width = bmp.width; src.height = bmp.height; src.getContext("2d").drawImage(bmp, 0, 0); }
+  catch(err){ close(); return toast("Imagem da página não encontrada."); }
+  /* On redresse la page avec les repères : le cadre se place alors exactement, quelle que soit l'inclinaison du scan */
+  const Hm = await sheetOfScan(src, cp.pages?.[ps.page - 1]?.b);
+  const pic = Hm ? rectifySheet(src, Hm, Math.min(2, Math.max(1.2, src.width / 794))) : src;
+  view.width = pic.width; view.height = pic.height; view.getContext("2d").drawImage(pic, 0, 0);
+  tip.textContent = Hm ? "Mova o quadro ou puxe os cantos; desenhe um novo retângulo fora dele." : "Página não endireitada: desenhe um retângulo em volta da resposta.";
   let R = null;
-  const show = () => { if (!R) return; const w = img.clientWidth, h = img.clientHeight; Object.assign(sel.style, {display:"block", left:R.x * w + "px", top:R.y * h + "px", width:R.w * w + "px", height:R.h * h + "px"}); };
-  if (ps.box){ const pad = 6; R = {x:(ps.box.x - pad) / 794, y:(ps.box.y - pad) / 1123, w:(ps.box.w + 2 * pad) / 794, h:(ps.box.h + 2 * pad) / 1123}; show(); }
-  let st = null; const pos = ev => { const r = img.getBoundingClientRect(); return [clamp((ev.clientX - r.left) / r.width, 0, 1), clamp((ev.clientY - r.top) / r.height, 0, 1)]; };
-  wrap.addEventListener("pointerdown", ev => { ev.preventDefault(); wrap.setPointerCapture(ev.pointerId); st = pos(ev); R = {x:st[0], y:st[1], w:0, h:0}; show(); });
-  wrap.addEventListener("pointermove", ev => { if (!st) return; const [x, y] = pos(ev); R = {x:Math.min(x, st[0]), y:Math.min(y, st[1]), w:Math.abs(x - st[0]), h:Math.abs(y - st[1])}; show(); });
-  wrap.addEventListener("pointerup", () => { st = null; });
+  function show(){ if (!R) return; const w = view.clientWidth, h = view.clientHeight; Object.assign(sel.style, {display:"block", left:R.x * w + "px", top:R.y * h + "px", width:R.w * w + "px", height:R.h * h + "px"}); }
+  if (Hm && ps.box){ const pad = 6; R = {x:(ps.box.x - pad) / 794, y:(ps.box.y - pad) / 1123, w:(ps.box.w + 2 * pad) / 794, h:(ps.box.h + 2 * pad) / 1123}; }
+  requestAnimationFrame(show);
+  const pos = ev => { const r = view.getBoundingClientRect(); return [clamp((ev.clientX - r.left) / r.width, 0, 1), clamp((ev.clientY - r.top) / r.height, 0, 1)]; };
+  let drag = null;
+  wrap.addEventListener("pointerdown", ev => { ev.preventDefault(); wrap.setPointerCapture(ev.pointerId); const [x, y] = pos(ev), h = ev.target.dataset?.h;
+    if (R && h) drag = {mode:h, R:{...R}, p:[x, y]};
+    else if (R && x > R.x && x < R.x + R.w && y > R.y && y < R.y + R.h) drag = {mode:"move", R:{...R}, p:[x, y]};
+    else { drag = {mode:"new", p:[x, y]}; R = {x, y, w:0, h:0}; } show(); });
+  wrap.addEventListener("pointermove", ev => { if (!drag) return; ev.preventDefault(); const [x, y] = pos(ev), [px, py] = drag.p, o = drag.R;
+    if (drag.mode === "new") R = {x:Math.min(x, px), y:Math.min(y, py), w:Math.abs(x - px), h:Math.abs(y - py)};
+    else if (drag.mode === "move") R = {...o, x:clamp(o.x + x - px, 0, 1 - o.w), y:clamp(o.y + y - py, 0, 1 - o.h)};
+    else { let x0 = o.x, y0 = o.y, x1 = o.x + o.w, y1 = o.y + o.h; if (drag.mode[1] === "w") x0 = x; else x1 = x; if (drag.mode[0] === "n") y0 = y; else y1 = y;
+      R = {x:Math.min(x0, x1), y:Math.min(y0, y1), w:Math.abs(x1 - x0), h:Math.abs(y1 - y0)}; }
+    show(); });
+  const end = () => { drag = null; }; wrap.addEventListener("pointerup", end); wrap.addEventListener("pointercancel", end);
   window.addEventListener("resize", show);
   const save = async relire => {
     if (!R || R.w < 0.03 || R.h < 0.02) return toast("Primeiro desenhe um retângulo em volta da resposta.");
-    const W = img.naturalWidth, H = img.naturalHeight, cv = document.createElement("canvas");
-    cv.width = Math.round(R.w * W); cv.height = Math.round(R.h * H); cv.getContext("2d").drawImage(img, R.x * W, R.y * H, R.w * W, R.h * H, 0, 0, cv.width, cv.height);
-    try { const a = await ASSETS.upload(await toBlob(scaled(cv, 1400), .88));
+    const W = pic.width, H = pic.height, cv = document.createElement("canvas");
+    cv.width = Math.round(R.w * W); cv.height = Math.round(R.h * H); cv.getContext("2d").drawImage(pic, R.x * W, R.y * H, R.w * W, R.h * H, 0, 0, cv.width, cv.height);
+    try { const a = await ASSETS.upload(await toBlob(scaled(cv, 1600), .9));
       await write("feuilles/" + C.id, {copies:{[eid]:{answers:{[qid]:{crop:a.id}}}}}, "update");
-      S.recropped = {...(S.recropped || {}), [qid]:true}; ov.remove(); toast("Quadro salvo."); render();
-      if (relire) setTimeout(() => document.querySelector(`[data-precise="${qid}"]`)?.click(), 300);
-    } catch(e){ toast("Não foi possível salvar: " + (e?.message || "tente novamente.")); }
+      S.recropped = {...(S.recropped || {}), [qid + "|" + eid]:true}; close(); toast("Quadro salvo."); render();
+      if (relire) setTimeout(() => document.querySelector(`[data-precise="${qid}"][data-eid="${eid}"]`)?.click() || document.querySelector(`[data-precise="${qid}"]:not([data-eid])`)?.click(), 300);
+    } catch(err){ toast("Não foi possível salvar: " + (err?.message || "tente novamente.")); }
   };
-  $("#rc-ok").onclick = () => save(false); $("#rc-ok2").onclick = () => save(true); $("#rc-x").onclick = () => ov.remove();
+  $("#rc-ok").onclick = () => save(false); $("#rc-ok2").onclick = () => save(true);
 }
-function copyView(c, e, cp){
+function copyView(c, e, cp, studs){
   const max = maxOf(c), has = cp && Object.keys(cp.answers || {}).length, done = copyDone(c, cp);
   const scans = cp?.scans ? Object.entries(cp.scans).sort((a, b) => a[0] - b[0]) : [];
   return `<article class="copy">
+    ${studs ? (() => { const i = studs.findIndex(x => x.id === e.id), p = studs[i - 1], n = studs[i + 1];
+      return `<div class="copy-nav row between"><button class="btn sm" ${p ? `data-cel="${p.id}"` : "disabled"}>← ${p ? esc(p.prenom) : ""}</button><span class="small muted">${i + 1} / ${studs.length}</span><button class="btn sm" ${n ? `data-cel="${n.id}"` : "disabled"}>${n ? esc(n.prenom) : ""} →</button></div>`; })() : ""}
     <div class="copy-h"><div><div class="label">Prova do aluno${c.differencie ? ` · <span class="lvl ${versionFor(c, e)}">${LVL[versionFor(c, e)]}</span>` : ""}</div><h3 style="font-size:20px">${esc(e.prenom)} ${esc(e.nom)}</h3></div>
       <div class="row">${done ? `<div><div class="total num">${nv(final20(c, cp))}<small>${sfxN(final20(c, cp))}</small></div>${bonusMax(c) ? `<div class="small muted num">brute ${fmt(on20(copyTotal(c, cp), max))} + bônus ${fmt(bonusOf(c, cp).proprete + bonusOf(c, cp).orthographe)}</div>` : ""}</div>` : ""}
       <button class="btn ${cp?.validee ? "" : "pen"}" id="validate" ${has || done ? "" : "disabled"}>${cp?.validee ? "Validada ✓" : "Validar a prova"}</button>
@@ -1372,7 +1472,7 @@ function copyView(c, e, cp){
       const edT = S.editTr[q.id], edC = S.editCom[q.id];
       return `<div class="q">
       <div class="q-top"><div><span class="label">Questão ${k + 1}${q.notion ? " · " + esc(q.notion) : ""}</span><div style="font-weight:600" dir="auto">${esc(v.enonce)}</div></div>
-        <div class="score"><input type="number" min="0" max="${q.points}" step="0.5" id="sc-${q.id}" data-score="${q.id}" value="${n ?? ""}" aria-label="Note question ${k + 1}"><span class="den">/${fmt(+q.points)}</span></div></div>
+        ${scoreCtl(q, a, e.id, k)}</div>
       ${a ? `${edT ? `<textarea id="tr-${q.id}" data-live dir="auto">${esc(a.transcription)}</textarea><div class="row"><button class="btn sm primary" data-retr="${q.id}">Corrigir de novo com este texto (IA)</button><button class="btn sm ghost" data-trx="${q.id}">Cancelar</button><span class="status" id="rs-${q.id}"></span></div>`
         : `<div class="answer" dir="auto">${renderAnnot(a.annot || a.transcription, q.id) || '<span class="muted">(quadro vazio)</span>'}</div>`}
       ${a.crop ? `<img class="crop" alt="Campo digitalizado" src="${esc(blobSrc(a.crop))}" data-zoom="${esc(blobSrc(a.crop))}">` : ""}
@@ -1726,7 +1826,15 @@ document.addEventListener("click", async ev => {
   /* correction */
   if (S.view === "correct"){
     const C = ctrl(S.corrCtrl);
-    if (d.cel){ S.corrEleve = d.cel; S.editTr = {}; S.editCom = {}; return render(); }
+    if (d.cmode){ S.corrMode = d.cmode; return render(); }
+    if (d.qgo){ const q = C.questions[+d.qgo]; if (q){ S.corrQ = q.id; render(); scrollTo({top:0}); } return; }
+    if (d.opencopy){ S.corrMode = "copie"; S.corrEleve = d.opencopy; S.editTr = {}; S.editCom = {}; render(); scrollTo({top:0}); return; }
+    if (d.eid) S.corrEleve = d.eid;
+    if (d.qset != null && d.q){ const q = C.questions.find(x => x.id === d.q); if (!q) return; const v = clamp(half(+d.qset), 0, +q.points);
+      await write("feuilles/" + C.id, {copies:{[d.eid]:{validee:false, answers:{[d.q]:{note:v, valide:false}}}}}, "update");
+      if (S.corrMode === "question"){ const cur = document.getElementById("qc-" + d.eid), nx = cur?.nextElementSibling; if (nx?.classList.contains("qcard")) nx.scrollIntoView({behavior:"smooth", block:"start"}); }
+      return; }
+    if (d.cel){ S.corrEleve = d.cel; S.editTr = {}; S.editCom = {}; render(); if (innerWidth < 760) document.querySelector(".copy")?.scrollIntoView({block:"start"}); return; }
     if (d.tr){ S.editTr[d.tr] = true; return render(); }
     if (d.trx){ delete S.editTr[d.trx]; return render(); }
     if (d.cm){ S.editCom[d.cm] = true; return render(); }
@@ -1737,13 +1845,13 @@ document.addEventListener("click", async ev => {
     if (d.savecm){ const v = $("#cm-" + d.savecm).value; delete S.editCom[d.savecm];
       await write("feuilles/" + C.id, {copies:{[S.corrEleve]:{answers:{[d.savecm]:{commentaire:v}}, validee:false}}}, "update"); return; }
     if (d.precise){
-      const qid = d.precise, q = C.questions.find(x => x.id === qid), cp = feuille(C.id).copies[S.corrEleve], a = cp.answers[qid], st = $("#pr-" + qid) || $("#pr2-" + qid);
+      const qid = d.precise, q = C.questions.find(x => x.id === qid), cp = feuille(C.id).copies[S.corrEleve], a = cp.answers[qid], st = document.querySelector(`[data-st="${S.corrEleve}|${qid}"]`) || $("#pr-" + qid) || $("#pr2-" + qid);
       t.disabled = true; st.innerHTML = `<span class="thinking">Releitura minuciosa (modelo mais potente)…</span>`;
       try{
         const blob = await getBlob(a.crop);
         const i = C.questions.indexOf(q);
         const smp = await sampleImages(S.corrEleve, C.matiere);
-        const r = await ai(`Leia com muita atenção este quadro de resposta manuscrita de um aluno (${C.matiere}, ${C.niveau || ""}), depois corrija. A imagem 1 é o quadro a ler.${smp.txt}${lectureTips()}\n${qBlockPrompt(C, q, cp.version?.[qid] || "standard", i)}${S.recropped?.[qid] ? "" : `\n\nUma primeira leitura deu: """${a.transcription}""" (considerada incerta).`}\nTranscreva linha por linha, sem corrigir a ortografia. ${MATH_RULE} Hebraico em caracteres hebraicos. Trecho realmente ilegível: [ilegível]. "annotee" = transcrição com cada trecho errado cercado por ⟦ ⟧ (fora dos $…$). Nota em passos de 0,5. Comentário de 2 a 3 frases, dirigido diretamente ao aluno (você). ${NOSRC}\nResponda apenas em JSON, em português para uma escola brasileira: {"transcription":"…","annotee":"…","lisible":true,"note":0,"commentaire":"…","erreurs":["…"],"acquis":["…"]}`, {images:[blob, ...smp.blobs], modelTier:"complex"});
+        const r = await ai(`Leia com muita atenção este quadro de resposta manuscrita de um aluno (${C.matiere}, ${C.niveau || ""}), depois corrija. A imagem 1 é o quadro a ler.${smp.txt}${lectureTips()}\n${qBlockPrompt(C, q, cp.version?.[qid] || "standard", i)}${S.recropped?.[qid + "|" + S.corrEleve] ? "" : `\n\nUma primeira leitura deu: """${a.transcription}""" (considerada incerta).`}\nTranscreva linha por linha, sem corrigir a ortografia. ${MATH_RULE} Hebraico em caracteres hebraicos. Trecho realmente ilegível: [ilegível]. "annotee" = transcrição com cada trecho errado cercado por ⟦ ⟧ (fora dos $…$). Nota em passos de 0,5. Comentário de 2 a 3 frases, dirigido diretamente ao aluno (você). ${NOSRC}\nResponda apenas em JSON, em português para uma escola brasileira: {"transcription":"…","annotee":"…","lisible":true,"note":0,"commentaire":"…","erreurs":["…"],"acquis":["…"]}`, {images:[blob, ...smp.blobs], modelTier:"complex"});
         await write("feuilles/" + C.id, {copies:{[S.corrEleve]:{validee:false, answers:{[qid]:{transcription:String(r.transcription || ""), transcriptionIA:String(r.transcription || ""), annot:String(r.annotee || r.transcription || ""), lisible:r.lisible !== false,
           noteIA:clamp(half(+r.note || 0), 0, +q.points), note:null, commentaire:String(r.commentaire || ""), erreurs:(r.erreurs || []).map(String).slice(0, 4), acquis:(r.acquis || []).map(String).slice(0, 4), valide:false}}}}}, "update");
       }catch(e){ st.textContent = e?.code ? aiErr(e.code) : "Imagem do quadro não encontrada."; t.disabled = false; }
@@ -1829,8 +1937,9 @@ document.addEventListener("change", async ev => {
   if (el.id === "anSel"){ S.anCtrl = el.value; return render(); }
   if (d.bonus){ const C = ctrl(S.corrCtrl), mx = +C.bonus?.[d.bonus] || 0; const v = el.value === "" ? null : clamp(half(+el.value), 0, mx);
     await write("feuilles/" + C.id, {copies:{[S.corrEleve]:{validee:false, bonusProf:{[d.bonus]:v}}}}, "update"); return; }
+  if (el.id === "qbqSel"){ S.corrQ = el.value; return render(); }
   if (d.score){ const C = ctrl(S.corrCtrl), q = C.questions.find(x => x.id === d.score); const v = el.value === "" ? null : clamp(half(+el.value), 0, +q.points);
-    await write("feuilles/" + C.id, {copies:{[S.corrEleve]:{validee:false, answers:{[d.score]:{note:v, valide:false}}}}}, "update"); return; }
+    await write("feuilles/" + C.id, {copies:{[d.eid || S.corrEleve]:{validee:false, answers:{[d.score]:{note:v, valide:false}}}}}, "update"); return; }
   /* editor fields */
   const c = S.view === "edit" ? ctrl(S.editId) : null; if (!c) return;
   if (el.id === "prevEl"){ S.previewEleve = el.value; return drawPreview(); }

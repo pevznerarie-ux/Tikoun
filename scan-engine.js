@@ -107,7 +107,7 @@ function sheetToPhoto(found){
 function warpBox(cv, H, bx, pad = 8){
   const x0 = bx.x - pad, y0 = bx.y - pad, w = bx.w + 2 * pad, h = bx.h + 2 * pad;
   const [ax, ay] = applyH(H, x0, y0), [bx2, by2] = applyH(H, x0 + w, y0);
-  const srcScale = Math.hypot(bx2 - ax, by2 - ay) / w; const k = clamp(srcScale, 1, 900 / w);
+  const srcScale = Math.hypot(bx2 - ax, by2 - ay) / w; const k = clamp(srcScale, 1, 1400 / w);
   const W = Math.round(w * k), Hh = Math.round(h * k);
   const src = pix(cv), SW = cv.width, SH = cv.height;
   const out = document.createElement("canvas"); out.width = W; out.height = Hh; const oc = out.getContext("2d"), od = oc.createImageData(W, Hh);
@@ -233,10 +233,10 @@ async function analysePage(cv, ctx, st){
   const aiB = boxes.filter(b => aiQ.includes(b.q));
   if (aiQ.length){
     if (Hm && aiB.length === aiQ.length && P.crops && P.crops.qids.join() === aiQ.join()){
-      mode = "crops"; for (const qid of aiQ){ const b = aiB.find(x => x.q === qid); const id = await ctx.saveAsset(await toJpeg(warpBox(cv, Hm, b))); crops[qid] = id; images.push(id); }
+      mode = "crops"; for (const qid of aiQ){ const b = aiB.find(x => x.q === qid); const id = await ctx.saveAsset(await toJpeg(warpBox(cv, Hm, b), 0.88)); crops[qid] = id; images.push(id); }
       prompt = P.crops.prompt;
     } else {
-      mode = "halves"; const big = scaled(Hm ? maskHeader(cv, Hm, boxes) : cv, 1600), W = big.width, H = big.height;
+      mode = "halves"; const big = scaled(Hm ? maskHeader(cv, Hm, boxes) : cv, 2200), W = big.width, H = big.height;
       images.push(await ctx.saveAsset(await toJpeg(crop(big, 0, 0, W, H * 0.56)))); images.push(await ctx.saveAsset(await toJpeg(crop(big, 0, H * 0.44, W, H * 0.56))));
       prompt = P.halves.prompt;
     }

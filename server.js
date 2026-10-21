@@ -17,6 +17,8 @@ const ROOT = __dirname, PORT = process.env.PORT || 3000;
 const TYPES = {".html":"text/html; charset=utf-8", ".js":"text/javascript; charset=utf-8", ".css":"text/css; charset=utf-8", ".json":"application/json",
   ".md":"text/markdown; charset=utf-8", ".png":"image/png", ".jpg":"image/jpeg", ".svg":"image/svg+xml", ".ico":"image/x-icon", ".webmanifest":"application/manifest+json", ".txt":"text/plain; charset=utf-8"};
 const env = k => (process.env[k] || "").trim();
+/* Lecture des copies manuscrites : modèle le plus précis par défaut (GRADE_TIER=default pour revenir au modèle rapide) */
+const GRADE_TIER = () => ["quick","default","complex"].includes(env("GRADE_TIER")) ? env("GRADE_TIER") : "complex";
 const MODELS = () => ({quick:env("MODEL_QUICK") || "claude-haiku-4-5-20251001", default:env("MODEL_DEFAULT") || "claude-haiku-4-5-20251001", complex:env("MODEL_COMPLEX") || "claude-sonnet-5"});
 
 function send(res, status, body, type = "text/plain; charset=utf-8", extra = {}){
@@ -671,7 +673,7 @@ async function jobsApi(req, res, url, p, u){
     if (!canWrite(u, "feuilles/" + b.ctrlId)) return sendJ(res, 403, {error:{message:"Ce contrôle appartient à un autre professeur"}});
     if (JOBS.filter(j => j.user === u.id && (j.status === "attente" || j.status === "en_cours")).length > 400) return sendJ(res, 429, {error:{message:"Trop de pages en attente"}});
     const j = {id:crypto.randomBytes(8).toString("hex"), user:u.id, status:"attente", createdAt:new Date().toISOString(), name:String(b.name || "").slice(0, 120),
-      ctrlId:b.ctrlId, eleveId:b.eleveId, page:Math.max(1, +b.page || 1), prompt:String(b.prompt || "").slice(0, 200000), tier:["quick","default","complex"].includes(b.tier) ? b.tier : "default",
+      ctrlId:b.ctrlId, eleveId:b.eleveId, page:Math.max(1, +b.page || 1), prompt:String(b.prompt || "").slice(0, 200000), tier:["quick","default","complex"].includes(b.tier) ? b.tier : GRADE_TIER(),
       images:(Array.isArray(b.images) ? b.images : []).filter(x => /^[a-z0-9]{8,40}$/.test(x)).slice(0, 20), bonus:!!b.bonus, txt:isObj(b.txt) ? b.txt : {},
       qs:(Array.isArray(b.qs) ? b.qs : []).slice(0, 40).map(q => ({id:String(q.id), points:+q.points || 0, type:q.type === "qcm" ? "qcm" : "", good:Array.isArray(q.good) ? q.good.map(Number) : [], notion:String(q.notion || "").slice(0, 80), crop:/^[a-z0-9]{8,40}$/.test(q.crop || "") ? q.crop : null}))};
     if (!j.images.length || !j.qs.length) return sendJ(res, 400, {error:{message:"Tâche vide"}});
@@ -723,7 +725,7 @@ async function pumpLots(){
     saveAsset:async buf => { const id = crypto.randomBytes(10).toString("hex"); fs.writeFileSync(path.join(FILEDIR, id + ".jpg"), buf); return id; },
     patch:(dp, upd) => { const cid = dp.split("/")[1], eid = Object.keys(upd.copies || {})[0]; if (cancelled(cid, eid, l.createdAt)) return; const cur = DOCS.get(dp); if (cur) persist(dp, merge(cur, upd)); },
     addJob:b => { if (cancelled(b.ctrlId, b.eleveId, l.createdAt)) return null; const j = {id:crypto.randomBytes(8).toString("hex"), user:u.id, status:"attente", createdAt:new Date().toISOString(), name:l.name, lot:l.id,
-      ctrlId:b.ctrlId, eleveId:b.eleveId, page:b.page, prompt:b.prompt, tier:"default", images:b.images, bonus:b.bonus, txt:b.txt, qs:b.qs}; JOBS.push(j); saveJobs(); setTimeout(pumpJobs, 10); return j.id; },
+      ctrlId:b.ctrlId, eleveId:b.eleveId, page:b.page, prompt:b.prompt, tier:GRADE_TIER(), images:b.images, bonus:b.bonus, txt:b.txt, qs:b.qs}; JOBS.push(j); saveJobs(); setTimeout(pumpJobs, 10); return j.id; },
     footerAI:async jpg => looseJSON(await claude(u, [{type:"image", source:{type:"base64", media_type:"image/jpeg", data:jpg.toString("base64")}}, {type:"text", text:String(kit.footerPrompt || "")}], "quick", 300)),
     setTotal:n => { l.total = n; saveLots(); },
     done:i => !!l.pages[i],
