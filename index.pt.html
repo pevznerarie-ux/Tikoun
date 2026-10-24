@@ -1203,9 +1203,10 @@ async function processPage(it){
     const qcmB = Hm ? boxes.filter(b => b.type === "qcm") : [];
     let aiQ = qids.filter(id => !qcmB.some(b => b.q === id));
     /* Économie : un cadre vide n'est pas envoyé à l'IA */
-    const blank = new Set(Hm ? boxes.filter(b => b.type !== "qcm" && aiQ.includes(b.q) && inkRatio(it.cv, Hm, b) < 0.003).map(b => b.q) : []);
+    const blank = new Set(Hm ? boxes.filter(b => b.type !== "qcm" && aiQ.includes(b.q) && inkRatio(it.cv, Hm, b) < 0.0008).map(b => b.q) : []);
     aiQ = aiQ.filter(id => !blank.has(id));
     let arr = [], crops = {}, bon = null, marks = {};
+    for (const qb of blank){ const b = boxes.find(x => x.q === qb); if (b) crops[qb] = warpBox(it.cv, Hm, b); }
     for (const b of qcmB){ marks[b.q] = readMarks(it.cv, Hm, b); crops[b.q] = warpBox(it.cv, Hm, b); }
     const aiB = boxes.filter(b => aiQ.includes(b.q));
     const cropMode = Hm && aiB.length && aiB.length <= Math.max(1, maxImg);
@@ -1362,7 +1363,7 @@ function vByQuestion(c, f, studs){
         ${a.commentaire ? `<div class="small note" dir="auto">${esc(a.commentaire)}</div>` : ""}
         ${(a.erreurs || []).length ? `<div class="tags">${a.erreurs.map((t, j) => `<span class="chip bad">${esc(t)} <button class="btn sm ghost" style="padding:0 4px;min-height:0" data-unerr="${q.id}|${j}" data-eid="${e.id}" aria-label="Remover este erro">×</button></span>`).join("")}</div>` : ""}`
         : `<div class="small muted">Nenhuma resposta lida para esta questão ainda.</div>`}
-      <div class="row" style="gap:6px">${pageScanOf(cp, q.id) ? `<button class="btn sm ghost" data-recrop="${q.id}" data-eid="${e.id}">✂ Recortar</button>` : ""}${a?.crop ? `<button class="btn sm ghost" data-precise="${q.id}" data-eid="${e.id}">Reler (IA)</button>` : ""}<span class="status" data-st="${e.id}|${q.id}"></span>
+      <div class="row" style="gap:6px">${cp ? `<button class="btn sm ghost" data-recrop="${q.id}" data-eid="${e.id}">✂ Recortar</button>` : ""}${a?.crop ? `<button class="btn sm ghost" data-precise="${q.id}" data-eid="${e.id}">Reler (IA)</button>` : ""}<span class="status" data-st="${e.id}|${q.id}"></span>
         <button class="btn sm ghost" data-opencopy="${e.id}">Ver a prova</button></div>
     </article>`; }).join("") || `<div class="panel empty">Nenhuma prova digitalizada para esta avaliação.</div>`}
     ${none.length ? `<div class="small muted" style="padding:8px 4px">Ainda não digitalizado(s): ${none.map(r => esc(r.e.prenom + " " + r.e.nom)).join(", ")}</div>` : ""}
@@ -1374,7 +1375,9 @@ function renderAnnot(s, qid, eid){
   return esc(s).replace(/⟦([\s\S]*?)⟧/g, (m, x) => qid ? `<mark data-unmark="${qid}|${n++}${eid ? "|" + eid : ""}" title="Clique para remover este destaque" style="cursor:pointer">${x}</mark>` : `<mark>${x}</mark>`).replace(/\[(?:illisible|illegible|ilegível)\]/g, m => `<span class="illisible">${m}</span>`);
 }
 /* Page scannée où se trouve la question (pour recadrer) */
-function pageScanOf(cp, qid){ const i = (cp?.pages || []).findIndex(pg => pageQ(pg).includes(qid)); const s = i >= 0 ? cp?.scans?.[i + 1] : null; return s ? {page:i + 1, scan:s, box:(cp.pages[i]?.b || []).find(b => b.q === qid)} : null; }
+function pageScanOf(cp, qid){ const i = (cp?.pages || []).findIndex(pg => pageQ(pg).includes(qid)), page = i >= 0 ? i + 1 : 1;
+  const scans = Object.entries(cp?.scans || {}).filter(([, s]) => s && (s.asset || s.url)).map(([p, s]) => ({page:+p, scan:s})).sort((a, b) => a.page - b.page);
+  return {page, scan:cp?.scans?.[page] || null, box:i >= 0 ? (cp.pages[i]?.b || []).find(b => b.q === qid) : null, scans}; }
 /* Retirer un soulignement rouge en cliquant dessus */
 document.addEventListener("click", async ev => { const m = ev.target.closest("[data-unmark]"); if (!m) return; const C = ctrl(S.corrCtrl); if (!C) return;
   const [qid, n, e0] = m.dataset.unmark.split("|"), eid = e0 || S.corrEleve, a = feuille(C.id)?.copies?.[eid]?.answers?.[qid]; if (!a) return;
@@ -1402,35 +1405,50 @@ async function sheetOfScan(cv, boxes){
   } catch(e){ console.warn("Endireitamento", e); return null; }
 }
 async function recropOpen(C, eid, qid){
-  const cp = feuille(C.id)?.copies?.[eid], ps = pageScanOf(cp, qid); if (!ps) return toast("Página escaneada não encontrada.");
-  const k = C.questions.findIndex(q => q.id === qid), e = eleveOf(C, eid);
+  const cp = feuille(C.id)?.copies?.[eid]; if (!cp) return toast("Página escaneada não encontrada.");
+  const ps = pageScanOf(cp, qid), k = C.questions.findIndex(q => q.id === qid), e = eleveOf(C, eid);
   const ov = document.createElement("div"); ov.id = "rc-modal";
   ov.style.cssText = "position:fixed;inset:0;z-index:80;background:rgba(10,16,30,.9);display:flex;flex-direction:column;align-items:center;padding:10px;gap:8px;overflow:auto;overscroll-behavior:contain";
-  ov.innerHTML = `<div style="color:#fff;font-weight:600;text-align:center">${e ? esc(e.prenom + " " + e.nom) + " · " : ""}Questão ${k + 1} · página ${ps.page}</div>
+  ov.innerHTML = `<div style="color:#fff;font-weight:600;text-align:center">${e ? esc(e.prenom + " " + e.nom) + " · " : ""}Question ${k + 1}</div>
+    <div id="rc-pages" class="row" style="justify-content:center;flex-wrap:wrap;gap:6px"></div>
     <div id="rc-tip" class="small" style="color:#cfd6e4;text-align:center">Preparando a página…</div>
-    <div id="rc-wrap" style="position:relative;display:inline-block;touch-action:none;user-select:none;-webkit-user-select:none;line-height:0"><canvas id="rc-img" style="display:block;max-width:min(900px,calc(100vw - 20px));max-height:70vh;width:auto;height:auto;background:#fff"></canvas>
+    <div id="rc-wrap" style="position:relative;display:inline-block;touch-action:none;user-select:none;-webkit-user-select:none;line-height:0"><canvas id="rc-img" width="1" height="1" style="display:block;max-width:min(900px,calc(100vw - 20px));max-height:66vh;width:auto;height:auto;background:#fff"></canvas>
       <div id="rc-sel" style="position:absolute;border:3px solid #D9B26A;background:rgba(217,178,106,.18);display:none;pointer-events:none;box-sizing:border-box">${["nw","ne","sw","se"].map(h => `<span data-h="${h}" style="position:absolute;width:18px;height:18px;border-radius:50%;background:#D9B26A;border:2px solid #fff;${h[0] === "n" ? "top" : "bottom"}:-11px;${h[1] === "w" ? "left" : "right"}:-11px"></span>`).join("")}</div></div>
     <div class="row" style="justify-content:center;flex-wrap:wrap"><button class="btn primary" id="rc-ok2">Salvar e reler (IA)</button><button class="btn" id="rc-ok">Salvar o quadro</button><button class="btn ghost" id="rc-x" style="color:#fff">Cancelar</button></div>`;
   document.body.append(ov); const prevOv = document.body.style.overflow; document.body.style.overflow = "hidden";
+  const view = $("#rc-img"), sel = $("#rc-sel"), wrap = $("#rc-wrap"), tip = $("#rc-tip"), bar = $("#rc-pages");
+  let scans = ps.scans, cur = null, pic = null, R = null;
+  function show(){ if (!R){ sel.style.display = "none"; return; } const w = view.clientWidth, h = view.clientHeight; Object.assign(sel.style, {display:"block", left:R.x * w + "px", top:R.y * h + "px", width:R.w * w + "px", height:R.h * h + "px"}); }
   const close = () => { ov.remove(); document.body.style.overflow = prevOv; window.removeEventListener("resize", show); };
-  const view = $("#rc-img"), sel = $("#rc-sel"), wrap = $("#rc-wrap"), tip = $("#rc-tip");
   $("#rc-x").onclick = close;
-  let src;
-  try { const bl = ps.scan.asset ? await getBlob(ps.scan.asset) : await (await fetch(ps.scan.url)).blob(); const bmp = await createImageBitmap(bl);
-    src = document.createElement("canvas"); src.width = bmp.width; src.height = bmp.height; src.getContext("2d").drawImage(bmp, 0, 0); }
-  catch(err){ close(); return toast("Imagem da página não encontrada."); }
-  /* On redresse la page avec les repères : le cadre se place alors exactement, quelle que soit l'inclinaison du scan */
-  const Hm = await sheetOfScan(src, cp.pages?.[ps.page - 1]?.b);
-  const pic = Hm ? rectifySheet(src, Hm, Math.min(2, Math.max(1.2, src.width / 794))) : src;
-  view.width = pic.width; view.height = pic.height; view.getContext("2d").drawImage(pic, 0, 0);
-  tip.textContent = Hm ? "Mova o quadro ou puxe os cantos; desenhe um novo retângulo fora dele." : "Página não endireitada: desenhe um retângulo em volta da resposta.";
-  let R = null;
-  function show(){ if (!R) return; const w = view.clientWidth, h = view.clientHeight; Object.assign(sel.style, {display:"block", left:R.x * w + "px", top:R.y * h + "px", width:R.w * w + "px", height:R.h * h + "px"}); }
-  if (Hm && ps.box){ const pad = 6; R = {x:(ps.box.x - pad) / 794, y:(ps.box.y - pad) / 1123, w:(ps.box.w + 2 * pad) / 794, h:(ps.box.h + 2 * pad) / 1123}; }
-  requestAnimationFrame(show);
+  const drawBar = () => { bar.innerHTML = scans.map(s => `<button class="btn sm${cur && cur.page === s.page ? " primary" : ""}" data-rcp="${s.page}">Página ${s.page}</button>`).join("")
+    + `<label class="btn sm" style="cursor:pointer">📷 Foto da página ${ps.page}<input type="file" accept="image/*" id="rc-file" style="display:none"></label>`;
+    bar.querySelectorAll("[data-rcp]").forEach(b => b.onclick = () => load(scans.find(s => s.page === +b.dataset.rcp)));
+    $("#rc-file").onchange = async ev => { const fl = ev.target.files?.[0]; if (!fl) return; tip.textContent = "Preparando a página…";
+      try { const bmp = await createImageBitmap(fl); const c0 = document.createElement("canvas"); c0.width = bmp.width; c0.height = bmp.height; c0.getContext("2d").drawImage(bmp, 0, 0);
+        const a = await ASSETS.upload(await toBlob(scaled(c0, 1700), .85)), sc = {asset:a.id, url:"/api/files/" + a.id, at:new Date().toISOString(), main:true};
+        await write("feuilles/" + C.id, {copies:{[eid]:{scans:{[ps.page]:sc}}}}, "update");
+        scans = scans.filter(s => s.page !== ps.page).concat([{page:ps.page, scan:sc}]).sort((x, y) => x.page - y.page); toast("Foto adicionada."); await load(scans.find(s => s.page === ps.page), fl);
+      } catch(err){ console.warn(err); toast("Não foi possível adicionar a foto."); tip.textContent = ""; } }; };
+  async function load(pg, blob){
+    if (!pg){ drawBar(); tip.textContent = "Ainda não há foto desta página: adicione com o botão acima."; return; }
+    tip.textContent = "Preparando a página…"; R = null; show();
+    let src;
+    try { const bl = blob || (pg.scan.asset ? await getBlob(pg.scan.asset) : await (await fetch(pg.scan.url)).blob()); const bmp = await createImageBitmap(bl);
+      src = document.createElement("canvas"); src.width = bmp.width; src.height = bmp.height; src.getContext("2d").drawImage(bmp, 0, 0); }
+    catch(err){ tip.textContent = "Imagem da página não encontrada."; return; }
+    cur = pg; drawBar();
+    /* On redresse la page avec les repères : le cadre se place alors exactement, quelle que soit l'inclinaison du scan */
+    const Hm = await sheetOfScan(src, cp.pages?.[pg.page - 1]?.b);
+    pic = Hm ? rectifySheet(src, Hm, Math.min(2, Math.max(1.2, src.width / 794))) : src;
+    view.width = pic.width; view.height = pic.height; view.getContext("2d").drawImage(pic, 0, 0);
+    tip.textContent = (Hm ? "Mova o quadro ou puxe os cantos; desenhe um novo retângulo fora dele." : "Página não endireitada: desenhe um retângulo em volta da resposta.") + (scans.length > 1 ? " " + "Escolha a página onde está a resposta." : "");
+    if (Hm && pg.page === ps.page && ps.box){ const pad = 6; R = {x:(ps.box.x - pad) / 794, y:(ps.box.y - pad) / 1123, w:(ps.box.w + 2 * pad) / 794, h:(ps.box.h + 2 * pad) / 1123}; }
+    requestAnimationFrame(show);
+  }
   const pos = ev => { const r = view.getBoundingClientRect(); return [clamp((ev.clientX - r.left) / r.width, 0, 1), clamp((ev.clientY - r.top) / r.height, 0, 1)]; };
   let drag = null;
-  wrap.addEventListener("pointerdown", ev => { ev.preventDefault(); wrap.setPointerCapture(ev.pointerId); const [x, y] = pos(ev), h = ev.target.dataset?.h;
+  wrap.addEventListener("pointerdown", ev => { if (!pic) return; ev.preventDefault(); wrap.setPointerCapture(ev.pointerId); const [x, y] = pos(ev), h = ev.target.dataset?.h;
     if (R && h) drag = {mode:h, R:{...R}, p:[x, y]};
     else if (R && x > R.x && x < R.x + R.w && y > R.y && y < R.y + R.h) drag = {mode:"move", R:{...R}, p:[x, y]};
     else { drag = {mode:"new", p:[x, y]}; R = {x, y, w:0, h:0}; } show(); });
@@ -1443,16 +1461,19 @@ async function recropOpen(C, eid, qid){
   const end = () => { drag = null; }; wrap.addEventListener("pointerup", end); wrap.addEventListener("pointercancel", end);
   window.addEventListener("resize", show);
   const save = async relire => {
-    if (!R || R.w < 0.03 || R.h < 0.02) return toast("Primeiro desenhe um retângulo em volta da resposta.");
+    if (!pic || !R || R.w < 0.03 || R.h < 0.02) return toast("Primeiro desenhe um retângulo em volta da resposta.");
     const W = pic.width, H = pic.height, cv = document.createElement("canvas");
     cv.width = Math.round(R.w * W); cv.height = Math.round(R.h * H); cv.getContext("2d").drawImage(pic, R.x * W, R.y * H, R.w * W, R.h * H, 0, 0, cv.width, cv.height);
     try { const a = await ASSETS.upload(await toBlob(scaled(cv, 1600), .9));
-      await write("feuilles/" + C.id, {copies:{[eid]:{answers:{[qid]:{crop:a.id}}}}}, "update");
+      const had = feuille(C.id)?.copies?.[eid]?.answers?.[qid];
+      const ans = had ? {crop:a.id} : {crop:a.id, transcription:"", annot:"", lisible:true, noteIA:null, note:null, commentaire:"", erreurs:[], acquis:[], valide:false};
+      await write("feuilles/" + C.id, {copies:{[eid]:{answers:{[qid]:ans}}}}, "update");
       S.recropped = {...(S.recropped || {}), [qid + "|" + eid]:true}; close(); toast("Quadro salvo."); render();
       if (relire) setTimeout(() => document.querySelector(`[data-precise="${qid}"][data-eid="${eid}"]`)?.click() || document.querySelector(`[data-precise="${qid}"]:not([data-eid])`)?.click(), 300);
     } catch(err){ toast("Não foi possível salvar: " + (err?.message || "tente novamente.")); }
   };
   $("#rc-ok").onclick = () => save(false); $("#rc-ok2").onclick = () => save(true);
+  await load(scans.find(s => s.page === ps.page) || scans[0]);
 }
 function copyView(c, e, cp, studs){
   const max = maxOf(c), has = cp && Object.keys(cp.answers || {}).length, done = copyDone(c, cp);
@@ -1481,7 +1502,8 @@ function copyView(c, e, cp, studs){
         : `<div class="note" dir="auto">${esc(a.commentaire)}</div>`}
         <div class="tags">${(a.acquis || []).map(t => `<span class="chip ok">${esc(t)}</span>`).join("")}${(a.erreurs || []).map((t, j) => `<span class="chip bad">${esc(t)} <button class="btn sm ghost" style="padding:0 4px;min-height:0" data-unerr="${q.id}|${j}" aria-label="Remover este erro" title="Remover">×</button></span>`).join("")}</div>
         <div class="small muted">${a.note != null && a.note !== a.noteIA ? `Nota da IA: ${fmt(a.noteIA)} · alterada pelo professor` : "Proposto pela IA"}${a.valide ? " · validado" : ""}</div></div>
-      <div class="row">${pageScanOf(cp, q.id) ? `<button class="btn sm ghost" data-recrop="${q.id}">✂ Recortar</button>` : ""}${a.crop && a.lisible ? `<button class="btn sm ghost" data-precise="${q.id}">Reler (IA)</button>` : ""}<span class="status" id="pr2-${q.id}"></span>${!edT ? `<button class="btn sm ghost" data-tr="${q.id}">Corrigir a transcrição</button>` : ""}${!edC ? `<button class="btn sm ghost" data-cm="${q.id}">Editar comentário</button>` : ""}</div>` : ""}
+      <div class="row">${cp ? `<button class="btn sm ghost" data-recrop="${q.id}">✂ Recortar</button>` : ""}${a.crop && a.lisible ? `<button class="btn sm ghost" data-precise="${q.id}">Reler (IA)</button>` : ""}<span class="status" id="pr2-${q.id}"></span>${!edT ? `<button class="btn sm ghost" data-tr="${q.id}">Corrigir a transcrição</button>` : ""}${!edC ? `<button class="btn sm ghost" data-cm="${q.id}">Editar comentário</button>` : ""}</div>` : ""}
+      ${!a && cp ? `<div class="small muted">Nada foi lido para esta questão.</div><div class="row"><button class="btn sm" data-recrop="${q.id}">✂ Recortar na foto</button><span class="status" id="pr2-${q.id}"></span></div>` : ""}
     </div>`; }).join("")}
   </article>`;
 }

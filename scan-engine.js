@@ -225,7 +225,7 @@ async function analysePage(cv, ctx, st){
   const fixed = {}, crops = {};
   for (const b of qcmB){ const q = c.questions.find(x => x.id === b.q); if (!q) continue; const mk = readMarks(cv, Hm, b);
     const a = qcmFrom(q, cp.version?.[b.q] || "standard", mk.coches, mk.ambigu, T); a.crop = await ctx.saveAsset(await toJpeg(warpBox(cv, Hm, b))); upd.copies[eid].answers[b.q] = a; }
-  if (Hm) for (const b of boxes) if (b.type !== "qcm" && aiQ.includes(b.q) && inkRatio(cv, Hm, b) < 0.003)
+  if (Hm) for (const b of boxes) if (b.type !== "qcm" && aiQ.includes(b.q) && inkRatio(cv, Hm, b) < 0.0008)
     fixed[b.q] = {transcription:"", annot:"", lisible:true, noteIA:0, note:null, commentaire:T.vide0 || "Pas de réponse.", erreurs:[T.videTag || "pas de réponse"], acquis:[], valide:false, auto:true};
   const P = ctx.kit.prompts?.[cid]?.[eid]?.[page];
   if (aiQ.length && !P) return {...res, status:"manuel", msg:"kit"};
@@ -241,7 +241,7 @@ async function analysePage(cv, ctx, st){
       prompt = P.halves.prompt;
     }
   }
-  for (const qid in fixed){ fixed[qid].crop = crops[qid] || null; upd.copies[eid].answers[qid] = fixed[qid]; }
+  for (const qid in fixed){ const fb = boxes.find(b => b.q === qid); fixed[qid].crop = crops[qid] || (Hm && fb ? await ctx.saveAsset(await toJpeg(warpBox(cv, Hm, fb), 0.88)) : null); upd.copies[eid].answers[qid] = fixed[qid]; }
   ctx.patch("feuilles/" + cid, upd);
   if (c.statut === "imprime") ctx.patch("controles/" + cid, {statut:"correction"});
   const toGrade = (mode === "halves" ? (P.halves.qids || aiQ) : aiQ).filter(q => !fixed[q] && !upd.copies[eid].answers[q]);
