@@ -8,7 +8,7 @@
 <link rel="icon" type="image/png" href="/favicon-64.png">
 <link rel="apple-touch-icon" href="/icon-180.png">
 <link rel="manifest" href="/manifest.webmanifest">
-<meta name="theme-color" content="#15233F">
+<meta name="theme-color" content="#EE5A16">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=Caveat:wght@500;600&display=swap">
@@ -252,6 +252,24 @@ footer a{text-decoration:none}footer a:hover{color:var(--paper)}
   *,*::before,*::after{animation-duration:.01ms!important;animation-delay:0s!important;transition-duration:.01ms!important}
   .rv{opacity:1;transform:none;filter:none}
 }
+/* Design « moderne lumineux » : Inter partout, bleu vif, fonds clairs */
+:root{--navy:#C2410C;--navy2:#EE5A16;--ink:#101828;--paper:#F6F7FB;--ivory:#FFF3EC;--line:#E4E7EE;--muted:#667085;--gold:#EE5A16;--gold2:#FFE0CC;--red:#D92D20;--green:#067647;--serif:Inter,"Helvetica Neue",Helvetica,Arial,sans-serif}
+h1,h2,h3{font-weight:700;letter-spacing:-.035em}
+em,.hero h1 em,.manifest p em,.decide h2 em,.final h2 em,.marquee .track{font-style:normal!important;font-weight:700}
+.marquee .track{font-weight:600}
+.marquee{font-weight:600;letter-spacing:-.02em}
+.hero,.final{background:radial-gradient(1200px 600px at 85% -10%,#FF9A52 0%,transparent 60%),linear-gradient(135deg,#C2410C 0%,#EE5A16 55%,#F47326 100%)}
+.decide,.marquee{background:linear-gradient(135deg,#C2410C,#EE5A16)}
+footer{background:#101828}
+.plan.pro{background:linear-gradient(160deg,#C2410C,#EE5A16);border-color:#EE5A16}
+.hero .btn.gold,.final .btn.gold,.plan.pro .btn,.decide .btn.gold{background:#fff;color:#C2410C}
+.hero .btn.gold:hover,.final .btn.gold:hover,.plan.pro .btn:hover{background:#FFF3EC}
+.btn.gold:hover{background:#C2410C}
+.btn.dark{background:#101828}
+.nav:not(.solid) .btn.gold{background:#fff;color:#C2410C}
+.hero h1{font-weight:700}
+.manifest p{font-weight:600;letter-spacing:-.03em}
+.panel .num{font-weight:800}
 </style>
 </head>
 <body>

@@ -3,8 +3,8 @@
  "short_name": "Mastery",
  "start_url": "/",
  "display": "standalone",
- "background_color": "#FAF8F3",
- "theme_color": "#15233F",
+ "background_color": "#F6F7FB",
+ "theme_color": "#EE5A16",
  "icons": [
   {
    "src": "/icon-192.png",
