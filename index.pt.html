@@ -336,6 +336,7 @@ input::placeholder{text-transform:none}
 /* Case à cocher et son texte restent sur la même ligne */
 label.row:has(>input[type=checkbox]),label.row:has(>input[type=radio]){flex-wrap:nowrap;align-items:flex-start}
 label.row>input[type=checkbox],label.row>input[type=radio]{flex:none;margin-top:3px}
+label>input[type=checkbox],label>input[type=radio]{flex:none}
 /* Liens dans le texte : couleur de l'application, pas le bleu du navigateur */
 .view a:not([class]),.view .small a,.view p a{color:var(--ink);text-underline-offset:2px;text-decoration-color:var(--gold)}
 /* Le titre de section garde la police des titres */
@@ -557,7 +558,7 @@ function toast(msg, ms = 3500){ const t = document.createElement("div"); t.class
 
 const MATIERES = ["Matemática","Língua Portuguesa","Ciências","Biologia","Química","Física","História","Geografia","Inglês","Espanhol","Hebraico","Filosofia","Sociologia","Artes","Educação Física"];
 const MAT_SUGG = ["Guemará","Mishná","Chumash","Neviim","Halachá","Chassidut","Pensamento judaico"];
-/* Matières : liste de base + matières personnelles du prof (kodesh ou autres), + celles déjà utilisées */
+/* Matières : liste de base + matières ajoutées par le prof, + celles déjà utilisées */
 const lsGet = k => { try { return JSON.parse(localStorage.getItem(k) || "[]"); } catch(e){ return []; } };
 /* Les matières que le prof enseigne (Mon compte) : seules celles-ci sont proposées. Vide = toute la liste. */
 const enseigne = () => (window.TIKOUN_CONFIG?.accounts && S.me ? S.me.enseigne : lsGet("mastery.enseigne")) || [];
@@ -585,6 +586,21 @@ const LVL = {socle:"Básico", standard:"Padrão", approfondi:"Avançado"};
 const OLD_ENTETE = "Collège-Lycée Beth Mena'hem · Levallois-Perret";
 /* En-tête des feuilles : choisi par le prof (école, son nom, ou les deux) ; un texte libre saisi dans la mise en page reste prioritaire. */
 const AFFICHE = {les2:"Escola e meu nome", ecole:"Somente a escola", nom:"Somente meu nome"};
+/* Préférences du prof (Mon compte) : mise en page par défaut des feuilles et style des questions */
+const PREF_DEF = {police:15, lh:30, bareme:true, consignes:"Escreva apenas dentro dos quadros.", q:{format:"mixte", justif:true, profondeur:"standard", longueur:"moyenne"}};
+function prefs(){ let p = S.me?.prefs; if (!p){ try { p = JSON.parse(localStorage.getItem("mastery.prefs") || "null"); } catch(e){} }
+  return {...PREF_DEF, ...(p || {}), q:{...PREF_DEF.q, ...(p?.q || {})}}; }
+async function savePrefs(patch){ const cur = prefs(), next = {...cur, ...patch, q:{...cur.q, ...(patch.q || {})}};
+  if (window.TIKOUN_CONFIG?.accounts && S.me){ const j = await api("/api/me", {method:"PATCH", body:JSON.stringify({prefs:next})}); S.me = j.user; }
+  else { try { localStorage.setItem("mastery.prefs", JSON.stringify(next)); } catch(e){} } }
+/* Les réglages d'un nouveau contrôle partent des préférences */
+function applyPrefParams(){ const Q = prefs().q;
+  S.params.difficulte = {simple:"facile", standard:"moyen", exigeant:"exigeant"}[Q.profondeur] || "moyen";
+  S.params.types = Q.format === "redige" ? ["cours","application"] : Q.format === "qcm" ? ["qcm","application"] : ["cours","application","qcm"];
+  S.params._pref = true; }
+function questionRule(p){ const Q = prefs().q, L = {courte:"3 a 5", moyenne:"5 a 8", developpee:"8 a 14"}[Q.longueur] || "5 a 8";
+  return `Respostas esperadas: cerca de ${L} linhas por questão (exceto múltipla escolha).` + ((p.types || []).includes("qcm") && Q.justif
+    ? `\nQuestões de múltipla escolha: não use o tipo "qcm". Escreva as alternativas (A, B, C…) no enunciado, peça ao aluno que indique a escolha E a justifique, e preveja linhas de resposta; o gabarito e os critérios avaliam a escolha e a justificativa.` : ""); }
 function headerFrom(aff){
   const e = S.me?.ecole, ec = e?.nom ? e.nom + (e.ville ? " · " + e.ville : "") : "", nom = S.me?.nom || "";
   if (aff === "ecole") return ec || nom; if (aff === "nom") return nom || ec; return [ec, nom].filter(Boolean).join(" · ");
@@ -822,13 +838,13 @@ function vClasses(){
       ${store.classes.map(c => `<button class="stu" data-classe="${c.id}" aria-current="${c.id === cl?.id}"><span>${esc(c.nom)}</span><span class="chip">${(c.eleves || []).length}</span></button>`).join("")}
       <div class="grid" style="padding:10px 8px 6px;gap:8px;border-top:1px solid var(--line);margin-top:6px">
         <div class="label">Nova turma</div>
-        <input id="nc-nom" placeholder="ex.: 9º ano A">
         <select id="nc-niv" aria-label="Nível">${selOpts(NIVEAUX, "3e")}</select>
+        <input id="nc-nom" placeholder="Rótulo (opcional): A, Azul…" aria-label="Rótulo da turma (opcional)">
         <button class="btn sm primary" id="nc-go">Criar</button>
       </div>
     </aside>
     ${cl ? `<div class="grid" style="gap:22px;align-content:start"><section class="panel grid">
-      <div class="row between"><h3 style="font-size:20px">${esc(cl.nom)} <span class="muted small">· ${esc(cl.niveau)}</span></h3>
+      <div class="row between"><h3 style="font-size:20px">${esc(cl.nom)} <button class="btn sm ghost" id="rn-cl" style="vertical-align:middle">Renomear</button></h3>
         <div class="row"><select id="lvlMat" style="width:auto" aria-label="Disciplina">${matOpts(S.levelMat)}</select>
         <button class="btn sm" id="sugg">Sugerir os níveis</button><button class="btn sm ghost danger" id="del-cl" title="Excluir esta turma">Excluir a turma</button></div></div>
       ${sug ? `<div class="banner">Sugestões calculadas com base nas 3 últimas provas validadas em ${esc(S.levelMat)} (básico: menos de ${noteS(10)} · padrão: ${nv(10)}–${noteS(15)} · avançado: mais de ${noteS(15)}). <button class="btn sm" id="applySug">Aplicar</button></div>` : ""}
@@ -882,6 +898,7 @@ function matField(cur){ const ens = enseigne(); cur = cur || ens[0] || "Matemát
   return `<div class="field"><label for="c-mat">Disciplina</label><select id="c-mat">${matOpts(cur, S.matChg)}</select></div>`; }
 document.addEventListener("click", ev => { if (ev.target.id === "c-matchg"){ S.coursDraft = {...(S.coursDraft || {}), titre:$("#c-titre")?.value, texte:$("#c-texte")?.value}; S.matChg = true; render(); } });
 function wizParams(){
+  if (!S.params._pref) applyPrefParams();
   const co = store.cours.find(c => c.id === S.coursId);
   const p = S.params;
   p.matiere = co?.matiere || p.matiere || enseigne()[0] || "Matemática";
@@ -1867,6 +1884,7 @@ Duração: ${p.duree} minutos · Dificuldade: ${p.difficulte} · Tipos: ${(p.typ
 ${n > 1 ? `Número de questões: ${n}. Total de pontos: exatamente 20.` : ""}
 ${p.consignes ? "Instruções do professor: " + p.consignes : ""}
 ${langueRule(p.langue)}
+${questionRule(p)}
 ${extra || ""}
 Para cada questão, escreva 3 versões da mesma questão, sobre o mesmo conteúdo e valendo os mesmos pontos:
 - "socle": mais guiada (etapas, dados simplificados, uma dica), para um aluno com dificuldade;
@@ -1963,7 +1981,7 @@ document.addEventListener("click", async ev => {
   const d = t.dataset;
   if (d.zoom){ const z = document.createElement("div"); z.className = "zoom"; z.innerHTML = `<img alt="" src="${esc(d.zoom)}">`; z.onclick = () => z.remove(); document.body.append(z); return; }
   if (t.classList.contains("tab")){ if (d.v === "new"){ S.wizStep = S.coursId ? S.wizStep : 1; if (S.view === "edit") S.wizStep = 1; } return go(d.v); }
-  if (d.newctrl){ S.params.kind = "controle"; S.wizStep = 1; return go("new"); }
+  if (d.newctrl){ S.params.kind = "controle"; S.wizStep = 1; S.params._pref = false; return go("new"); }
   if (d.newex){ location.hash = canEx() ? "#/exercices/nouveau" : "#/exercices"; return; }
   if (d.exfrom){ if (!canEx()) return toast(aiErr("no_option")); const C = ctrl(d.exfrom);
     S.qn = {...S.qn, coursId:C.coursId, classeId:C.classeId, titre:"Prática · " + C.titre, consignes:"Foque principalmente nestes conteúdos da prova: " + (C.questions || []).map(q => q.notion).filter(Boolean).join(", ")}; location.hash = "#/exercices/nouveau"; return; }
@@ -1975,8 +1993,15 @@ document.addEventListener("click", async ev => {
 
   /* classes */
   if (d.classe){ S.classeSel = d.classe; S.suggestions = null; return render(); }
-  if (t.id === "nc-go"){ const nom = $("#nc-nom").value.trim(); if (!nom) return toast("Dê um nome à turma.");
-    const id = uid(10); S.classeSel = id; await write("classes/" + id, {nom, niveau:$("#nc-niv").value, eleves:[], createdAt:new Date().toISOString()}); return; }
+  if (t.id === "nc-go"){ const niveau = $("#nc-niv").value, libelle = $("#nc-nom").value.trim(), nom = libelle ? niveau + " " + libelle : niveau;
+    if (store.classes.some(c => c.nom === nom)){ toast("Você já tem uma turma “ " + nom + " ”: adicione um rótulo (A, B, Azul…) para diferenciá-las."); $("#nc-nom").focus(); return; }
+    const id = uid(10); S.classeSel = id; await write("classes/" + id, {nom, niveau, libelle, eleves:[], createdAt:new Date().toISOString()}); return; }
+  if (t.id === "rn-cl"){ const cl = classe(S.classeSel); if (!cl) return;
+    const cur = cl.libelle ?? (cl.niveau && cl.nom.startsWith(cl.niveau + " ") ? cl.nom.slice(cl.niveau.length + 1) : cl.nom === cl.niveau ? "" : cl.nom);
+    const v = prompt("Rótulo da turma (opcional): A, Azul, Grupo 2…", cur); if (v === null) return;
+    const libelle = v.trim(), nom = [cl.niveau, libelle].filter(Boolean).join(" ") || cl.nom;
+    if (store.classes.some(c => c.id !== cl.id && c.nom === nom)) return toast("Você já tem uma turma “ " + nom + " ”: escolha outro rótulo.");
+    await write("classes/" + cl.id, {nom, libelle}, "update"); return; }
   if (t.id === "add-go"){ const cl = classe(S.classeSel); const lines = $("#add-el").value.split("\n").map(s => s.trim()).filter(Boolean);
     if (!lines.length){ toast("Escreva um aluno por linha: “Nome Sobrenome”."); $("#add-el").focus(); return; } const add = lines.map(l => { const [p, ...n] = l.split(/\s+/); return {id:uid(8), prenom:p, nom:n.join(" "), niveaux:{}}; });
     $("#add-el").value = ""; await write("classes/" + cl.id, {eleves:[...(cl.eleves || []), ...add]}, "update"); toast(add.length + " aluno(s) adicionado(s)."); return; }
@@ -2026,13 +2051,13 @@ document.addEventListener("click", async ev => {
     const p = S.params, co = store.cours.find(c => c.id === S.coursId), st = $("#gen-st");
     const EXO = p.kind === "exercices" && canEx();
     const id = uid(12); const base = {type:EXO ? "exercices" : "controle", titre:p.titre || (EXO ? "Exercícios · " : "") + (co?.titre || "Prova"), gen:{types:p.types, difficulte:p.difficulte, consignes:p.consignes || ""}, matiere:p.matiere, niveau:p.niveau, classeId:p.classeId, coursId:S.coursId, duree:+p.duree || 55,
-      differencie:!!p.differencie, langue:p.langue || "", statut:"brouillon", date:"", mise:{affiche:S.me?.affichage || "les2", police:15, lh:30, bareme:true, consignes:EXO ? "Folha de exercícios de prática. Escreva apenas dentro dos quadros." : "Escreva apenas dentro dos quadros."}, questions:[], createdAt:new Date().toISOString()};
+      differencie:!!p.differencie, langue:p.langue || "", statut:"brouillon", date:"", mise:{affiche:S.me?.affichage || "les2", police:prefs().police, lh:prefs().lh, bareme:prefs().bareme, consignes:EXO ? "Folha de exercícios de prática. Escreva apenas dentro dos quadros." : prefs().consignes}, questions:[], createdAt:new Date().toISOString()};
     if (t.id === "genBlank"){ base.questions = [mapQ({points:4, lignes:6})]; await write("controles/" + id, base); S.editId = id; S.wizStep = 1; S.step = "preparer"; return go("edit"); }
     t.disabled = true; st.innerHTML = `<span class="thinking">A IA está redigindo ${EXO ? "os exercícios" : "a prova"} em 3 níveis (1 a 2 minutos)…</span>`;
     try{
       const r = await genQuestions(co, p, clamp(+p.nbq || 5, 1, 10), EXO ? EXO_TXT : "", EXO ? {feature:"exercices"} : {}), qs = r.questions;
       base.titre = p.titre || (EXO && r.titre ? "Exercícios · " + r.titre : r.titre) || base.titre; base.questions = qs;
-      await write("controles/" + id, base); S.editId = id; S.wizStep = 1; S.params.titre = ""; S.step = "preparer"; return go("edit");
+      await write("controles/" + id, base); S.editId = id; S.wizStep = 1; S.params.titre = ""; S.params._pref = false; S.step = "preparer"; return go("edit");
     }catch(e){ console.warn("gen", e); st.textContent = aiErr(e?.code) + (e?.message ? " (" + e.message + ")" : ""); t.disabled = false; }
     return;
   }
@@ -2675,28 +2700,16 @@ async function api(path, opts = {}){
     throw {status:r.status, message:j?.error?.message || (r.status >= 500 ? "Servidor temporariamente indisponível: tente de novo em instantes." : "Erro " + r.status), setup:j?.setup}; }
   return j;
 }
-/* Établissement : recherche dans l'annuaire officiel de l'Éducation nationale, ou saisie manuelle (non vérifiée) */
+/* Établissement : nom et ville, saisis librement (l'équipe valide chaque inscription) */
 S.ec = {q:"", cp:"", res:null, sel:null, manual:false, busy:false, err:""};
 const ecLine = e => `${esc(e.nom)}<div class="small muted">${esc([e.adresse, [e.cp, e.ville].filter(Boolean).join(" ")].filter(Boolean).join(" · "))}${e.type ? " · " + esc(e.type) + (e.statut ? " " + esc(e.statut.toLowerCase()) : "") : ""}</div>`;
-const ecBadge = e => !e ? `<span class="chip">nenhuma escola</span>` : e.verifiee ? `<span class="chip ok" title="Retrouvée dans l'annuaire officiel de l'Éducation nationale${e.uai ? " (UAI " + esc(e.uai) + ")" : ""}">✓ verificada</span>` : `<span class="chip warn" title="Inserida manualmente: não encontrada no cadastro oficial">não verificada</span>`;
+const ecBadge = e => !e ? `<span class="chip">nenhuma escola</span>` : "";
 function ecoleWidget(){
-  const E = S.ec, EN_UI = document.documentElement.lang !== "fr";
-  if (EN_UI && !E.sel) E.manual = true;
-  if (E.sel) return `<div class="panel" style="padding:12px;background:var(--surface-2)"><div class="row between"><div>${ecLine(E.sel)}<div style="margin-top:6px">${ecBadge(E.sel)}</div></div><button class="btn sm" id="ec-change">Alterar</button></div></div>`;
-  if (E.manual) return `<div class="grid" style="gap:10px">
-    <p class="small muted" style="margin:0">Sua escola será registrada como <b>não verificada</b>. Você pode usar o Mastery normalmente.</p>
-    <div class="field"><label for="ec-nom">Nome da escola</label><input id="ec-nom" value="${esc(E.q)}"></div>
-    <div class="field"><label for="ec-adr">Endereço</label><input id="ec-adr" placeholder="ex. Rua das Flores, 123" value="${esc(S.form["ec-adr"] || "")}"></div>
-    <div class="form-row"><div class="field"><label for="ec-cp2">CEP</label><input id="ec-cp2" maxlength="10" value="${esc(E.cp)}"></div><div class="field"><label for="ec-ville">Cidade</label><input id="ec-ville" value="${esc(S.form["ec-ville"] || "")}"></div></div>
-    <div class="row"><button class="btn sm primary" id="ec-mok">Confirmar esta escola</button>${EN_UI ? "" : `<button class="btn sm ghost" id="ec-back">← Voltar à busca</button>`}</div></div>`;
-  return `<div class="grid" style="gap:10px">
-    <div class="form-row"><div class="field"><label for="ec-q">Nome da escola</label><input id="ec-q" value="${esc(E.q)}" placeholder="ex. Colégio Machado de Assis"></div>
-      <div class="field"><label for="ec-cp">CEP</label><input id="ec-cp" inputmode="numeric" maxlength="5" value="${esc(E.cp)}" placeholder="ex. 01310-100"></div></div>
-    <div class="row"><button class="btn sm primary" id="ec-find" ${E.busy ? "disabled" : ""}>${E.busy ? "Buscando…" : "Buscar no cadastro oficial de escolas"}</button></div>
-    ${E.err ? `<div class="small" style="color:var(--warn)">${esc(E.err)}</div>` : ""}
-    ${E.res ? (E.res.length ? `<div>${E.res.map((e, i) => `<button class="item link" style="width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);cursor:pointer" data-ecpick="${i}"><div>${ecLine(e)}</div></button>`).join("")}</div>` : `<p class="small muted" style="margin:0">Nenhuma escola encontrada. Verifique o CEP ou tente outra palavra do nome.</p>`) : ""}
-    <button class="btn sm ghost" id="ec-manual" style="justify-self:start">Minha escola não está na lista</button></div>`;
+  const v = S.ec.sel || {};
+  return `<div class="form-row"><div class="field"><label for="ec-nom">Nome da escola</label><input id="ec-nom" value="${esc(S.form["ec-nom"] ?? v.nom ?? "")}" placeholder="ex. Colégio Machado de Assis"></div>
+    <div class="field"><label for="ec-ville">Cidade</label><input id="ec-ville" value="${esc(S.form["ec-ville"] ?? v.ville ?? "")}" placeholder="ex. Lyon"></div></div>`;
 }
+const ecoleVal = () => ({nom:($("#ec-nom")?.value || "").trim(), ville:($("#ec-ville")?.value || "").trim()});
 const affRadios = cur => `<div class="row">${Object.entries(AFFICHE).map(([k, l]) => `<label class="row small" style="gap:6px"><input type="radio" style="width:auto" name="aff" data-aff="${k}"${(cur || "les2") === k ? " checked" : ""}> ${l}</label>`).join("")}</div>`;
 const affValue = () => document.querySelector('input[name="aff"]:checked')?.dataset.aff || "les2";
 async function loadUsers(){ if (!isAdmin()) return; try { S.users = (await api("/api/users")).users; } catch(e){} }
@@ -2742,11 +2755,11 @@ function vAuth(){
   </section>
   <p class="small muted auth-foot"><a href="/">← Voltar ao site</a> · <a href="?lang=fr">Francês</a> · <a href="?lang=en">English</a> · <a href="?lang=pt">Português</a></p></div>`;
 }
-const KEEP = ["rg-nom","rg-mail","rg-pw","me-nom","ec-adr","ec-ville","ec-q","ec-cp"]; let kept = {}; S.form = {};
+const KEEP = ["rg-nom","rg-mail","rg-pw","me-nom","ec-nom","ec-ville"]; let kept = {}; S.form = {};
 document.addEventListener("change", async ev => { if (ev.target.id === "rg-cgu") S.regCgu = ev.target.checked;
   if (ev.target.id === "me-partage"){ try { const j = await api("/api/me", {method:"PATCH", body:JSON.stringify({partageEcriture:ev.target.checked})}); S.me = j.user; toast("Salvo"); } catch(e){ toast(e.message); } }
   if (ev.target.id === "me-bareme"){ try { const j = await api("/api/me", {method:"PATCH", body:JSON.stringify({bareme:ev.target.value})}); S.me = j.user; toast("Salvo"); render(); } catch(e){ toast(e.message); } } });
-document.addEventListener("input", ev => { const el = ev.target; if (KEEP.includes(el.id)) S.form[el.id] = el.value; if (el.id === "ec-q") S.ec.q = el.value; if (el.id === "ec-cp") S.ec.cp = el.value; });
+document.addEventListener("input", ev => { const el = ev.target; if (KEEP.includes(el.id)) S.form[el.id] = el.value; });
 const keepForm = () => { kept = {}; for (const id of KEEP){ const el = $("#" + id); if (el) kept[id] = el.value; } const a = document.querySelector('input[name="aff"]:checked'); if (a) kept.aff = a.dataset.aff; };
 const restoreForm = () => { for (const [id, v] of Object.entries(kept)){ if (id === "aff"){ const r = document.querySelector(`input[data-aff="${v}"]`); if (r) r.checked = true; continue; } const el = $("#" + id); if (el) el.value = v; } };
 async function afterLogin(user, mustChange){
@@ -2763,18 +2776,32 @@ function vCompte(){
   if (S.ecFor !== "me"){ S.ec = {q:"", cp:"", res:null, sel:S.me?.ecole || null, manual:false, busy:false, err:""}; S.ecFor = "me"; }
   return `<div class="head"><div><h2>Minha conta</h2><p>${esc(S.me?.nom || "")} · ${esc(S.me?.email || "")} · ${isAdmin() ? "Administrador" : isDir() ? "Direção" : "Professor"} · ${S.me?.billing && S.me?.acces?.mode !== "inclus" ? esc(accesLabel(S.me)) : `Assinatura ${PLAN[S.me?.plan] || "Essencial"} · Opção Exercícios ${S.me?.can?.exercices ? "✓" : "✗"}`}</p></div>
     <button class="btn" id="out-go">Sair</button></div>
-  ${abonnementPanel()}${etabPanel()}${devicesPanel()}${parrainagePanel()}
-  <section class="panel grid" style="max-width:640px"><h3>Minha escola e cabeçalho das folhas</h3>
+  <section class="panel grid" style="max-width:640px"><h3>Meu perfil</h3>
     <div class="field"><label for="me-nom">Meu nome</label><input id="me-nom" value="${esc(S.form["me-nom"] ?? S.me?.nom ?? "")}"></div>
     ${ecoleWidget()}
-    <div class="field"><label>Exibir no topo das provas e exercícios</label>${affRadios(S.me?.affichage)}</div>
-    <p class="small muted" style="margin:0">Prévia: <b id="me-prev">${esc(headerFrom(S.me?.affichage || "les2"))}</b></p>
     <div class="row"><button class="btn primary" id="me-save">Salvar</button></div><div class="status" id="me-st"></div></section>
+  ${(() => { const P = prefs(), Q = P.q; return `<section class="panel grid" style="max-width:640px"><h3>Layout das folhas</h3>
+    <p class="small muted" style="margin:0">Cada nova prova parte destes ajustes. Você pode ajustá-los na etapa “Layout”.</p>
+    <div class="field"><label>Cabeçalho das folhas</label>${affRadios(S.me?.affichage)}</div>
+    <p class="small muted" style="margin:0">Prévia: <b id="me-prev">${esc(headerFrom(S.me?.affichage || "les2"))}</b></p>
+    <div class="form-row"><div class="field"><label for="mp-pol">Tamanho do texto</label><select id="mp-pol">${selOpts(["13","14","15","16","17"], String(P.police), x => x + " pt")}</select></div>
+      <div class="field"><label for="mp-lh">Espaçamento das linhas dos quadros</label><select id="mp-lh">${selOpts(["26","30","34","38"], String(P.lh), x => ({26:"Compacto",30:"Normal",34:"Amplo",38:"Muito amplo"}[x]))}</select></div></div>
+    <div class="field"><label for="mp-cons">Instruções impressas no topo da folha</label><textarea id="mp-cons">${esc(P.consignes)}</textarea></div>
+    <label class="row small" style="gap:6px"><input type="checkbox" id="mp-bar"${P.bareme ? " checked" : ""}> Mostrar a pontuação de cada questão</label>
+    <div class="row"><button class="btn primary" id="mp-save">Salvar</button></div></section>
+  <section class="panel grid" style="max-width:640px"><h3>Questões</h3>
+    <p class="small muted" style="margin:0">O estilo das questões que a IA propõe. A série da turma é sempre levada em conta, e você pode mudar tudo prova a prova.</p>
+    <div class="form-row"><div class="field"><label for="qp-fmt">Formato</label><select id="qp-fmt">${selOpts(["redige","mixte","qcm"], Q.format, x => ({redige:"Respostas dissertativas", mixte:"Dissertativas e múltipla escolha", qcm:"Principalmente múltipla escolha"}[x]))}</select></div>
+      <div class="field"><label for="qp-prof">Profundidade</label><select id="qp-prof">${selOpts(["simple","standard","exigeant"], Q.profondeur, x => ({simple:"Simples: aplicar a matéria", standard:"Padrão: compreender e explicar", exigeant:"Exigente: raciocinar e argumentar"}[x]))}</select></div></div>
+    <div class="field"><label for="qp-long">Tamanho das respostas</label><select id="qp-long">${selOpts(["courte","moyenne","developpee"], Q.longueur, x => ({courte:"Curtas (3 a 5 linhas)", moyenne:"Médias (5 a 8 linhas)", developpee:"Desenvolvidas (8 a 14 linhas)"}[x]))}</select></div>
+    <label class="row small" style="gap:6px"><input type="checkbox" id="qp-just"${Q.justif ? " checked" : ""}> <span>Questões de múltipla escolha: sempre deixar um espaço para justificar a resposta (corrigido pela IA)</span></label>
+    <div class="row"><button class="btn primary" id="qp-save">Salvar</button></div></section>`; })()}
   <section class="panel grid" style="max-width:640px"><h3>Disciplinas que leciono</h3>
     <p class="small muted" style="margin:0">Somente essas disciplinas serão sugeridas. Se você leciona apenas uma, ela é escolhida automaticamente ao preparar uma prova.</p>
     <div class="row">${enseigne().map(m => `<span class="chip">${esc(m)} <button class="btn sm ghost" style="padding:0 4px" data-ensdel="${esc(m)}" aria-label="Remover">×</button></span>`).join("") || `<span class="small muted">Nenhuma disciplina escolhida: a lista completa é exibida.</span>`}</div>
     <div class="row"><select id="ens-sel" style="max-width:260px" aria-label="Disciplina a adicionar"><option value="">Escolha uma disciplina…</option>${selOpts(myMatieres(true).filter(m => !enseigne().includes(m)), "")}</select><button class="btn sm primary" id="ens-go">Adicionar</button></div>
     <div class="row"><input id="mat-new" placeholder="Disciplina fora da lista" style="max-width:260px"><button class="btn sm" id="mat-go">Adicionar</button></div></section>
+  ${abonnementPanel()}${etabPanel()}${devicesPanel()}${parrainagePanel()}
   <section class="panel grid" style="max-width:640px"><h3>Melhoria da leitura</h3>
     <label class="row small" style="gap:8px;align-items:flex-start"><input type="checkbox" id="me-partage" style="width:auto;margin-top:3px"${S.me?.partageEcriture ? " checked" : ""}${isAdmin() ? " disabled" : ""}><span>Compartilhar anonimamente minhas correções de leitura (imagem do quadro de resposta e texto corrigido, nunca o nome do aluno) para melhorar a leitura da escrita à mão.</span></label></section>
   <section class="panel grid" style="max-width:640px"><h3>Exibição das notas</h3>
@@ -2839,25 +2866,18 @@ document.addEventListener("click", async ev => {
     if (d.ensdel){ await saveEnseigne(enseigne().filter(m => m !== d.ensdel)); return render(); }
     if (t.id === "rg-open"){ S.auth = "register"; S.ecFor = "reg"; S.ec = {q:"", cp:"", res:null, sel:null, manual:false, busy:false, err:""}; return render(); }
     if (t.id === "rg-back"){ S.auth = "login"; return render(); }
-    if (t.id === "ec-find"){ S.ec.q = $("#ec-q").value.trim(); S.ec.cp = $("#ec-cp").value.trim(); keepForm();
-      if (!S.ec.q && !S.ec.cp){ S.ec.err = "Informe pelo menos o nome ou o CEP."; return render(); }
-      S.ec.busy = true; S.ec.err = ""; render();
-      try { S.ec.res = (await api(`/api/ecoles?q=${encodeURIComponent(S.ec.q)}&cp=${encodeURIComponent(S.ec.cp)}`)).ecoles; } catch(e){ S.ec.err = e.message; S.ec.res = null; }
-      S.ec.busy = false; render(); restoreForm(); return; }
-    if (d.ecpick !== undefined){ keepForm(); S.ec.sel = {...S.ec.res[+d.ecpick], verifiee:true}; render(); restoreForm(); return; }
-    if (t.id === "ec-change"){ keepForm(); S.ec.sel = null; S.ec.manual = false; render(); restoreForm(); return; }
-    if (t.id === "ec-manual"){ keepForm(); S.ec.q = $("#ec-q")?.value.trim() || S.ec.q; S.ec.cp = $("#ec-cp")?.value.trim() || S.ec.cp; S.ec.manual = true; render(); restoreForm(); return; }
-    if (t.id === "ec-back"){ keepForm(); S.ec.manual = false; render(); restoreForm(); return; }
-    if (t.id === "ec-mok"){ const e = {nom:$("#ec-nom").value.trim(), adresse:$("#ec-adr").value.trim(), cp:$("#ec-cp2").value.trim(), ville:$("#ec-ville").value.trim(), verifiee:false};
-      if (!e.nom || !/^[0-9A-Za-z][0-9A-Za-z\- ]{2,9}$/.test(e.cp) || !e.ville){ toast("Nome, CEP (5 dígitos) e cidade são obrigatórios."); return; }
-      keepForm(); S.ec.sel = e; S.ec.manual = false; render(); restoreForm(); return; }
-    if (t.id === "rg-go"){ if (!S.ec.sel){ st().textContent = "Escolha sua escola (ou digite-a manualmente)."; return; }
+    if (t.id === "rg-go"){ S.ec.sel = ecoleVal(); if (!S.ec.sel.nom || !S.ec.sel.ville){ st().textContent = "Informe o nome da sua escola e a cidade."; return; }
       if (!$("#rg-cgu")?.checked){ st().textContent = "Marque a caixa para aceitar os termos de uso."; return; }
       st().innerHTML = `<span class="thinking">Criando…</span>`;
       const j = await api("/api/register", {method:"POST", body:JSON.stringify({nom:$("#rg-nom").value, email:$("#rg-mail").value, password:$("#rg-pw").value, affichage:affValue(), plan:document.querySelector('input[name="plan"]:checked')?.dataset.plan || "essentiel", ecole:S.ec.sel, cgu:true})});
       S.pend = j.user; S.auth = "pending"; history.replaceState(null, "", "#/connexion"); return render(); }
-    if (t.id === "me-save"){ const body = {nom:$("#me-nom").value, affichage:affValue()}; if (S.ec.sel && JSON.stringify(S.ec.sel) !== JSON.stringify(S.me.ecole)) body.ecole = S.ec.sel;
-      const j = await api("/api/me", {method:"PATCH", body:JSON.stringify(body)}); S.me = j.user; S.ec.sel = j.user.ecole; render(); toast(j.user.ecole?.verifiee === false && body.ecole ? "Salvo · escola não verificada" : "Salvo"); return; }
+    if (t.id === "mp-save"){ const j = await api("/api/me", {method:"PATCH", body:JSON.stringify({affichage:affValue()})}); S.me = j.user;
+      await savePrefs({police:+$("#mp-pol").value, lh:+$("#mp-lh").value, consignes:$("#mp-cons").value.trim(), bareme:$("#mp-bar").checked}); render(); toast("Salvo"); return; }
+    if (t.id === "qp-save"){ await savePrefs({q:{format:$("#qp-fmt").value, profondeur:$("#qp-prof").value, longueur:$("#qp-long").value, justif:$("#qp-just").checked}}); S.params._pref = false; render(); toast("Salvo"); return; }
+    if (t.id === "me-save"){ const body = {nom:$("#me-nom").value}, e = ecoleVal();
+      if (e.nom && e.ville && (e.nom !== S.me.ecole?.nom || e.ville !== S.me.ecole?.ville)) body.ecole = e;
+      else if (e.nom || e.ville){ if (!e.nom || !e.ville) return toast("Informe o nome da escola e a cidade."); }
+      const j = await api("/api/me", {method:"PATCH", body:JSON.stringify(body)}); S.me = j.user; S.ec.sel = j.user.ecole; delete S.form["ec-nom"]; delete S.form["ec-ville"]; render(); toast("Salvo"); return; }
     if (t.id === "lg-go2"){ st().innerHTML = `<span class="thinking">Entrando…</span>`;
       const j = await api("/api/login", {method:"POST", body:JSON.stringify({email:$("#lg-mail2").value, password:$("#lg-pw2").value})}); return afterLogin(j.user, j.mustChange); }
     if (t.id === "su-go"){ st().innerHTML = `<span class="thinking">Criando…</span>`;

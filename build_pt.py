@@ -2,8 +2,8 @@
 import subprocess, json, re, os
 ACORN = os.environ.get("ACORN", os.path.join(os.path.dirname(os.path.abspath(__file__)), "node_modules", "acorn"))
 NIV_BR = '["6º ano","7º ano","8º ano","9º ano","1º ano EM","2º ano EM","3º ano EM"]'
-MAT_SUGG_BR = '["Guemará","Mishná","Chumash","Neviim","Halachá","Chassidut","Pensamento judaico"]'
-MAT_BR = '["Matemática","Língua Portuguesa","Ciências","Biologia","Química","Física","História","Geografia","Inglês","Espanhol","Hebraico","Filosofia","Sociologia","Artes","Educação Física"]'
+MAT_SUGG_BR = '[]'
+MAT_BR = '["Matemática","Língua Portuguesa","Ciências","Biologia","Química","Física","História","Geografia","Inglês","Espanhol","Filosofia","Sociologia","Artes","Educação Física"]'
 missing = set()
 for name in ["index", "landing", "eleve"]:
     src, out = f"dist/{name}.html", f"dist/{name}.pt.html"
