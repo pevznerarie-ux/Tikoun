@@ -106,29 +106,29 @@ function vCompte(){
   return `<div class="head"><div><h2>Mon compte</h2><p>${esc(S.me?.nom || "")} · ${esc(S.me?.email || "")} · ${isAdmin() ? "Administrateur" : isDir() ? "Direction" : "Professeur"} · ${S.me?.billing && S.me?.acces?.mode !== "inclus" ? esc(accesLabel(S.me)) : `Abonnement ${PLAN[S.me?.plan] || "Essentiel"} · Option Exercices ${S.me?.can?.exercices ? "✓" : "✗"}`}</p></div>
     <button class="btn" id="out-go">Se déconnecter</button></div>
   ${abonnementPanel()}${etabPanel()}${devicesPanel()}${parrainagePanel()}
-  <section class="panel grid" style="max-width:560px"><h3>Mon établissement et en-tête des feuilles</h3>
+  <section class="panel grid" style="max-width:640px"><h3>Mon établissement et en-tête des feuilles</h3>
     <div class="field"><label for="me-nom">Mon nom</label><input id="me-nom" value="${esc(S.form["me-nom"] ?? S.me?.nom ?? "")}"></div>
     ${ecoleWidget()}
     <div class="field"><label>Afficher en haut des contrôles et exercices</label>${affRadios(S.me?.affichage)}</div>
     <p class="small muted" style="margin:0">Aperçu : <b id="me-prev">${esc(headerFrom(S.me?.affichage || "les2"))}</b></p>
     <div class="row"><button class="btn primary" id="me-save">Enregistrer</button></div><div class="status" id="me-st"></div></section>
-  <section class="panel grid" style="max-width:560px"><h3>Les matières que j'enseigne</h3>
+  <section class="panel grid" style="max-width:640px"><h3>Les matières que j'enseigne</h3>
     <p class="small muted" style="margin:0">Seules ces matières te seront proposées. Si tu n'en enseignes qu'une, elle est choisie toute seule quand tu prépares un contrôle.</p>
     <div class="row">${enseigne().map(m => `<span class="chip">${esc(m)} <button class="btn sm ghost" style="padding:0 4px" data-ensdel="${esc(m)}" aria-label="Retirer">×</button></span>`).join("") || `<span class="small muted">Aucune matière choisie : toute la liste est proposée.</span>`}</div>
     <div class="row"><select id="ens-sel" style="max-width:260px" aria-label="Matière à ajouter"><option value="">Choisir une matière…</option>${selOpts(myMatieres(true).filter(m => !enseigne().includes(m)), "")}</select><button class="btn sm primary" id="ens-go">Ajouter</button></div>
     <div class="row"><input id="mat-new" placeholder="Matière absente de la liste" style="max-width:260px"><button class="btn sm" id="mat-go">Ajouter</button></div></section>
-  <section class="panel grid" style="max-width:520px"><h3>Amélioration de la lecture</h3>
+  <section class="panel grid" style="max-width:640px"><h3>Amélioration de la lecture</h3>
     <label class="row small" style="gap:8px;align-items:flex-start"><input type="checkbox" id="me-partage" style="width:auto;margin-top:3px"${S.me?.partageEcriture ? " checked" : ""}${isAdmin() ? " disabled" : ""}><span>Partager anonymement mes corrections de lecture (image du cadre de réponse et texte corrigé, jamais le nom de l'élève) pour améliorer la lecture de l'écriture manuscrite.</span></label></section>
-  <section class="panel grid" style="max-width:520px"><h3>Notes affichées</h3>
+  <section class="panel grid" style="max-width:640px"><h3>Notes affichées</h3>
     <p class="small muted" style="margin:0">Les calculs restent identiques ; seul l'affichage des notes change.</p>
     <select id="me-bareme" style="max-width:320px">${[["20","Sur 20 (France)"],["10","Sur 10 (Brésil)"],["100","Pourcentage (%)"],["AF","Lettres A à F (États-Unis)"]].map(([k, t]) => `<option value="${k}"${bareme() === k ? " selected" : ""}>${t}</option>`).join("")}</select></section>
-  <section class="panel grid" style="max-width:520px"><h3>Langue</h3><p class="row"><a class="btn sm" href="?lang=fr">Français</a><a class="btn sm" href="?lang=en">English (US)</a><a class="btn sm" href="?lang=pt">Português (BR)</a></p></section>
-  <section class="panel grid" style="max-width:520px"><h3>Changer de mot de passe</h3>
+  <section class="panel grid" style="max-width:640px"><h3>Langue</h3><p class="row">${[["fr","Français"],["en","English (US)"],["pt","Português (BR)"]].map(([k, l]) => `<a class="btn sm${(document.documentElement.lang || "fr").slice(0, 2) === k ? " cur" : ""}" href="?lang=${k}">${l}</a>`).join("")}</p></section>
+  <section class="panel grid" style="max-width:640px"><h3>Changer de mot de passe</h3>
     <div class="field"><label for="mc-old">Mot de passe actuel</label><input id="mc-old" type="password" autocomplete="current-password"></div>
     <div class="field"><label for="mc-new">Nouveau mot de passe (8 caractères minimum)</label><input id="mc-new" type="password" autocomplete="new-password"></div>
     <div class="row"><button class="btn primary" id="mc-go">Enregistrer</button></div><div class="status" id="mc-st"></div></section>
   ${vReglages()}
-  <section class="panel grid" style="max-width:560px"><h3>Supprimer mon compte</h3>
+  <section class="panel grid" style="max-width:640px"><h3>Supprimer mon compte</h3>
     <p class="small muted" style="margin:0">Efface définitivement ton compte et tout ce qui t'appartient : contrôles, copies scannées, notes, cours, exercices et images. Pense d'abord à exporter tes notes si tu en as besoin.</p>
     <div class="field"><label for="del-pw">Mot de passe actuel</label><input id="del-pw" type="password" autocomplete="current-password"></div>
     <div class="row"><button class="btn" id="del-me" style="color:var(--pen);border-color:var(--pen)">Supprimer définitivement mon compte</button></div><div class="status" id="del-st"></div></section>
@@ -154,7 +154,7 @@ function vComptes(){
     <td><select data-uplan="${u.id}" style="width:auto" aria-label="Abonnement">${selOpts(["essentiel","pro"], u.plan || "essentiel", x => PLAN[x])}</select></td>
     <td>${(u.plan || "essentiel") === "pro" ? `<label class="row small" style="gap:6px"><input type="checkbox" data-uex="${u.id}"${u.options?.exercices ? " checked" : ""}> ${u.options?.exercices ? "Activée" : "Désactivée"}</label>` : `<span class="muted small">Pro requis</span>`}</td>
     <td class="c num">${nb(u.id)}</td>
-    <td><div class="row"><button class="btn sm" data-ureset="${u.id}">Nouveau mot de passe</button>${u.id !== S.me.id ? `<button class="btn sm ghost" data-uact="${u.id}" data-v="${u.actif ? 0 : 1}">${u.actif ? "Désactiver" : "Réactiver"}</button><button class="btn sm ghost" data-udel="${u.id}" style="color:var(--pen)">Supprimer</button>` : ""}</div></td></tr>`).join("")}
+    <td><div class="row">${u.id !== S.me.id ? `<button class="btn sm" data-ureset="${u.id}">Nouveau mot de passe</button><button class="btn sm ghost" data-uact="${u.id}" data-v="${u.actif ? 0 : 1}">${u.actif ? "Désactiver" : "Réactiver"}</button><button class="btn sm ghost danger" data-udel="${u.id}">Supprimer</button>` : ""}</div></td></tr>`).join("")}
   </tbody></table></div><div class="status" id="us-st"></div></section>
   <section class="panel grid" style="max-width:640px"><h3>Ajouter un professeur</h3>
     <div class="form-row"><div class="field"><label for="nu-nom">Nom</label><input id="nu-nom" placeholder="ex. M. Cohen (maths)"></div>
@@ -207,7 +207,7 @@ document.addEventListener("click", async ev => {
     if (t.id === "mc-go"){ await api("/api/me/password", {method:"POST", body:JSON.stringify({old:$("#mc-old").value, password:$("#mc-new").value})}); $("#mc-st").textContent = "Mot de passe modifié."; return; }
     if (t.id === "nu-go"){ const j = await api("/api/users", {method:"POST", body:JSON.stringify({nom:$("#nu-nom").value, email:$("#nu-mail").value, password:$("#nu-pw").value, role:$("#nu-role").value, plan:$("#nu-plan").value, exercices:$("#nu-ex").checked})});
       await loadUsers(); render(); $("#nu-st").textContent = `Compte créé : ${j.user.email} · mot de passe provisoire à transmettre.`; return; }
-    if (d.ureset){ const pw = genPw(); await api("/api/users/" + d.ureset, {method:"PATCH", body:JSON.stringify({password:pw})}); $("#us-st").innerHTML = `Nouveau mot de passe provisoire pour ${esc(S.users.find(u => u.id === d.ureset)?.email)} : <b class="num">${pw}</b>`; return; }
+    if (d.ureset){ if (!confirm(`Créer un nouveau mot de passe provisoire ? L'ancien ne fonctionnera plus.\n\n${S.users.find(u => u.id === d.ureset)?.email || ""}`)) return; const pw = genPw(); await api("/api/users/" + d.ureset, {method:"PATCH", body:JSON.stringify({password:pw})}); $("#us-st").innerHTML = `Nouveau mot de passe provisoire pour ${esc(S.users.find(u => u.id === d.ureset)?.email)} : <b class="num">${pw}</b>`; return; }
     if (d.uact){ await api("/api/users/" + d.uact, {method:"PATCH", body:JSON.stringify({actif:d.v === "1"})}); await loadUsers(); return render(); }
     if (d.udel){ const x = (S.users || []).find(u => u.id === d.udel); if (!x) return;
       if (!confirm(`Supprimer définitivement le compte de ${x.nom} (${x.email}) et toutes ses données (contrôles, copies, notes, images) ?`)) return;
@@ -284,7 +284,7 @@ function etabPanel(){
     <div class="row"><button class="btn sm" id="et-save">Enregistrer</button>${S.me?.billing ? (ab && ["active","trialing","past_due"].includes(ab.status) ? `<button class="btn sm" id="et-portal">Gérer l'abonnement de l'établissement</button>` : `<button class="btn sm primary" id="et-pay-go">Payer le forfait établissement</button>`) : ""}</div>
     ${ab?.fin ? `<p class="small muted" style="margin:0">${ab.annule ? "Se termine" : "Renouvellement"} le ${frDate(ab.fin.slice(0, 10))}.</p>` : ""}
     <div><b class="small">Professeurs (${(e.membres || []).length})</b>${(e.membres || []).map(m => `<div class="item"><div><div class="t">${esc(m.nom)}</div><div class="s">${esc(m.email)}</div></div><button class="btn sm ghost" data-etout="${m.id}">Retirer</button></div>`).join("") || `<p class="small muted">Aucun professeur pour l'instant : donne-leur le code.</p>`}</div>
-    ${(e.membres || []).length ? "" : `<div class="row"><button class="btn sm ghost" id="et-quit">Supprimer cet établissement</button></div>`}<div class="status" id="et-st"></div></section>`;
+    ${(e.membres || []).length ? "" : `<div class="row"><button class="btn sm ghost danger" id="et-quit">Supprimer cet établissement</button></div>`}<div class="status" id="et-st"></div></section>`;
 }
 async function refreshMe(){ try { const j = await api("/api/me"); S.me = j.user; } catch(e){} render(); }
 document.addEventListener("click", async ev => {
@@ -294,7 +294,7 @@ document.addEventListener("click", async ev => {
     if (d.buy){ t.disabled = true; say("bil-st", "Ouverture du paiement sécurisé…"); const j = await api("/api/billing/checkout", {method:"POST", body:JSON.stringify({plan:d.buy, periode:d.per})}); location.href = j.url; return; }
     if (t.id === "bil-portal" || t.id === "et-portal"){ t.disabled = true; const j = await api("/api/billing/portal", {method:"POST", body:JSON.stringify({etab:t.id === "et-portal"})}); location.href = j.url; return; }
     if (t.id === "ref-copy"){ const v = $("#ref-link").value; try { await navigator.clipboard.writeText(v); } catch(e){ $("#ref-link").select(); document.execCommand("copy"); } toast("Lien copié"); return; }
-    if (t.id === "et-join"){ const code = $("#et-code").value.trim(); if (!code) return; await api("/api/etab/rejoindre", {method:"POST", body:JSON.stringify({code})}); toast("Établissement rejoint"); return refreshMe(); }
+    if (t.id === "et-join"){ const code = $("#et-code").value.trim(); if (!code){ toast("Entre le code donné par ta direction."); $("#et-code").focus(); return; } await api("/api/etab/rejoindre", {method:"POST", body:JSON.stringify({code})}); toast("Établissement rejoint"); return refreshMe(); }
     if (t.id === "et-new"){ await api("/api/etab/creer", {method:"POST", body:JSON.stringify({nom:$("#et-nom").value, eleves:+$("#et-el").value || 0, payeProfs:$("#et-pay").checked})}); toast("Établissement créé : donne le code à tes professeurs"); return refreshMe(); }
     if (t.id === "et-save"){ await api("/api/etab/reglages", {method:"POST", body:JSON.stringify({eleves:+$("#et-el").value || 0, payeProfs:$("#et-pay").checked})}); toast("Enregistré"); return refreshMe(); }
     if (d.etout){ if (!confirm("Retirer ce professeur de l'établissement ?")) return; await api("/api/etab/reglages", {method:"POST", body:JSON.stringify({retirer:d.etout})}); return refreshMe(); }

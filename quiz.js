@@ -124,7 +124,7 @@ function vQuiz(){
     inner = `<section class="panel grid" style="gap:10px"><div class="row between"><div class="row">${byT.map(([t, n]) => `<span class="chip">${QTYPES[t].replace(" (sur ordinateur)", "")} × ${n}</span>`).join("")}<span class="chip">${notions.length} notions</span></div>
       <div class="row"><button class="btn sm" id="qz-more">+ 10 questions (IA)</button><button class="btn sm ghost" id="qz-regen">↻ Régénérer toute la banque</button></div></div><div class="status" id="qz-st"></div></section>
     ${(q.questions || []).map((x, i) => `<section class="panel grid" style="gap:10px">
-      <div class="row between"><div class="row"><b>Q${i + 1}</b><span class="chip">${QTYPES[x.type].replace(" (sur ordinateur)", "")}</span><span class="chip" title="Niveau">${stars(x.niveau)}</span>${x.notion ? `<span class="chip blue">${esc(x.notion)}</span>` : ""}</div><button class="btn sm ghost" data-qqdel="${x.id}">Supprimer</button></div>
+      <div class="row between"><div class="row"><b>Q${i + 1}</b><span class="chip">${QTYPES[x.type].replace(" (sur ordinateur)", "")}</span><span class="chip" title="Niveau">${stars(x.niveau)}</span>${x.notion ? `<span class="chip blue">${esc(x.notion)}</span>` : ""}</div><button class="btn sm ghost danger" data-qqdel="${x.id}">Supprimer</button></div>
       <div class="field"><label>Énoncé</label><textarea data-qqf="${x.id}" data-k="enonce">${esc(x.enonce)}</textarea></div>
       ${qAnswerEditor(x)}
       <div class="form-row"><div class="field"><label>Notion</label><input data-qqf="${x.id}" data-k="notion" value="${esc(x.notion || "")}"></div><div class="field"><label>Niveau</label><select data-qqf="${x.id}" data-k="niveau">${selOpts(["1","2","3"], String(x.niveau || 1), n => stars(n))}</select></div></div>
@@ -144,7 +144,7 @@ function vQuiz(){
   return `<div class="crumbs small"><a href="#/exercices">← Tous les quiz</a></div>
   <div class="head"><div><div class="label">Exercices · ${esc(q.matiere)} · ${esc(cl?.nom || "?")}${q.fermeture ? " · jusqu'au " + esc(frDate(q.fermeture)) : ""}</div><h2>${esc(q.titre)}</h2>
     <div class="row" style="margin-top:6px"><span class="chip ${QSTAT[q.statut]?.[1] || ""}">${QSTAT[q.statut]?.[0]}</span>${q.statut === "ouvert" && !quizOpenNow(q) ? `<span class="chip warn">date limite passée</span>` : ""}</div></div>
-    <div class="row">${act}<button class="btn ghost sm" id="qz-del">Supprimer</button></div></div>
+    <div class="row">${act}<button class="btn ghost sm danger" id="qz-del">Supprimer</button></div></div>
   <nav class="stepper">${tabs.map(([k, l], j) => `<a class="st ${k === tab ? "on" : ""}" href="#/exercices/${q.id}/${k}"><b>${j + 1}</b><span>${l}</span></a>`).join("")}</nav>
   ${inner}`;
 }
@@ -194,7 +194,7 @@ function codesPanel(cl){
   if (!cl || !window.TIKOUN_CONFIG?.accounts) return "";
   const n = (cl.eleves || []).filter(e => e.code).length, tot = (cl.eleves || []).length;
   return `<section class="panel grid" style="gap:10px"><div class="row between"><div><h3>Codes élèves</h3><p class="small muted">Pour les exercices en ligne : chaque élève se connecte sur <b>${esc(location.origin)}/eleve</b> avec son code personnel (sans e-mail).</p></div>
-    <div class="row"><button class="btn sm" id="codes-gen">${n < tot ? "Générer les codes manquants" : "Codes à jour"}</button>${n ? `<button class="btn sm primary" id="codes-print">Imprimer les cartes</button>` : ""}</div></div>
+    <div class="row"><button class="btn sm" id="codes-gen"${n < tot ? "" : " disabled"}>${n < tot ? "Générer les codes manquants" : "Codes à jour"}</button>${n ? `<button class="btn sm primary" id="codes-print">Imprimer les cartes</button>` : ""}</div></div>
     ${n ? `<div class="row">${(cl.eleves || []).map(e => `<span class="chip">${esc(e.prenom)} ${esc((e.nom || "").slice(0, 1))}. · <b class="num">${esc(e.code || "—")}</b>${e.code ? ` <button class="btn sm ghost" style="padding:0 4px" data-recode="${e.id}" title="Nouveau code">↻</button>` : ""}</span>`).join("")}</div>` : ""}</section>`;
 }
 function printCards(cl){

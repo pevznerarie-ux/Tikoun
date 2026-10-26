@@ -100,7 +100,7 @@ function vCode(){
 function vReglages(){
   if (SERVERSTORE) return `<div class="head"><div><h2>Sauvegarde</h2><p>Tes données (classes, contrôles, notes, photos des copies) sont stockées sur le serveur : tu les retrouves sur tous tes appareils en te connectant.</p></div></div>
   ${SRV_PERSIST ? "" : `<p class="banner">⚠ Le serveur n'a pas de Volume : les données seront effacées au prochain déploiement. Railway → service → Volume, monté sur /data.</p>`}
-  <section class="panel grid"><div class="row"><button class="btn" id="srv-export">Télécharger une sauvegarde (données)</button><button class="btn ghost sm" id="srv-out">Se déconnecter de cet appareil</button></div>
+  <section class="panel grid"><div class="row"><button class="btn" id="srv-export">Télécharger une sauvegarde (données)</button>${window.TIKOUN_CONFIG?.accounts ? "" : `<button class="btn ghost sm" id="srv-out">Se déconnecter de cet appareil</button>`}</div>
     <div class="grid" style="gap:6px;border-top:1px solid var(--line);padding-top:12px"><b>Données saisies avant sur cet appareil ?</b><div class="small muted">Si tu avais utilisé Mastery en mode local sur ce navigateur, transfère-les sur le serveur (une seule fois).</div>
     <div class="row"><button class="btn" id="srv-migrate">Transférer vers le serveur</button></div><div class="status" id="srv-st"></div></div></section>
   ${S.me?.role === "admin" ? `<section class="panel grid"><div class="row" style="justify-content:space-between"><div><b>Sauvegardes automatiques</b><div class="small muted">Une copie complète de toute la plateforme chaque jour, gardée 14 jours sur le serveur.</div></div><button class="btn ghost sm" id="bak-now">Sauvegarder maintenant</button></div>

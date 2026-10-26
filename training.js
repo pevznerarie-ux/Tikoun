@@ -62,7 +62,7 @@ function vEntrainement(){
     ${(S.tr.list?.items || []).map(s => `<div class="item" style="align-items:flex-start;gap:14px"><img src="${esc(blobSrc(s.asset))}" alt="" loading="lazy" style="width:220px;max-height:120px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:6px" data-zoom="${esc(blobSrc(s.asset))}">
       <div style="flex:1;min-width:0;display:grid;gap:4px"><div class="small muted">${esc([s.matiere, s.langue, s.niveau].filter(Boolean).join(" · "))} · ${esc(frDate((s.at || "").slice(0, 10)))}${s.cer != null ? ` · <b>${pctS(1 - s.cer)}</b> des lettres` : ""}</div>
         <div dir="auto" style="white-space:pre-wrap"><b>${esc(s.texte)}</b></div>${s.texteIA && s.texteIA !== s.texte ? `<div dir="auto" class="small muted" style="white-space:pre-wrap">IA : ${esc(s.texteIA)}</div>` : ""}</div>
-      <div class="row"><button class="btn sm ghost" data-tred="${s.id}">Modifier</button><button class="btn sm ghost" data-trdel="${s.id}">Supprimer</button></div></div>`).join("") || `<p class="small muted">La banque est vide pour l'instant.</p>`}</section>`;
+      <div class="row"><button class="btn sm ghost" data-tred="${s.id}">Modifier</button><button class="btn sm ghost danger" data-trdel="${s.id}">Supprimer</button></div></div>`).join("") || `<p class="small muted">La banque est vide pour l'instant.</p>`}</section>`;
 }
 function trItem(it){
   const n = S.tr.queue.length, m = S.tr.meta, P = it.passage;

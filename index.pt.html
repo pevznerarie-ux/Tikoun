@@ -318,6 +318,27 @@ textarea,input{text-align:start}
 @media (max-width:760px){.score input{width:58px;font-size:16px;min-height:36px}.qcard .row.between{flex-wrap:wrap}.seg{display:flex}.seg button{flex:1;padding:8px 6px;font-size:14px}.q{padding:12px}.copy-h{flex-wrap:wrap}}
 /* iPhone : un champ en dessous de 16 px fait zoomer tout l'écran au toucher */
 @media (max-width:760px){input,select,textarea{font-size:16px!important}.btn.sm{min-height:38px}.tags .btn.sm{min-width:30px;min-height:30px}}
+/* Cohérence des boutons : un lien-bouton a la couleur d'un bouton, un bouton discret n'a pas d'ombre, une suppression est en rouge */
+.btn{color:var(--ink)}
+.btn.ghost{box-shadow:none}.btn.ghost:hover{background:var(--surface-2)}
+.btn.danger{color:var(--bad)}.btn.danger:hover{background:var(--bad-soft);border-color:transparent}
+.btn.cur{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink)}
+/* Une zone de message vide ne laisse pas de blanc en bas des cadres */
+.grid>.status:empty,.panel>.status:empty{display:none}
+/* Champs : jamais plus larges que leur colonne (dates sur téléphone) ; placeholder lisible */
+input,select,textarea{min-width:0;max-width:100%}
+input::placeholder{text-transform:none}
+/* Case à cocher et son texte restent sur la même ligne */
+label.row:has(>input[type=checkbox]),label.row:has(>input[type=radio]){flex-wrap:nowrap;align-items:flex-start}
+label.row>input[type=checkbox],label.row>input[type=radio]{flex:none;margin-top:3px}
+/* Liens dans le texte : couleur de l'application, pas le bleu du navigateur */
+.view a:not([class]),.view .small a,.view p a{color:var(--ink);text-underline-offset:2px;text-decoration-color:var(--gold)}
+/* Le titre de section garde la police des titres */
+.head h3 .num{font-family:var(--body);font-size:15px}
+/* La pastille de correction ne cache pas les derniers boutons de la page */
+body:has(#jobs-pill) .wrap{padding-bottom:120px}
+.dev-form{grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) auto}
+@media (max-width:600px){.q-top{flex-direction:column;align-items:stretch}.q-top .score{flex-wrap:wrap}.dev-form{grid-template-columns:1fr}.dev-form>.btn{justify-self:start}}
 </style>
 
 </head>
@@ -575,7 +596,7 @@ function render(){
   let html = V();
   const fc = S.inCtrl && ["edit","scan","correct","analyse"].includes(S.view) && V !== vLogin && ctrl(S.inCtrl);
   if (fc){
-    if (S.view === "correct" && fc.statut === "brouillon") html = `<section class="panel empty">As folhas ainda não foram impressas. Passe pela etapa “Imprimir”.</section>`;
+    if ((S.view === "correct" || S.view === "scan") && fc.statut === "brouillon") html = `<section class="panel empty">As folhas ainda não foram impressas. Passe pela etapa “Imprimir”.</section>`;
     html = ctrlFrame(fc, html.replace(/<select id="(corrSel|anSel)"[\s\S]*?<\/select>/, "").replace(/<h2>(Correction|Classe & rattrapage|Scanner les copies)<\/h2>/, "<h3>$1</h3>"));
   }
   $("#view").innerHTML = `<div class="view">${LOCAL ? `<p class="banner">Banco de dados indisponível: nada está sendo salvo. Recarregue a página.</p>` : ""}${typeof billBanner === "function" ? billBanner() : ""}${html}</div>`;
@@ -643,13 +664,13 @@ function vClasses(){
         <button class="btn sm primary" id="nc-go">Criar</button>
       </div>
     </aside>
-    ${cl ? `<section class="panel grid">
+    ${cl ? `<div class="grid" style="gap:22px;align-content:start"><section class="panel grid">
       <div class="row between"><h3 style="font-size:20px">${esc(cl.nom)} <span class="muted small">· ${esc(cl.niveau)}</span></h3>
         <div class="row"><select id="lvlMat" style="width:auto" aria-label="Disciplina">${matOpts(S.levelMat)}</select>
-        <button class="btn sm" id="sugg">Sugerir os níveis</button><button class="btn sm ghost" id="del-cl" title="Excluir esta turma">🗑 Excluir turma</button></div></div>
+        <button class="btn sm" id="sugg">Sugerir os níveis</button><button class="btn sm ghost danger" id="del-cl" title="Excluir esta turma">🗑 Excluir turma</button></div></div>
       ${sug ? `<div class="banner">Sugestões calculadas com base nas 3 últimas provas validadas em ${esc(S.levelMat)} (básico: menos de ${noteS(10)} · padrão: ${nv(10)}–${noteS(15)} · avançado: mais de ${noteS(15)}). <button class="btn sm" id="applySug">Aplicar</button></div>` : ""}
       <div class="tbl-wrap"><table><thead><tr><th>Aluno</th><th>Nível · ${esc(S.levelMat)}</th>${sug ? "<th>Sugestão</th>" : ""}<th>Caligrafia</th><th></th></tr></thead><tbody>
-      ${(cl.eleves || []).map(e => `<tr><td><b>${esc(e.prenom)} ${esc(e.nom)}</b></td>
+      ${(cl.eleves || []).map(e => `<tr><td style="white-space:normal;min-width:120px"><b>${esc(e.prenom)} ${esc(e.nom)}</b></td>
         <td><select data-lvl="${e.id}" style="width:auto" aria-label="Niveau de ${esc(e.prenom)}">${selOpts(LEVELS, levelOf(e, S.levelMat), l => LVL[l])}</select></td>
         ${sug ? `<td>${sug[e.id] ? `<span class="lvl ${sug[e.id].lvl}">${LVL[sug[e.id].lvl]}</span> <span class="muted small num">${noteS(sug[e.id].avg)}</span>` : `<span class="muted small">sem nota</span>`}</td>` : ""}
         <td>${(() => { const w = store.ecritures[e.id]; const sc = w?.parUsage?.[usageOf(S.levelMat)] ?? w?.score; return w ? (sc != null ? `<span class="chip ${tone(sc >= .9 ? 1 : sc >= .75 ? .6 : 0)}" title="Legibilidade medida na folha de amostra de escrita">${pct(sc)}</span>` : `<span class="chip">ficha recebida</span>`) : `<span class="muted small">—</span>`; })()}</td>
@@ -659,7 +680,7 @@ function vClasses(){
       <div class="row"><button class="btn primary" id="add-go">Adicionar</button></div>
       <div class="grid" style="gap:6px;border-top:1px solid var(--line);padding-top:12px"><div class="row between"><div><b>Ficha de caligrafia</b><div class="small muted">Peça aos alunos que preencham no início e no meio do ano letivo (10 min) e depois escaneie. Mede a legibilidade de cada aluno e ajuda a IA a ler a letra dele.</div></div>
         <button class="btn" id="fiches">Fichas da turma (PDF)</button></div><div class="status" id="fi-st"></div></div>
-    </section>${codesPanel(cl)}` : `<section class="panel empty">Crie sua primeira turma à esquerda.</section>`}
+    </section>${codesPanel(cl)}</div>` : `<section class="panel empty">Crie sua primeira turma à esquerda.</section>`}
   </div>`;
 }
 
@@ -677,7 +698,7 @@ function wizCours(){
   return `
   ${list.length ? `<section class="panel"><h3>Reutilizar uma aula já importada</h3>
     <div style="margin-top:4px">${list.map(c => `<div class="item"><div><div class="t">${esc(c.titre)}</div><div class="s">${esc(c.matiere)} · ${esc(c.niveau)} · ${(c.texte || "").length.toLocaleString("pt-BR")} caracteres</div></div>
-      <div class="row"><button class="btn sm primary" data-usecours="${c.id}">Usar</button><button class="btn sm ghost" data-delcours="${c.id}">Excluir</button></div></div>`).join("")}</div></section>` : ""}
+      <div class="row"><button class="btn sm primary" data-usecours="${c.id}">Usar</button><button class="btn sm ghost danger" data-delcours="${c.id}">Excluir</button></div></div>`).join("")}</div></section>` : ""}
   <section class="panel grid">
     <h3>Importar uma aula</h3>
     <div class="form-row">
@@ -767,7 +788,7 @@ function vEdit(){
     <p class="muted small">Um PDF para a turma toda: uma folha por aluno, com o nome e o QR code dele em cada página. O nível não aparece escrito na folha, fica apenas no QR code.</p>
     ${scanned ? `<p class="banner">Algumas provas já foram escaneadas. Reimprimir mantém os escaneamentos e as notas existentes, mas um layout diferente pode deslocar as questões entre as páginas.</p>` : ""}
     <div class="row"><button class="btn primary" id="print">${printed ? "Reimprimir" : "Gerar"} as folhas · ${studs.length} aluno(s)</button>
-      <button class="btn" id="print1">Folha do aluno exibido</button><button class="btn ghost sm" id="delCtrl">Excluir</button></div>
+      <button class="btn" id="print1">Folha do aluno exibido</button><button class="btn ghost sm danger" id="delCtrl">Excluir prova</button></div>
     <div class="status" id="pr-st"></div>
   </section>`;
   return S.step === "mise-en-page" ? partLayout : S.step === "imprimer" ? partPrint + `<section class="panel grid"><h3>E depois</h3><p class="small muted">Aplique a prova e depois escaneie as provas dos alunos na próxima etapa. A ordem das provas não importa.</p></section>` : partPrep;
@@ -779,7 +800,7 @@ function qEditor(c, q, i){
     <div class="row between"><b>Questão ${i + 1}</b><div class="row">
       <button class="btn sm ghost" data-qup="${i}" ${i ? "" : "disabled"} aria-label="Subir">↑</button>
       <button class="btn sm ghost" data-qdown="${i}" ${i < c.questions.length - 1 ? "" : "disabled"} aria-label="Descer">↓</button>
-      <button class="btn sm ghost" data-qdel="${i}">Excluir</button></div></div>
+      <button class="btn sm ghost danger" data-qdel="${i}">Excluir</button></div></div>
     <div class="form-row">
       <div class="field"><label for="q-n-${q.id}">Conteúdo</label><input id="q-n-${q.id}" data-q="${i}" data-k="notion" data-live value="${esc(q.notion || "")}"></div>
       <div class="field"><label for="q-p-${q.id}">Pontos</label><input id="q-p-${q.id}" type="number" min="0" step="0.5" data-q="${i}" data-k="points" value="${esc(q.points)}"></div>
@@ -861,6 +882,9 @@ function drawPreview(){
     const cl = p.cloneNode(true); cl.style.transform = `scale(${sc})`; cl.style.transformOrigin = "0 0"; holder.append(cl); inner.append(holder); });
   box.append(inner); $("#sheetStage").innerHTML = "";
 }
+/* L'aperçu suit la largeur de l'écran (rotation du téléphone, fenêtre redimensionnée) */
+let prevW = 0, prevT = 0;
+window.addEventListener("resize", () => { clearTimeout(prevT); prevT = setTimeout(() => { const box = $("#preview"); if (!box || S.view !== "edit" || S.step !== "mise-en-page" || box.clientWidth === prevW) return; prevW = box.clientWidth; drawPreview(); }, 150); });
 async function printSheets(c, list){
   const st = $("#pr-st");
   if (!window.html2canvas || !window.jspdf){ st.textContent = "Bibliotecas de PDF não carregadas: recarregue a página."; return; }
@@ -1791,7 +1815,7 @@ document.addEventListener("click", async ev => {
   if (t.id === "nc-go"){ const nom = $("#nc-nom").value.trim(); if (!nom) return toast("Dê um nome à turma.");
     const id = uid(10); S.classeSel = id; await write("classes/" + id, {nom, niveau:$("#nc-niv").value, eleves:[], createdAt:new Date().toISOString()}); return; }
   if (t.id === "add-go"){ const cl = classe(S.classeSel); const lines = $("#add-el").value.split("\n").map(s => s.trim()).filter(Boolean);
-    if (!lines.length) return; const add = lines.map(l => { const [p, ...n] = l.split(/\s+/); return {id:uid(8), prenom:p, nom:n.join(" "), niveaux:{}}; });
+    if (!lines.length){ toast("Escreva um aluno por linha: “Nome Sobrenome”."); $("#add-el").focus(); return; } const add = lines.map(l => { const [p, ...n] = l.split(/\s+/); return {id:uid(8), prenom:p, nom:n.join(" "), niveaux:{}}; });
     $("#add-el").value = ""; await write("classes/" + cl.id, {eleves:[...(cl.eleves || []), ...add]}, "update"); toast(add.length + " aluno(s) adicionado(s)."); return; }
   if (d.rmel){ const cl = classe(S.classeSel), e = (cl.eleves || []).find(x => x.id === d.rmel); if (!e) return;
     if (!confirm(`Remover ${e.prenom} ${e.nom} da turma?\n\nSuas provas digitalizadas, notas e resultados de exercícios serão excluídos. Isso é definitivo.`)) return;
@@ -2134,7 +2158,7 @@ function vCode(){
 function vReglages(){
   if (SERVERSTORE) return `<div class="head"><div><h2>Backup</h2><p>Seus dados (turmas, provas, notas, fotos das provas dos alunos) ficam armazenados no servidor: você os encontra em todos os seus dispositivos ao fazer login.</p></div></div>
   ${SRV_PERSIST ? "" : `<p class="banner">⚠ O servidor não tem Volume: os dados serão apagados no próximo deploy. Railway → service → Volume, montado em /data.</p>`}
-  <section class="panel grid"><div class="row"><button class="btn" id="srv-export">Baixar um backup (dados)</button><button class="btn ghost sm" id="srv-out">Sair neste dispositivo</button></div>
+  <section class="panel grid"><div class="row"><button class="btn" id="srv-export">Baixar um backup (dados)</button>${window.TIKOUN_CONFIG?.accounts ? "" : `<button class="btn ghost sm" id="srv-out">Sair neste dispositivo</button>`}</div>
     <div class="grid" style="gap:6px;border-top:1px solid var(--line);padding-top:12px"><b>Dados inseridos antes neste dispositivo?</b><div class="small muted">Se você usou o Mastery no modo local neste navegador, transfira-os para o servidor (uma única vez).</div>
     <div class="row"><button class="btn" id="srv-migrate">Transferir para o servidor</button></div><div class="status" id="srv-st"></div></div></section>
   ${S.me?.role === "admin" ? `<section class="panel grid"><div class="row" style="justify-content:space-between"><div><b>Backups automáticos</b><div class="small muted">Uma cópia completa de toda a plataforma todos os dias, mantida por 14 dias no servidor.</div></div><button class="btn ghost sm" id="bak-now">Fazer backup agora</button></div>
@@ -2550,29 +2574,29 @@ function vCompte(){
   return `<div class="head"><div><h2>Minha conta</h2><p>${esc(S.me?.nom || "")} · ${esc(S.me?.email || "")} · ${isAdmin() ? "Administrador" : isDir() ? "Direção" : "Professor"} · ${S.me?.billing && S.me?.acces?.mode !== "inclus" ? esc(accesLabel(S.me)) : `Assinatura ${PLAN[S.me?.plan] || "Essencial"} · Opção Exercícios ${S.me?.can?.exercices ? "✓" : "✗"}`}</p></div>
     <button class="btn" id="out-go">Sair</button></div>
   ${abonnementPanel()}${etabPanel()}${devicesPanel()}${parrainagePanel()}
-  <section class="panel grid" style="max-width:560px"><h3>Minha escola e cabeçalho das folhas</h3>
+  <section class="panel grid" style="max-width:640px"><h3>Minha escola e cabeçalho das folhas</h3>
     <div class="field"><label for="me-nom">Meu nome</label><input id="me-nom" value="${esc(S.form["me-nom"] ?? S.me?.nom ?? "")}"></div>
     ${ecoleWidget()}
     <div class="field"><label>Exibir no topo das provas e exercícios</label>${affRadios(S.me?.affichage)}</div>
     <p class="small muted" style="margin:0">Prévia: <b id="me-prev">${esc(headerFrom(S.me?.affichage || "les2"))}</b></p>
     <div class="row"><button class="btn primary" id="me-save">Salvar</button></div><div class="status" id="me-st"></div></section>
-  <section class="panel grid" style="max-width:560px"><h3>Disciplinas que leciono</h3>
+  <section class="panel grid" style="max-width:640px"><h3>Disciplinas que leciono</h3>
     <p class="small muted" style="margin:0">Somente essas disciplinas serão sugeridas. Se você leciona apenas uma, ela é escolhida automaticamente ao preparar uma prova.</p>
     <div class="row">${enseigne().map(m => `<span class="chip">${esc(m)} <button class="btn sm ghost" style="padding:0 4px" data-ensdel="${esc(m)}" aria-label="Remover">×</button></span>`).join("") || `<span class="small muted">Nenhuma disciplina escolhida: a lista completa é exibida.</span>`}</div>
     <div class="row"><select id="ens-sel" style="max-width:260px" aria-label="Disciplina a adicionar"><option value="">Escolha uma disciplina…</option>${selOpts(myMatieres(true).filter(m => !enseigne().includes(m)), "")}</select><button class="btn sm primary" id="ens-go">Adicionar</button></div>
     <div class="row"><input id="mat-new" placeholder="Disciplina fora da lista" style="max-width:260px"><button class="btn sm" id="mat-go">Adicionar</button></div></section>
-  <section class="panel grid" style="max-width:520px"><h3>Melhoria da leitura</h3>
+  <section class="panel grid" style="max-width:640px"><h3>Melhoria da leitura</h3>
     <label class="row small" style="gap:8px;align-items:flex-start"><input type="checkbox" id="me-partage" style="width:auto;margin-top:3px"${S.me?.partageEcriture ? " checked" : ""}${isAdmin() ? " disabled" : ""}><span>Compartilhar anonimamente minhas correções de leitura (imagem do quadro de resposta e texto corrigido, nunca o nome do aluno) para melhorar a leitura da escrita à mão.</span></label></section>
-  <section class="panel grid" style="max-width:520px"><h3>Exibição das notas</h3>
+  <section class="panel grid" style="max-width:640px"><h3>Exibição das notas</h3>
     <p class="small muted" style="margin:0">Os cálculos não mudam; só muda a forma de exibir as notas.</p>
     <select id="me-bareme" style="max-width:320px">${[["20","De 0 a 20 (França)"],["10","De 0 a 10 (Brasil)"],["100","Porcentagem (%)"],["AF","Letras de A a F (EUA)"]].map(([k, t]) => `<option value="${k}"${bareme() === k ? " selected" : ""}>${t}</option>`).join("")}</select></section>
-  <section class="panel grid" style="max-width:520px"><h3>Idioma</h3><p class="row"><a class="btn sm" href="?lang=fr">Francês</a><a class="btn sm" href="?lang=en">English (US)</a><a class="btn sm" href="?lang=pt">Português (BR)</a></p></section>
-  <section class="panel grid" style="max-width:520px"><h3>Alterar senha</h3>
+  <section class="panel grid" style="max-width:640px"><h3>Idioma</h3><p class="row">${[["fr","Francês"],["en","English (US)"],["pt","Português (BR)"]].map(([k, l]) => `<a class="btn sm${(document.documentElement.lang || "fr").slice(0, 2) === k ? " cur" : ""}" href="?lang=${k}">${l}</a>`).join("")}</p></section>
+  <section class="panel grid" style="max-width:640px"><h3>Alterar senha</h3>
     <div class="field"><label for="mc-old">Senha atual</label><input id="mc-old" type="password" autocomplete="current-password"></div>
     <div class="field"><label for="mc-new">Nova senha (mínimo de 8 caracteres)</label><input id="mc-new" type="password" autocomplete="new-password"></div>
     <div class="row"><button class="btn primary" id="mc-go">Salvar</button></div><div class="status" id="mc-st"></div></section>
   ${vReglages()}
-  <section class="panel grid" style="max-width:560px"><h3>Supprimer mon compte</h3>
+  <section class="panel grid" style="max-width:640px"><h3>Supprimer mon compte</h3>
     <p class="small muted" style="margin:0">Apaga definitivamente sua conta e tudo o que é seu: avaliações, provas digitalizadas, notas, aulas, exercícios e imagens. Exporte suas notas antes, se precisar delas.</p>
     <div class="field"><label for="del-pw">Senha atual</label><input id="del-pw" type="password" autocomplete="current-password"></div>
     <div class="row"><button class="btn" id="del-me" style="color:var(--pen);border-color:var(--pen)">Excluir definitivamente minha conta</button></div><div class="status" id="del-st"></div></section>
@@ -2598,7 +2622,7 @@ function vComptes(){
     <td><select data-uplan="${u.id}" style="width:auto" aria-label="Assinatura">${selOpts(["essentiel","pro"], u.plan || "essentiel", x => PLAN[x])}</select></td>
     <td>${(u.plan || "essentiel") === "pro" ? `<label class="row small" style="gap:6px"><input type="checkbox" data-uex="${u.id}"${u.options?.exercices ? " checked" : ""}> ${u.options?.exercices ? "Ativada" : "Desativada"}</label>` : `<span class="muted small">Requer Pro</span>`}</td>
     <td class="c num">${nb(u.id)}</td>
-    <td><div class="row"><button class="btn sm" data-ureset="${u.id}">Nova senha</button>${u.id !== S.me.id ? `<button class="btn sm ghost" data-uact="${u.id}" data-v="${u.actif ? 0 : 1}">${u.actif ? "Desativar" : "Reativar"}</button><button class="btn sm ghost" data-udel="${u.id}" style="color:var(--pen)">Excluir</button>` : ""}</div></td></tr>`).join("")}
+    <td><div class="row">${u.id !== S.me.id ? `<button class="btn sm" data-ureset="${u.id}">Nova senha</button><button class="btn sm ghost" data-uact="${u.id}" data-v="${u.actif ? 0 : 1}">${u.actif ? "Desativar" : "Reativar"}</button><button class="btn sm ghost danger" data-udel="${u.id}">Excluir</button>` : ""}</div></td></tr>`).join("")}
   </tbody></table></div><div class="status" id="us-st"></div></section>
   <section class="panel grid" style="max-width:640px"><h3>Adicionar um professor</h3>
     <div class="form-row"><div class="field"><label for="nu-nom">Nome</label><input id="nu-nom" placeholder="ex.: Prof. Cohen (matemática)"></div>
@@ -2651,7 +2675,7 @@ document.addEventListener("click", async ev => {
     if (t.id === "mc-go"){ await api("/api/me/password", {method:"POST", body:JSON.stringify({old:$("#mc-old").value, password:$("#mc-new").value})}); $("#mc-st").textContent = "Senha alterada."; return; }
     if (t.id === "nu-go"){ const j = await api("/api/users", {method:"POST", body:JSON.stringify({nom:$("#nu-nom").value, email:$("#nu-mail").value, password:$("#nu-pw").value, role:$("#nu-role").value, plan:$("#nu-plan").value, exercices:$("#nu-ex").checked})});
       await loadUsers(); render(); $("#nu-st").textContent = `Conta criada: ${j.user.email} · senha provisória a repassar.`; return; }
-    if (d.ureset){ const pw = genPw(); await api("/api/users/" + d.ureset, {method:"PATCH", body:JSON.stringify({password:pw})}); $("#us-st").innerHTML = `Nova senha provisória para ${esc(S.users.find(u => u.id === d.ureset)?.email)} : <b class="num">${pw}</b>`; return; }
+    if (d.ureset){ if (!confirm(`Criar uma nova senha provisória? A antiga deixará de funcionar.\n\n${S.users.find(u => u.id === d.ureset)?.email || ""}`)) return; const pw = genPw(); await api("/api/users/" + d.ureset, {method:"PATCH", body:JSON.stringify({password:pw})}); $("#us-st").innerHTML = `Nova senha provisória para ${esc(S.users.find(u => u.id === d.ureset)?.email)} : <b class="num">${pw}</b>`; return; }
     if (d.uact){ await api("/api/users/" + d.uact, {method:"PATCH", body:JSON.stringify({actif:d.v === "1"})}); await loadUsers(); return render(); }
     if (d.udel){ const x = (S.users || []).find(u => u.id === d.udel); if (!x) return;
       if (!confirm(`Excluir definitivamente a conta de ${x.nom} (${x.email}) e todos os seus dados (avaliações, provas, notas, imagens)?`)) return;
@@ -2728,7 +2752,7 @@ function etabPanel(){
     <div class="row"><button class="btn sm" id="et-save">Salvar</button>${S.me?.billing ? (ab && ["active","trialing","past_due"].includes(ab.status) ? `<button class="btn sm" id="et-portal">Gerenciar a assinatura da escola</button>` : `<button class="btn sm primary" id="et-pay-go">Pagar o plano escola</button>`) : ""}</div>
     ${ab?.fin ? `<p class="small muted" style="margin:0">${ab.annule ? "Termina" : "Renovação"} le ${frDate(ab.fin.slice(0, 10))}.</p>` : ""}
     <div><b class="small">Professores (${(e.membres || []).length})</b>${(e.membres || []).map(m => `<div class="item"><div><div class="t">${esc(m.nom)}</div><div class="s">${esc(m.email)}</div></div><button class="btn sm ghost" data-etout="${m.id}">Remover</button></div>`).join("") || `<p class="small muted">Nenhum professor por enquanto: passe o código para eles.</p>`}</div>
-    ${(e.membres || []).length ? "" : `<div class="row"><button class="btn sm ghost" id="et-quit">Excluir esta escola</button></div>`}<div class="status" id="et-st"></div></section>`;
+    ${(e.membres || []).length ? "" : `<div class="row"><button class="btn sm ghost danger" id="et-quit">Excluir esta escola</button></div>`}<div class="status" id="et-st"></div></section>`;
 }
 async function refreshMe(){ try { const j = await api("/api/me"); S.me = j.user; } catch(e){} render(); }
 document.addEventListener("click", async ev => {
@@ -2738,7 +2762,7 @@ document.addEventListener("click", async ev => {
     if (d.buy){ t.disabled = true; say("bil-st", "Abrindo o pagamento seguro…"); const j = await api("/api/billing/checkout", {method:"POST", body:JSON.stringify({plan:d.buy, periode:d.per})}); location.href = j.url; return; }
     if (t.id === "bil-portal" || t.id === "et-portal"){ t.disabled = true; const j = await api("/api/billing/portal", {method:"POST", body:JSON.stringify({etab:t.id === "et-portal"})}); location.href = j.url; return; }
     if (t.id === "ref-copy"){ const v = $("#ref-link").value; try { await navigator.clipboard.writeText(v); } catch(e){ $("#ref-link").select(); document.execCommand("copy"); } toast("Link copiado"); return; }
-    if (t.id === "et-join"){ const code = $("#et-code").value.trim(); if (!code) return; await api("/api/etab/rejoindre", {method:"POST", body:JSON.stringify({code})}); toast("Você entrou na escola"); return refreshMe(); }
+    if (t.id === "et-join"){ const code = $("#et-code").value.trim(); if (!code){ toast("Digite o código fornecido pela direção da escola."); $("#et-code").focus(); return; } await api("/api/etab/rejoindre", {method:"POST", body:JSON.stringify({code})}); toast("Você entrou na escola"); return refreshMe(); }
     if (t.id === "et-new"){ await api("/api/etab/creer", {method:"POST", body:JSON.stringify({nom:$("#et-nom").value, eleves:+$("#et-el").value || 0, payeProfs:$("#et-pay").checked})}); toast("Escola criada: passe o código para seus professores"); return refreshMe(); }
     if (t.id === "et-save"){ await api("/api/etab/reglages", {method:"POST", body:JSON.stringify({eleves:+$("#et-el").value || 0, payeProfs:$("#et-pay").checked})}); toast("Salvo"); return refreshMe(); }
     if (d.etout){ if (!confirm("Remover este professor da escola?")) return; await api("/api/etab/reglages", {method:"POST", body:JSON.stringify({retirer:d.etout})}); return refreshMe(); }
@@ -2865,7 +2889,7 @@ function vSuiviBase(){
         ${bil ? `<textarea id="appr-txt" data-live>${esc(bil.texte)}</textarea><div class="row"><button class="btn sm" id="apprSave">Salvar minha versão</button><button class="btn sm ghost" id="apprCopy">Copiar</button></div>` : `<p class="muted small">Redigido a partir das notas, dos conteúdos e dos comentários do ano. Você revisa e edita.</p>`}</div>
     </section>`;
   }
-  return top + `<section class="panel"><p class="small muted">Verde: dominado (70 % ou mais) · laranja: frágil · vermelho: não dominado. Toque em um aluno para ver o detalhe.</p>
+  return top + `<section class="panel"><p class="small muted">${cols.length ? "Verde: dominado (70 % ou mais) · laranja: frágil · vermelho: não dominado. Toque em um aluno para ver o detalhe." : "Nenhuma prova validada por enquanto: o domínio de cada conteúdo aparecerá aqui assim que uma prova for validada. Toque em um aluno para ver os detalhes."}</p>
     <div class="tbl-wrap" style="margin-top:8px"><table><thead><tr><th>Aluno</th>${cols.map(k => `<th class="c" title="${esc(st.labels[k])}" style="max-width:110px;overflow:hidden;text-overflow:ellipsis">${esc(st.labels[k].slice(0, 16))}</th>`).join("")}</tr></thead><tbody>
     ${(cl.eleves || []).map(x => `<tr class="clickable ${x.id === S.su.el ? "sel" : ""}" data-suel="${x.id}"><td><b>${esc(x.prenom)} ${esc(x.nom)}</b></td>${cols.map(k => { const r = ms(x.id, k); return `<td class="c"><span class="cell ${tone(r)}" title="${lab(r)}">${r == null ? "—" : Math.round(r * 100)}</span></td>`; }).join("")}</tr>`).join("")}
     </tbody></table></div></section>` + detail;
@@ -3169,7 +3193,7 @@ function vQuiz(){
     inner = `<section class="panel grid" style="gap:10px"><div class="row between"><div class="row">${byT.map(([t, n]) => `<span class="chip">${QTYPES[t].replace(" (no computador)", "")} × ${n}</span>`).join("")}<span class="chip">${notions.length} notions</span></div>
       <div class="row"><button class="btn sm" id="qz-more">+ 10 questões (IA)</button><button class="btn sm ghost" id="qz-regen">↻ Regerar todo o banco</button></div></div><div class="status" id="qz-st"></div></section>
     ${(q.questions || []).map((x, i) => `<section class="panel grid" style="gap:10px">
-      <div class="row between"><div class="row"><b>Q${i + 1}</b><span class="chip">${QTYPES[x.type].replace(" (no computador)", "")}</span><span class="chip" title="Nível">${stars(x.niveau)}</span>${x.notion ? `<span class="chip blue">${esc(x.notion)}</span>` : ""}</div><button class="btn sm ghost" data-qqdel="${x.id}">Excluir</button></div>
+      <div class="row between"><div class="row"><b>Q${i + 1}</b><span class="chip">${QTYPES[x.type].replace(" (no computador)", "")}</span><span class="chip" title="Nível">${stars(x.niveau)}</span>${x.notion ? `<span class="chip blue">${esc(x.notion)}</span>` : ""}</div><button class="btn sm ghost danger" data-qqdel="${x.id}">Excluir</button></div>
       <div class="field"><label>Enunciado</label><textarea data-qqf="${x.id}" data-k="enonce">${esc(x.enonce)}</textarea></div>
       ${qAnswerEditor(x)}
       <div class="form-row"><div class="field"><label>Conteúdo</label><input data-qqf="${x.id}" data-k="notion" value="${esc(x.notion || "")}"></div><div class="field"><label>Nível</label><select data-qqf="${x.id}" data-k="niveau">${selOpts(["1","2","3"], String(x.niveau || 1), n => stars(n))}</select></div></div>
@@ -3189,7 +3213,7 @@ function vQuiz(){
   return `<div class="crumbs small"><a href="#/exercices">← Todos os quizzes</a></div>
   <div class="head"><div><div class="label">Exercícios · ${esc(q.matiere)} · ${esc(cl?.nom || "?")}${q.fermeture ? " · até " + esc(frDate(q.fermeture)) : ""}</div><h2>${esc(q.titre)}</h2>
     <div class="row" style="margin-top:6px"><span class="chip ${QSTAT[q.statut]?.[1] || ""}">${QSTAT[q.statut]?.[0]}</span>${q.statut === "ouvert" && !quizOpenNow(q) ? `<span class="chip warn">prazo encerrado</span>` : ""}</div></div>
-    <div class="row">${act}<button class="btn ghost sm" id="qz-del">Excluir</button></div></div>
+    <div class="row">${act}<button class="btn ghost sm danger" id="qz-del">Excluir</button></div></div>
   <nav class="stepper">${tabs.map(([k, l], j) => `<a class="st ${k === tab ? "on" : ""}" href="#/exercices/${q.id}/${k}"><b>${j + 1}</b><span>${l}</span></a>`).join("")}</nav>
   ${inner}`;
 }
@@ -3239,7 +3263,7 @@ function codesPanel(cl){
   if (!cl || !window.TIKOUN_CONFIG?.accounts) return "";
   const n = (cl.eleves || []).filter(e => e.code).length, tot = (cl.eleves || []).length;
   return `<section class="panel grid" style="gap:10px"><div class="row between"><div><h3>Códigos dos alunos</h3><p class="small muted">Para os exercícios on-line: cada aluno entra em <b>${esc(location.origin)}/eleve</b> com seu código pessoal (sem e-mail).</p></div>
-    <div class="row"><button class="btn sm" id="codes-gen">${n < tot ? "Gerar os códigos que faltam" : "Códigos atualizados"}</button>${n ? `<button class="btn sm primary" id="codes-print">Imprimir os cartões</button>` : ""}</div></div>
+    <div class="row"><button class="btn sm" id="codes-gen"${n < tot ? "" : " disabled"}>${n < tot ? "Gerar os códigos que faltam" : "Códigos atualizados"}</button>${n ? `<button class="btn sm primary" id="codes-print">Imprimir os cartões</button>` : ""}</div></div>
     ${n ? `<div class="row">${(cl.eleves || []).map(e => `<span class="chip">${esc(e.prenom)} ${esc((e.nom || "").slice(0, 1))}. · <b class="num">${esc(e.code || "—")}</b>${e.code ? ` <button class="btn sm ghost" style="padding:0 4px" data-recode="${e.id}" title="Novo código">↻</button>` : ""}</span>`).join("")}</div>` : ""}</section>`;
 }
 function printCards(cl){
@@ -3377,7 +3401,7 @@ function vEntrainement(){
     ${(S.tr.list?.items || []).map(s => `<div class="item" style="align-items:flex-start;gap:14px"><img src="${esc(blobSrc(s.asset))}" alt="" loading="lazy" style="width:220px;max-height:120px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:6px" data-zoom="${esc(blobSrc(s.asset))}">
       <div style="flex:1;min-width:0;display:grid;gap:4px"><div class="small muted">${esc([s.matiere, s.langue, s.niveau].filter(Boolean).join(" · "))} · ${esc(frDate((s.at || "").slice(0, 10)))}${s.cer != null ? ` · <b>${pctS(1 - s.cer)}</b> das letras` : ""}</div>
         <div dir="auto" style="white-space:pre-wrap"><b>${esc(s.texte)}</b></div>${s.texteIA && s.texteIA !== s.texte ? `<div dir="auto" class="small muted" style="white-space:pre-wrap">IA: ${esc(s.texteIA)}</div>` : ""}</div>
-      <div class="row"><button class="btn sm ghost" data-tred="${s.id}">Editar</button><button class="btn sm ghost" data-trdel="${s.id}">Excluir</button></div></div>`).join("") || `<p class="small muted">O banco está vazio por enquanto.</p>`}</section>`;
+      <div class="row"><button class="btn sm ghost" data-tred="${s.id}">Editar</button><button class="btn sm ghost danger" data-trdel="${s.id}">Excluir</button></div></div>`).join("") || `<p class="small muted">O banco está vazio por enquanto.</p>`}</section>`;
 }
 function trItem(it){
   const n = S.tr.queue.length, m = S.tr.meta, P = it.passage;
@@ -3546,7 +3570,7 @@ function devicesPanel(){
     ${(S.dev.list || []).map(d => `<div class="item"><div><div class="t">${esc(d.nom)} <span class="chip">${d.portee === "ecole" ? "Toda a escola" : "Minhas provas"}</span></div>
       <div class="s">${d.pages} página(s) recebida(s)${d.dernier ? " · último envio em " + esc(frDate(d.dernier.slice(0, 10))) : " · nenhum envio ainda"}</div></div>
       <div class="row"><button class="btn sm" data-devsheet="${d.id}">Folha de configuração</button><button class="btn sm ghost" data-devdel="${d.id}">Remover</button></div></div>`).join("")}
-    <div class="form-row" style="grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) auto;align-items:end"><div class="field"><label for="dev-nom">Nome do aparelho</label><input id="dev-nom" placeholder="ex. Scanner da sala dos professores"></div>
+    <div class="form-row dev-form" style="align-items:end"><div class="field"><label for="dev-nom">Nome do aparelho</label><input id="dev-nom" placeholder="ex. Scanner da sala dos professores"></div>
       <div class="field"><label for="dev-portee">Provas de</label><select id="dev-portee"><option value="moi">Só eu</option>${dir ? `<option value="ecole">Toda a escola</option>` : ""}</select></div>
       <button class="btn primary" id="dev-add">Adicionar</button></div>
     <details><summary class="small" style="cursor:pointer">Configuração de Wi-Fi impressa na folha (opcional)</summary>
@@ -3569,7 +3593,7 @@ document.addEventListener("input", ev => { if (ev.target.id === "dev-ssid") S.de
 document.addEventListener("click", async ev => {
   const t = ev.target.closest("button"); if (!t) return; const d = t.dataset;
   try {
-    if (t.id === "dev-add"){ const j = await api("/api/devices", {method:"POST", body:JSON.stringify({nom:$("#dev-nom").value, portee:$("#dev-portee").value})}); S.dev.list = [...(S.dev.list || []), j.appareil]; render(); toast("Aparelho adicionado: imprima a folha de configuração."); return; }
+    if (t.id === "dev-add"){ if (!$("#dev-nom").value.trim()){ toast("Dê um nome ao aparelho (ex.: Scanner da sala dos professores)."); $("#dev-nom").focus(); return; } const j = await api("/api/devices", {method:"POST", body:JSON.stringify({nom:$("#dev-nom").value, portee:$("#dev-portee").value})}); S.dev.list = [...(S.dev.list || []), j.appareil]; render(); toast("Aparelho adicionado: imprima a folha de configuração."); return; }
     if (d.devdel){ if (!confirm("Remover este aparelho? Ele não poderá mais enviar provas.")) return; await api("/api/devices/" + d.devdel, {method:"DELETE"}); return devLoad(); }
     if (d.devsheet){ const x = (S.dev.list || []).find(y => y.id === d.devsheet); if (x) devSheet(x); return; }
   } catch(e){ toast(e.message || "Erro"); }

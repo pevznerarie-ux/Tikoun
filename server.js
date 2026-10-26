@@ -665,6 +665,8 @@ async function aiProxy(req, res, u){
   const txt = await r.text();
   if (r.ok){ try { const us = JSON.parse(txt).usage; spend(u, tier, us); console.log(`IA ${model} · ${u.id} · entrée ${us?.input_tokens} · sortie ${us?.output_tokens}`); } catch(e){} }
   else console.warn("IA erreur", r.status, txt.slice(0, 300));
+  // Clé IA refusée par Anthropic : ce n'est pas la session du professeur (401 le renverrait à la connexion)
+  if (r.status === 401 || r.status === 403) return sendJ(res, 502, {error:{message:"Clé IA du serveur refusée : vérifie ANTHROPIC_API_KEY sur Railway."}});
   send(res, r.status, txt, TYPES[".json"]);
 }
 
@@ -1135,12 +1137,12 @@ http.createServer(async (req, res) => {
           : {essentiel:env("PRICE_LABEL_ESSENTIEL") || "12 €/mois", pro:env("PRICE_LABEL_PRO") || "19 €/mois", essentielAn:env("PRICE_LABEL_ESSENTIEL_AN") || "99 €/an", proAn:env("PRICE_LABEL_PRO_AN") || "159 €/an", ecole:env("PRICE_LABEL_ECOLE") || "Sur devis"}}) + ";\n", TYPES[".js"], {"Cache-Control":"no-store"});
     if (p === "/" || p === "") p = u ? "/index.html" : "/landing.html";
     if (p === "/app" || p === "/app/") p = "/index.html";
-    const LEGAL = {"/cgu":"cgu", "/terms":"cgu", "/confidentialite":"confidentialite", "/privacy":"confidentialite", "/mentions-legales":"mentions-legales", "/legal":"mentions-legales"}[p.replace(/\/$/, "")];
-    if (LEGAL){ const f = path.join(ROOT, LEGAL + (res._lang === "en" ? ".en" : res._lang === "pt" ? ".pt" : "") + ".html"); const en = res._lang === "en";
-      const nd = en ? "to be completed" : res._lang === "pt" ? "a completar" : "à compléter";
+    const LEGAL = {"/cgu":"cgu", "/terms":"cgu", "/confidentialite":"confidentialite", "/privacy":"confidentialite", "/mentions-legales":"mentions-legales", "/legal":"mentions-legales"}[p.replace(/\/$/, "").replace(/(\.(en|pt))?\.html$/, "")];
+    if (LEGAL){ const lg = (p.match(/\.(en|pt)\.html$/) || [])[1] || res._lang; const f = path.join(ROOT, LEGAL + (lg === "en" ? ".en" : lg === "pt" ? ".pt" : "") + ".html"); const en = lg === "en";
+      const nd = en ? "to be completed" : lg === "pt" ? "a completar" : "à compléter";
       const V = {EDITEUR:env("LEGAL_NAME") || "Mastery", ADRESSE:env("LEGAL_ADDRESS") || nd, CONTACT:env("LEGAL_EMAIL") || env("ADMIN_EMAIL") || "contact",
-        FORME:env("LEGAL_FORM") || nd, SIREN:env("LEGAL_SIREN") || nd, TEL:env("LEGAL_PHONE") || nd, DIRECTEUR:env("LEGAL_DIRECTOR") || nd, REGION:env("HOST_REGION") || (en ? "United States (us-west2)" : res._lang === "pt" ? "Estados Unidos (us-west2)" : "États-Unis (us-west2)"),
-        HEBERGEUR:env("LEGAL_HOST") || "Railway Corporation (railway.com), 548 Market St, San Francisco, CA 94104, " + (en ? "USA" : res._lang === "pt" ? "EUA" : "États-Unis")};
+        FORME:env("LEGAL_FORM") || nd, SIREN:env("LEGAL_SIREN") || nd, TEL:env("LEGAL_PHONE") || nd, DIRECTEUR:env("LEGAL_DIRECTOR") || nd, REGION:env("HOST_REGION") || (en ? "United States (us-west2)" : lg === "pt" ? "Estados Unidos (us-west2)" : "États-Unis (us-west2)"),
+        HEBERGEUR:env("LEGAL_HOST") || "Railway Corporation (railway.com), 548 Market St, San Francisco, CA 94104, " + (en ? "USA" : lg === "pt" ? "EUA" : "États-Unis")};
       const html = fs.readFileSync(f, "utf8").replace(/\{\{(EDITEUR|ADRESSE|CONTACT|HEBERGEUR|FORME|SIREN|TEL|DIRECTEUR|REGION)\}\}/g, (m, k) => V[k].replace(/[<>&"]/g, c => ({"<":"&lt;", ">":"&gt;", "&":"&amp;", '"':"&quot;"}[c])));
       return send(res, 200, html, TYPES[".html"], {"Cache-Control":"no-cache"}); }
     if (res._lang !== "fr" && /\.html$/.test(p) && fs.existsSync(path.join(ROOT, p.replace(/\.html$/, "." + res._lang + ".html")))) p = p.replace(/\.html$/, "." + res._lang + ".html");

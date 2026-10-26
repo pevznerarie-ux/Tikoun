@@ -1538,5 +1538,11 @@
  "question(s) non lue(s) par l'IA : relance la page ou recadre-les dans la correction.": "question(s) not read by the AI: retry the page or crop them in grading.",
  "Élève retiré.": "Student removed.",
  "élève(s) ?\\n\\nLeurs copies scannées, notes et résultats d'exercices seront supprimés.": "student(s)?\\n\\nTheir scanned papers, grades and practice results will be deleted.",
- "⚠ Pas enregistré : la connexion au serveur a échoué. Vérifie le réseau puis refais la dernière modification.": "⚠ Not saved: the connection to the server failed. Check the network, then redo your last change."
+ "⚠ Pas enregistré : la connexion au serveur a échoué. Vérifie le réseau puis refais la dernière modification.": "⚠ Not saved: the connection to the server failed. Check the network, then redo your last change.",
+ "Supprimer le contrôle": "Delete test",
+ "Écris un élève par ligne : « Prénom Nom ».": "Write one student per line: “First Last”.",
+ "Créer un nouveau mot de passe provisoire ? L'ancien ne fonctionnera plus.\\n\\n": "Create a new temporary password? The old one will stop working.\\n\\n",
+ "Aucune copie validée pour l'instant : la maîtrise de chaque notion apparaîtra ici dès qu'une copie sera validée. Touche un élève pour son détail.": "No graded paper validated yet: mastery of each skill will appear here once a paper is validated. Tap a student for details.",
+ "Donne un nom à l'appareil (ex. Scanner salle des profs).": "Give the device a name (e.g. Staff room scanner).",
+ "Entre le code donné par ta direction.": "Enter the code your school administration gave you."
 }
