@@ -124,6 +124,8 @@ function vCompte(){
     <p class="small muted" style="margin:0">Les calculs restent identiques ; seul l'affichage des notes change.</p>
     <select id="me-bareme" style="max-width:320px">${[["20","Sur 20 (France)"],["10","Sur 10 (Brésil)"],["100","Pourcentage (%)"],["AF","Lettres A à F (États-Unis)"]].map(([k, t]) => `<option value="${k}"${bareme() === k ? " selected" : ""}>${t}</option>`).join("")}</select></section>
   <section class="panel grid" style="max-width:640px"><h3>Langue</h3><p class="row">${[["fr","Français"],["en","English (US)"],["pt","Português (BR)"]].map(([k, l]) => `<a class="btn sm${(document.documentElement.lang || "fr").slice(0, 2) === k ? " cur" : ""}" href="?lang=${k}">${l}</a>`).join("")}</p></section>
+  <section class="panel grid" style="max-width:640px"><h3>Apparence</h3><p class="small muted" style="margin:0">Choix propre à cet appareil. Automatique : clair la journée, sombre le soir et la nuit (de 20 h à 7 h).</p>
+    <div class="seg" role="group" aria-label="Apparence">${[["clair","Clair"],["sombre","Sombre"],["auto","Automatique"]].map(([k, l]) => `<button data-th="${k}" aria-pressed="${themePref() === k}">${l}</button>`).join("")}</div></section>
   <section class="panel grid" style="max-width:640px"><h3>Changer de mot de passe</h3>
     <div class="field"><label for="mc-old">Mot de passe actuel</label><input id="mc-old" type="password" autocomplete="current-password"></div>
     <div class="field"><label for="mc-new">Nouveau mot de passe (8 caractères minimum)</label><input id="mc-new" type="password" autocomplete="new-password"></div>
@@ -171,6 +173,7 @@ function vComptes(){
 document.addEventListener("click", async ev => {
   const t = ev.target.closest("button"); if (!t) return; const d = t.dataset;
   const st = () => $("#au-st");
+  if (d.th){ try { localStorage.setItem("mastery.theme", d.th); } catch(e){} applyTheme(); return render(); }
   try {
     if (d.uval){ await api("/api/users/" + d.uval, {method:"PATCH", body:JSON.stringify({statut:"valide"})}); await loadUsers(); toast("Inscription validée"); return render(); }
     if (d.uref){ if (!confirm("Refuser cette inscription ?")) return; await api("/api/users/" + d.uref, {method:"PATCH", body:JSON.stringify({statut:"refuse"})}); await loadUsers(); return render(); }

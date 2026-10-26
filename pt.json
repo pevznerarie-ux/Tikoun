@@ -1568,5 +1568,10 @@
  "copie(s) scannée(s) et leurs notes seront supprimées.": "prova(s) digitalizada(s) e suas notas serão excluídas.",
  "Voir plus ·": "Ver mais ·",
  "» ?": "”?",
- "utilisations": "usos"
+ "utilisations": "usos",
+ "Apparence": "Aparência",
+ "Clair": "Claro",
+ "Sombre": "Escuro",
+ "Automatique": "Automático",
+ "Choix propre à cet appareil. Automatique : clair la journée, sombre le soir et la nuit (de 20 h à 7 h).": "Escolha válida neste aparelho. Automático: claro durante o dia, escuro à noite (das 20h às 7h)."
 }

@@ -21,6 +21,11 @@
 <script defer src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<script>/* Apparence choisie par chacun : clair, sombre, ou automatique (sombre de 20 h à 7 h) */
+window.themePref = () => { try { return localStorage.getItem("mastery.theme") || "clair"; } catch(e){ return "clair"; } };
+window.applyTheme = () => { const p = themePref(), h = new Date().getHours(), dark = p === "sombre" || (p === "auto" && (h >= 20 || h < 7));
+  document.documentElement.dataset.theme = dark ? "dark" : "light"; const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = dark ? "#14110F" : "#FFFFFF"; };
+applyTheme(); setInterval(applyTheme, 60000);</script>
 <script>window.MathJax = {tex:{inlineMath:[["$","$"]]}, svg:{fontCache:"global"}, startup:{typeset:false}, options:{enableMenu:false}};</script>
 <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js"></script>
 <style>
@@ -349,13 +354,13 @@ body:has(#jobs-pill) .wrap{padding-bottom:120px}
   --r:16px; --shadow:0 1px 2px rgba(16,24,40,.04),0 4px 16px -8px rgba(16,24,40,.08); --hero:#C8643B;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
-  --paper:#0B1020; --surface:#121829; --surface-2:#1A2236; --ink:#E9EDF7; --muted:#98A2B8; --line:#262F47;
-  --blue:#E08A63; --blue-2:#EBA07E; --blue-soft:#3A2219; --on-blue:#0B1020; --gold:#E08A63; --gold-soft:#3A2219;
+  --paper:#14110F; --surface:#1C1815; --surface-2:#26201B; --ink:#F2ECE6; --muted:#A99D92; --line:#352C26;
+  --blue:#E08A63; --blue-2:#EBA07E; --blue-soft:#3A2219; --on-blue:#14110F; --gold:#E08A63; --gold-soft:#3A2219;
   --ok:#47CD89; --ok-soft:#10301F; --warn:#F5B44A; --warn-soft:#33260F; --bad:#FF7A70; --bad-soft:#3A1C1A; --pen:#FF7A70; --pen-soft:#3A1C1A;
   --shadow:0 1px 2px rgba(0,0,0,.3),0 6px 20px -10px rgba(0,0,0,.6); --hero:#A94F2A}}
 :root[data-theme="dark"]{
-  --paper:#0B1020; --surface:#121829; --surface-2:#1A2236; --ink:#E9EDF7; --muted:#98A2B8; --line:#262F47;
-  --blue:#E08A63; --blue-2:#EBA07E; --blue-soft:#3A2219; --on-blue:#0B1020; --gold:#E08A63; --gold-soft:#3A2219;
+  --paper:#14110F; --surface:#1C1815; --surface-2:#26201B; --ink:#F2ECE6; --muted:#A99D92; --line:#352C26;
+  --blue:#E08A63; --blue-2:#EBA07E; --blue-soft:#3A2219; --on-blue:#14110F; --gold:#E08A63; --gold-soft:#3A2219;
   --ok:#47CD89; --ok-soft:#10301F; --warn:#F5B44A; --warn-soft:#33260F; --bad:#FF7A70; --bad-soft:#3A1C1A; --pen:#FF7A70; --pen-soft:#3A1C1A; --hero:#A94F2A}
 body{font-family:var(--body);font-size:15px;letter-spacing:-.006em;-webkit-font-smoothing:antialiased}
 h1,h2,h3,.acc-n{font-family:var(--display);letter-spacing:-.022em}
@@ -2781,6 +2786,8 @@ function vCompte(){
     <p class="small muted" style="margin:0">Calculations stay the same; only how grades are displayed changes.</p>
     <select id="me-bareme" style="max-width:320px">${[["20","Out of 20 (France)"],["10","Out of 10 (Brazil)"],["100","Percentage (%)"],["AF","Letters A to F (US)"]].map(([k, t]) => `<option value="${k}"${bareme() === k ? " selected" : ""}>${t}</option>`).join("")}</select></section>
   <section class="panel grid" style="max-width:640px"><h3>Language</h3><p class="row">${[["fr","French"],["en","English (US)"],["pt","Português (BR)"]].map(([k, l]) => `<a class="btn sm${(document.documentElement.lang || "fr").slice(0, 2) === k ? " cur" : ""}" href="?lang=${k}">${l}</a>`).join("")}</p></section>
+  <section class="panel grid" style="max-width:640px"><h3>Appearance</h3><p class="small muted" style="margin:0">Saved on this device. Automatic: light during the day, dark in the evening and at night (8 pm to 7 am).</p>
+    <div class="seg" role="group" aria-label="Appearance">${[["clair","Light"],["sombre","Dark"],["auto","Automatic"]].map(([k, l]) => `<button data-th="${k}" aria-pressed="${themePref() === k}">${l}</button>`).join("")}</div></section>
   <section class="panel grid" style="max-width:640px"><h3>Change password</h3>
     <div class="field"><label for="mc-old">Current password</label><input id="mc-old" type="password" autocomplete="current-password"></div>
     <div class="field"><label for="mc-new">New password (8 characters minimum)</label><input id="mc-new" type="password" autocomplete="new-password"></div>
@@ -2828,6 +2835,7 @@ function vComptes(){
 document.addEventListener("click", async ev => {
   const t = ev.target.closest("button"); if (!t) return; const d = t.dataset;
   const st = () => $("#au-st");
+  if (d.th){ try { localStorage.setItem("mastery.theme", d.th); } catch(e){} applyTheme(); return render(); }
   try {
     if (d.uval){ await api("/api/users/" + d.uval, {method:"PATCH", body:JSON.stringify({statut:"valide"})}); await loadUsers(); toast("Registration approved"); return render(); }
     if (d.uref){ if (!confirm("Decline this registration?")) return; await api("/api/users/" + d.uref, {method:"PATCH", body:JSON.stringify({statut:"refuse"})}); await loadUsers(); return render(); }
