@@ -54,7 +54,7 @@ function ctrlFrame(c, inner){
   const i = stepIdx(S.step), pr = ctrlProgress(c), cl = classe(c.classeId);
   const doneUpTo = {brouillon:-1, imprime:2, correction:3, corrige:4}[c.statut] ?? -1;
   const prev = STEPS[i - 1], next = STEPS[i + 1];
-  return `<div class="crumbs small"><a href="#/controles">← Tous les contrôles</a></div>
+  return `<div class="crumbs small row between"><a href="#/controles">← Tous les contrôles</a><button class="btn sm ghost danger" id="delCtrlTop">Supprimer le contrôle</button></div>
   <div class="head"><div><div class="label">${c.type === "rattrapage" ? "Rattrapage" : c.type === "exercices" ? "Exercices" : "Contrôle"} · ${esc(c.matiere)} · ${esc(cl?.nom || "?")}${c.date ? " · " + esc(frDate(c.date)) : ""}</div><h2>${esc(c.titre)}</h2></div>
     <div class="row">${chipStatut(c)}${pr.printed ? `<span class="chip">${pr.sc}/${pr.n} scannées · ${pr.va}/${pr.n} validées</span>` : ""}</div></div>
   <nav class="stepper" aria-label="Étapes">${STEPS.map(([k, l], j) => `<a href="#/controle/${c.id}/${k}" class="st ${j === i ? "on" : j <= doneUpTo ? "done" : ""}" ${j === i ? 'aria-current="step"' : ""}><b>${j + 1}</b><span>${l}</span></a>`).join("")}</nav>

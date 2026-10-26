@@ -441,6 +441,17 @@ input[type=checkbox],input[type=radio]{accent-color:var(--blue)}
 .auth-foot{text-align:center}.view .auth-foot a{color:var(--muted);text-decoration:none}.view .auth-foot a:hover{color:var(--ink)}
 .auth-card>.status:empty{display:none}
 @media (max-width:600px){.auth{min-height:auto;place-content:start center;padding-top:8px}.auth-card{padding:24px 20px}}
+/* Banque : barre de recherche et lignes compactes */
+.bk{padding-top:14px}
+.bk-bar{display:flex;gap:8px;flex-wrap:wrap;padding-bottom:12px;border-bottom:1px solid var(--line)}
+.bk-bar input{flex:1 1 220px}.bk-bar select{flex:0 1 200px;width:auto}
+.bk-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 0;border-top:1px solid var(--line)}
+.bk-bar+.bk-row{border-top:0}
+.bk-main{min-width:0}.bk-main .t{font-weight:600}.bk-main .s{font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bk-act{display:flex;gap:6px;align-items:center;flex:none}.bk-act select{width:auto;max-width:180px;padding:6px 10px}
+.bk-row.open{background:var(--surface-2);margin:0 -14px;padding:13px 14px;border-radius:12px}
+.bk-more{display:flex;justify-content:center;padding-top:12px;border-top:1px solid var(--line)}
+@media (max-width:600px){.bk-row{flex-wrap:wrap}.bk-main .s{white-space:normal}.bk-act{width:100%;justify-content:flex-end;flex-wrap:wrap}.bk-act select{flex:1 1 100%;max-width:none}}
 /* Menu du compte */
 .brand{position:relative}
 .umenu{position:relative}
