@@ -1,6 +1,6 @@
 # Génère les versions portugaises (Brésil) : dist/index.pt.html, dist/landing.pt.html, dist/eleve.pt.html
 import subprocess, json, re, os
-ACORN = os.environ.get("ACORN", "/tmp/claude-0/libs/node_modules/acorn")
+ACORN = os.environ.get("ACORN", os.path.join(os.path.dirname(os.path.abspath(__file__)), "node_modules", "acorn"))
 NIV_BR = '["6º ano","7º ano","8º ano","9º ano","1º ano EM","2º ano EM","3º ano EM"]'
 MAT_SUGG_BR = '["Guemará","Mishná","Chumash","Neviim","Halachá","Chassidut","Pensamento judaico"]'
 MAT_BR = '["Matemática","Língua Portuguesa","Ciências","Biologia","Química","Física","História","Geografia","Inglês","Espanhol","Hebraico","Filosofia","Sociologia","Artes","Educação Física"]'
@@ -16,7 +16,7 @@ for name in ["index", "landing", "eleve"]:
     s = re.sub(r'const MATIERES = \[[^\]]*\];', 'const MATIERES = ' + MAT_BR + ';', s)
     s = re.sub(r'const MAT_SUGG = \[[^\]]*\];', 'const MAT_SUGG = ' + MAT_SUGG_BR + ';', s)
     s = s.replace('|| "3e"', '|| "9º ano"')
-    s = s.replace('<div class="grade">14<small>/20</small><svg', '<div class="grade">7<small>/10</small><svg')
+    s = s.replace('<div class="grade">14<small>/20</small>', '<div class="grade">7<small>/10</small>')
     open(out, "w").write(s)
 json.dump(sorted(missing), open("i18n/missing_pt.json", "w"), ensure_ascii=False, indent=1)
 print("PT ok ·", len(missing), "texte(s) sans traduction (i18n/missing_pt.json)")

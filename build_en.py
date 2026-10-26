@@ -1,6 +1,6 @@
 # Génère les versions anglaises (US) : dist/index.en.html, dist/landing.en.html, dist/eleve.en.html
 import subprocess, json, re, os
-ACORN = os.environ.get("ACORN", "/tmp/claude-0/libs/node_modules/acorn")
+ACORN = os.environ.get("ACORN", os.path.join(os.path.dirname(os.path.abspath(__file__)), "node_modules", "acorn"))
 NIV_US = '["6th grade","7th grade","8th grade","9th grade","10th grade","11th grade","12th grade"]'
 MAT_SUGG_US = '["Talmud","Mishnah","Chumash","Navi","Halacha","Chassidus","Jewish Thought"]'
 MAT_US = '["Math","English Language Arts","Science","Biology","Chemistry","Physics","History","Social Studies","Spanish","French","Hebrew","Computer Science","Economics","Art","Music"]'
@@ -17,7 +17,7 @@ for name in ["index", "landing", "eleve"]:
     s = re.sub(r'const MAT_SUGG = \[[^\]]*\];', 'const MAT_SUGG = ' + MAT_SUGG_US + ';', s)
     s = s.replace('|| "3e"', '|| "8th grade"')
     s = s.replace('>Postal code<', '>ZIP code<').replace('>Code postal<', '>ZIP code<').replace('>Zip code<', '>ZIP code<')
-    s = s.replace('<div class="grade">14<small>/20</small><svg', '<div class="grade">70<small>%</small><svg')
+    s = s.replace('<div class="grade">14<small>/20</small>', '<div class="grade">70<small>%</small>')
     open(out, "w").write(s)
 json.dump(sorted(missing), open("i18n/missing.json", "w"), ensure_ascii=False, indent=1)
 print("EN ok ·", len(missing), "texte(s) sans traduction (i18n/missing.json)")

@@ -172,3 +172,10 @@ Règles appliquées :
 - Sources : copies passées par l'admin dans l'onglet, corrections de transcription des profs, copies validées, feuilles modèles d'écriture.
   Les profs ne contribuent que s'ils cochent « Partager anonymement mes corrections » dans Mon compte (l'admin contribue toujours).
 - Les « aides de lecture » (règles écrites par l'admin + confusions fréquentes trouvées automatiquement) sont ajoutées à chaque lecture de copie.
+
+## Scanners Wi-Fi et Mastery Box
+
+- Mon compte → « Scanner et Mastery Box » : ajouter un appareil (copies du prof, ou de tout l'établissement pour la direction), imprimer sa feuille de réglage.
+- L'appareil envoie chaque page en HTTP POST (JPEG, PNG ou PDF) à `https://TON-DOMAINE/api/scan/upload?t=JETON`.
+- Les pages attendent dans `/data/inbox.json` ; l'application ouverte du prof les récupère toutes les 20 s, lit les QR codes et lance la correction.
+  Pour un appareil d'établissement, chaque prof ne traite que les copies de ses propres contrôles.

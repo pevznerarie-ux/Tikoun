@@ -34,7 +34,7 @@ footer .wrap{display:flex;gap:16px;flex-wrap:wrap;justify-content:space-between}
 <nav><a class="hide" href="/cgu">Termos</a><a class="hide" href="/confidentialite">Privacidade</a><a href="/confidentialite?lang=fr">Français</a></nav></div></header>
 <main class="wrap">
 <h1>Política de privacidade</h1>
-<p class="lead">Última atualização: 30 de setembro de 2026</p>
+<p class="lead">Última atualização: 26 de outubro de 2026</p>
 <div class="box">Em resumo: o Mastery nunca vende dados, não exibe anúncios e não usa rastreadores publicitários. Os dados dos alunos são usados apenas pelo professor, no seu espaço de trabalho privado. Os nomes dos alunos são removidos antes de qualquer envio à IA.</div>
 
 <h2>1. Quem é o responsável?</h2>
@@ -61,34 +61,38 @@ footer .wrap{display:flex;gap:16px;flex-wrap:wrap;justify-content:space-between}
 </ul>
 
 <h2>4. Inteligência artificial</h2>
-<p>Para ler a escrita à mão, corrigir as respostas e gerar questões, o Mastery envia o conteúdo necessário ao serviço de IA da <b>Anthropic</b> (modelos Claude). Para limitar o que é compartilhado:</p>
+<p>Para ler a escrita à mão, corrigir e gerar questões, o Mastery envia os elementos necessários ao serviço de inteligência artificial da <b>Anthropic</b> (modelos Claude). Para limitar os dados transmitidos:</p>
 <ul>
-<li>apenas os quadros de resposta são recortados e enviados; quando uma página inteira precisa ser enviada, o cabeçalho com o nome do aluno é ocultado;</li>
-<li>os nomes e sobrenomes dos alunos são removidos automaticamente dos textos enviados à IA;</li>
-<li>de acordo com os seus termos comerciais, a Anthropic não usa esses dados para treinar os seus modelos e os mantém apenas por tempo limitado.</li>
+<li>apenas os quadros de resposta são recortados e enviados; quando uma página inteira precisa ser enviada, o cabeçalho com o nome do aluno é ocultado (mesmo quando a página não pôde ser endireitada);</li>
+<li>o nome e o sobrenome dos alunos são retirados automaticamente dos textos enviados;</li>
+<li>segundo seus termos comerciais, a Anthropic não usa esses dados para treinar seus modelos e os guarda apenas por tempo limitado.</li>
 </ul>
-<p><b>Banco de escrita (opcional).</b> Se o professor aceitar em Minha conta, as imagens dos quadros de resposta (sem nome nem cabeçalho) e o texto que ele corrigiu são guardados em um banco anônimo. Ele serve apenas para medir e melhorar a leitura da escrita à mão pelo Mastery; nunca é vendido nem compartilhado. O professor pode retirar o consentimento a qualquer momento.</p>
+<p>As notas propostas pela inteligência artificial são sugestões: o professor as verifica e valida. Nenhuma decisão é tomada automaticamente.</p>
+<p><b>Banco de escrita (opcional, desativado por padrão).</b> Se o professor o ativar em Minha conta, a imagem dos quadros de resposta (sem nome nem cabeçalho) e o texto que ele corrigiu são guardados num banco <b>pseudonimizado</b>: a escrita à mão continua sendo um dado pessoal. Ele serve apenas para medir e melhorar a leitura da escrita pelo Mastery; não é vendido nem compartilhado. O professor pode retirar o consentimento a qualquer momento; a escola deve ter concordado.</p>
 
 <h2>5. Destinatários e suboperadores</h2>
 <ul>
-<li>O professor que criou os dados e os colegas do mesmo espaço de trabalho, caso a escola tenha configurado contas compartilhadas; o administrador do Mastery, para suporte e análise das inscrições.</li>
-<li>Hospedagem: {{HEBERGEUR}}.</li>
+<li>O professor que criou os dados, os colegas do seu espaço se a escola criou contas compartilhadas, e a direção da escola se o professor a integrou no Mastery; o administrador do Mastery para suporte e validação das inscrições.</li>
+<li>Hospedagem: {{HEBERGEUR}} · região dos servidores: {{REGION}}.</li>
 <li>Inteligência artificial: Anthropic, PBC (EUA).</li>
-<li>Diretório de escolas: busca no diretório público do Ministério da Educação da França, usada apenas por escolas localizadas na França (nenhum dado pessoal é enviado).</li>
+<li>Pagamento das assinaturas: Stripe Payments Europe Ltd (Irlanda) e Stripe, Inc. (EUA); o Mastery nunca vê os números de cartão.</li>
+<li>Fontes e bibliotecas técnicas: Google Fonts (Google Ireland Ltd) e jsDelivr; esses serviços recebem o endereço IP do navegador ao carregar as páginas, sem cookies.</li>
+<li>Diretório de escolas: busca no diretório público do Ministério da Educação francês (nenhum dado pessoal transmitido).</li>
 </ul>
-<p>Quando os dados são tratados fora do país de origem, a transferência internacional se apoia nas garantias previstas na LGPD (arts. 33 a 36), em especial cláusulas contratuais padrão, bem como nas garantias previstas no RGPD (cláusulas contratuais padrão da Comissão Europeia ou decisão de adequação).</p>
+<p>Quando dados são tratados fora da União Europeia, as transferências são cobertas pelas garantias do RGPD (Data Privacy Framework UE–EUA para empresas certificadas, ou cláusulas contratuais padrão da Comissão Europeia).</p>
 
 <h2>6. Retenção</h2>
 <ul>
-<li>Dados da conta e dos alunos: enquanto a conta estiver ativa; depois, excluídos em até 3 meses após o encerramento da conta ou mediante solicitação do professor.</li>
-<li>Backups automáticos: 14 dias, de forma contínua.</li>
-<li>Banco de escrita anônimo: no máximo 3 anos, excluído mediante solicitação.</li>
-<li>Registros técnicos: no máximo 12 meses.</li>
-<li>Sessões de acesso dos alunos: no máximo 120 dias.</li>
+<li>Dados da conta e dos alunos: enquanto a conta estiver ativa. O professor pode excluir a qualquer momento um aluno, uma turma ou a conta inteira no Mastery: a exclusão é imediata. Uma conta encerrada a pedido é excluída em até 30 dias.</li>
+<li>Imagens das provas digitalizadas: no máximo 13 meses após o envio, depois excluídas automaticamente.</li>
+<li>Backups automáticos: 14 dias corridos.</li>
+<li>Banco de escrita pseudonimizado: no máximo 3 anos, excluído a pedido.</li>
+<li>Registros técnicos: no máximo 12 meses (sem endereço de e-mail).</li>
+<li>Sessões de acesso: 30 dias sem uso para professores, no máximo 120 dias para alunos.</li>
 </ul>
 
 <h2>7. Segurança</h2>
-<p>Conexão criptografada (HTTPS), senhas criptografadas com hash, espaços de trabalho separados para cada professor e cada escola, limites de uso contra abusos, backups diários.</p>
+<p>Conexão criptografada (HTTPS), senhas protegidas (scrypt), espaços separados entre professores e escolas (inclusive as imagens das provas), bloqueio de tentativas repetidas de senha, limites de uso contra abusos, backup diário.</p>
 
 <h2>8. Cookies</h2>
 <p>O Mastery usa apenas cookies estritamente necessários: manter o professor ou o aluno conectado e lembrar o idioma. Não há cookies de publicidade nem de análise de audiência; por isso, nenhum aviso de consentimento é necessário.</p>
@@ -101,6 +105,6 @@ footer .wrap{display:flex;gap:16px;flex-wrap:wrap;justify-content:space-between}
 <p>Os alunos podem ser crianças ou adolescentes, inclusive menores de 12 anos. Os seus dados são tratados no seu melhor interesse (art. 14 da LGPD), inseridos pelo professor para fins escolares, com a autorização da escola; os alunos veem apenas os seus próprios quizzes e resultados, usando o código pessoal fornecido pelo professor.</p>
 
 </main>
-<footer><div class="wrap"><span>© 2026 Mastery · {{EDITEUR}}</span><span><a href="/cgu">Termos de uso</a> · <a href="/confidentialite">Privacidade</a> · <a href="/">Início</a></span></div></footer>
+<footer><div class="wrap"><span>© 2026 Mastery · {{EDITEUR}}</span><span><a href="/cgu">Termos de uso</a> · <a href="/confidentialite">Privacidade</a> · <a href="/mentions-legales">Aviso legal</a> · <a href="/">Início</a></span></div></footer>
 </body>
 </html>

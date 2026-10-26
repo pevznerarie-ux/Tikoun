@@ -70,13 +70,15 @@ function apiSample(){
     const headers = {"content-type":"application/json", "x-tikoun-code":accessCode()};
     if (SB && SB_USER){ const {data} = await SB.auth.getSession(); headers.authorization = "Bearer " + data.session.access_token; }
     let r;
-    try { r = await fetch(cc.endpoint, {method:"POST", signal:opts.signal, headers, body:JSON.stringify({tier:opts.modelTier || "default", feature:opts.feature || "", messages:[{role:"user", content}]})}); }
-    catch(e){ throw {code:e?.name === "AbortError" ? "cancelled" : "upstream_error"}; }
+    try { r = await fetch(cc.endpoint, {method:"POST", signal:opts.signal || (AbortSignal.timeout ? AbortSignal.timeout(210000) : undefined), headers, body:JSON.stringify({tier:opts.modelTier || "default", feature:opts.feature || "", messages:[{role:"user", content}]})}); }
+    catch(e){ throw {code:e?.name === "TimeoutError" ? "timeout" : e?.name === "AbortError" ? "cancelled" : "upstream_error"}; }
     if (!r.ok){
       if (r.status === 401 && window.TIKOUN_CONFIG?.accounts){ S.auth = "login"; scheduleRender(); }
       else if (r.status === 401 && !SB){ NEED_CODE = true; try { localStorage.removeItem("tikoun.code"); } catch(e){} scheduleRender(); }
       const code = r.status === 402 ? "no_access" : r.status === 403 ? "no_option" : r.status === 401 ? "need_code" : r.status === 429 ? "rate_limited" : r.status === 400 || r.status === 413 ? "api_400" : r.status === 503 ? "no_ai" : "upstream_error";
-      let msg = ""; try { msg = (await r.json())?.error?.message || ""; } catch(e){} throw {code, message:msg}; }
+      let msg = "", mc = ""; try { const ej = (await r.json())?.error; msg = ej?.message || ""; mc = ej?.code || ""; } catch(e){}
+      if (mc === "must_change"){ S.auth = "change"; scheduleRender(); }
+      throw {code:mc === "must_change" ? "must_change" : r.status === 429 && /Plafond/.test(msg) ? "budget" : code, message:msg}; }
     const j = await r.json(); const text = (j.content || []).filter(b => b.type === "text").map(b => b.text).join("");
     if (!text.trim()) throw {code:"empty_completion"};
     return asJson ? parseJSONloose(text) : text;
