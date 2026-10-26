@@ -1567,5 +1567,10 @@
  "copie(s) scannée(s) et leurs notes seront supprimées.": "scanned paper(s) and their grades will be deleted.",
  "Voir plus ·": "See more ·",
  "» ?": "”?",
- "utilisations": "uses"
+ "utilisations": "uses",
+ "Apparence": "Appearance",
+ "Clair": "Light",
+ "Sombre": "Dark",
+ "Automatique": "Automatic",
+ "Choix propre à cet appareil. Automatique : clair la journée, sombre le soir et la nuit (de 20 h à 7 h).": "Saved on this device. Automatic: light during the day, dark in the evening and at night (8 pm to 7 am)."
 }
