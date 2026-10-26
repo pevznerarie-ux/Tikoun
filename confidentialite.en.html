@@ -34,7 +34,7 @@ footer .wrap{display:flex;gap:16px;flex-wrap:wrap;justify-content:space-between}
 <nav><a class="hide" href="/cgu">Terms</a><a class="hide" href="/confidentialite">Privacy</a><a href="/confidentialite?lang=fr">Français</a></nav></div></header>
 <main class="wrap">
 <h1>Privacy policy</h1>
-<p class="lead">Last updated: September 30, 2026</p>
+<p class="lead">Last updated: October 26, 2026</p>
 <div class="box">In short: Mastery never sells data, shows no ads and uses no advertising trackers. Student data is used only by the teacher, in their private workspace. Student names are removed before anything is sent to the AI.</div>
 
 <h2>1. Who is responsible?</h2>
@@ -61,34 +61,38 @@ footer .wrap{display:flex;gap:16px;flex-wrap:wrap;justify-content:space-between}
 </ul>
 
 <h2>4. Artificial intelligence</h2>
-<p>To read handwriting, grade answers and generate questions, Mastery sends the necessary content to <b>Anthropic</b>’s AI service (Claude models). To limit what is shared:</p>
+<p>To read handwriting, grade and generate questions, Mastery sends the necessary elements to the artificial intelligence service of <b>Anthropic</b> (Claude models). To limit the data sent:</p>
 <ul>
-<li>only the answer boxes are cropped and sent; when a full page must be sent, the header with the student’s name is masked;</li>
-<li>student first and last names are automatically removed from text sent to the AI;</li>
+<li>only the answer boxes are cropped and sent; when a whole page must be sent, the header with the student’s name is masked (even when the page could not be straightened);</li>
+<li>students’ first and last names are automatically removed from text sent;</li>
 <li>under its commercial terms, Anthropic does not use this data to train its models and keeps it only for a limited time.</li>
 </ul>
-<p><b>Handwriting bank (optional).</b> If the teacher opts in under My account, images of answer boxes (with no name or header) and the text they corrected are kept in an anonymous bank. It is used only to measure and improve Mastery’s handwriting reading; it is never sold or shared. Teachers can withdraw their consent at any time.</p>
+<p>Grades proposed by the AI are suggestions: the teacher checks and approves them. No decision is made automatically.</p>
+<p><b>Handwriting bank (optional, off by default).</b> If the teacher turns it on in My account, images of answer boxes (without name or header) and the text they corrected are kept in a <b>pseudonymized</b> bank: handwriting remains personal data. It is used only to measure and improve Mastery’s handwriting reading; it is never sold or shared. The teacher can withdraw consent at any time; the school must have agreed.</p>
 
 <h2>5. Recipients and subprocessors</h2>
 <ul>
-<li>The teacher who created the data, and colleagues in the same workspace if the school set up shared accounts; the Mastery administrator for support and sign-up review.</li>
-<li>Hosting: {{HEBERGEUR}}.</li>
-<li>Artificial intelligence: Anthropic, PBC (United States).</li>
+<li>The teacher who created the data, colleagues in their space if the school created shared accounts, and the school’s leadership if the teacher joined it in Mastery; the Mastery administrator for support and sign-up approval.</li>
+<li>Hosting: {{HEBERGEUR}} · server region: {{REGION}}.</li>
+<li>Artificial intelligence: Anthropic, PBC (USA).</li>
+<li>Subscription payments: Stripe Payments Europe Ltd (Ireland) and Stripe, Inc. (USA); Mastery never sees card numbers.</li>
+<li>Fonts and technical libraries: Google Fonts (Google Ireland Ltd) and jsDelivr; these services receive the browser’s IP address when pages load, without cookies.</li>
 <li>School directory: search in the French Ministry of Education public directory (no personal data sent).</li>
 </ul>
-<p>When data is processed outside the European Union, transfers rely on the safeguards provided by the GDPR (European Commission standard contractual clauses or an adequacy decision).</p>
+<p>When data is processed outside the European Union, transfers are covered by GDPR safeguards (EU–US Data Privacy Framework for certified companies, or the European Commission’s standard contractual clauses).</p>
 
 <h2>6. Retention</h2>
 <ul>
-<li>Account and student data: while the account is active, then deleted within 3 months of account closure or on the teacher’s request.</li>
+<li>Account data and student data: as long as the account is active. Teachers can delete a student, a class or their whole account in Mastery at any time: deletion is immediate. An account closed on request is deleted within 30 days.</li>
+<li>Scanned paper images: at most 13 months after upload, then deleted automatically.</li>
 <li>Automatic backups: rolling 14 days.</li>
-<li>Anonymous handwriting bank: 3 years at most, deleted on request.</li>
-<li>Technical logs: 12 months at most.</li>
-<li>Student sign-in sessions: 120 days at most.</li>
+<li>Pseudonymized handwriting bank: at most 3 years, deleted on request.</li>
+<li>Technical logs: at most 12 months (no email addresses).</li>
+<li>Sign-in sessions: 30 days without activity for teachers, at most 120 days for students.</li>
 </ul>
 
 <h2>7. Security</h2>
-<p>Encrypted connection (HTTPS), hashed passwords, separate workspaces for each teacher and school, usage limits against abuse, daily backups.</p>
+<p>Encrypted connection (HTTPS), hashed passwords (scrypt), separated spaces between teachers and schools (including scanned images), blocking of repeated password attempts, usage limits against abuse, daily backup.</p>
 
 <h2>8. Cookies</h2>
 <p>Mastery only uses strictly necessary cookies: keeping the teacher or student signed in, and remembering the language. No advertising or analytics cookies, so no consent banner is needed.</p>
@@ -100,6 +104,6 @@ footer .wrap{display:flex;gap:16px;flex-wrap:wrap;justify-content:space-between}
 <p>Students may be minors, including children under 13. Their data is entered by their teacher for school purposes, with the school’s authorization; students only see their own quizzes and results, using the personal code given by their teacher.</p>
 
 </main>
-<footer><div class="wrap"><span>© 2026 Mastery · {{EDITEUR}}</span><span><a href="/cgu">Terms of use</a> · <a href="/confidentialite">Privacy</a> · <a href="/">Home</a></span></div></footer>
+<footer><div class="wrap"><span>© 2026 Mastery · {{EDITEUR}}</span><span><a href="/cgu">Terms of use</a> · <a href="/confidentialite">Privacy</a> · <a href="/mentions-legales">Legal notice</a> · <a href="/">Home</a></span></div></footer>
 </body>
 </html>

@@ -189,7 +189,7 @@ function quizSuivi(){
 
 /* ---------- Codes élèves (Classes) ---------- */
 const CODE_ALPHA = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-const newCode = () => { let s = ""; for (const b of crypto.getRandomValues(new Uint8Array(6))) s += CODE_ALPHA[b % CODE_ALPHA.length]; return s; };
+const newCode = () => { let s = ""; for (const b of crypto.getRandomValues(new Uint8Array(8))) s += CODE_ALPHA[b % CODE_ALPHA.length]; return s; };
 function codesPanel(cl){
   if (!cl || !window.TIKOUN_CONFIG?.accounts) return "";
   const n = (cl.eleves || []).filter(e => e.code).length, tot = (cl.eleves || []).length;

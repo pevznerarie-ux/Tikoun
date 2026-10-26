@@ -14,7 +14,8 @@ const userName = id => S.users.find(u => u.id === id)?.nom || "";
 async function api(path, opts = {}){
   const r = await fetch(path, {credentials:"same-origin", ...opts, headers:{"content-type":"application/json", ...(opts.headers || {})}});
   let j = {}; try { j = await r.json(); } catch(e){}
-  if (!r.ok) throw {status:r.status, message:j?.error?.message || "Erreur " + r.status, setup:j?.setup};
+  if (!r.ok){ if (j?.error?.code === "must_change" && S.auth !== "change"){ S.auth = "change"; scheduleRender(); }
+    throw {status:r.status, message:j?.error?.message || (r.status >= 500 ? "Serveur momentanément indisponible : réessaie dans un instant." : "Erreur " + r.status), setup:j?.setup}; }
   return j;
 }
 /* Établissement : recherche dans l'annuaire officiel de l'Éducation nationale, ou saisie manuelle (non vérifiée) */
@@ -95,7 +96,7 @@ async function afterLogin(user, mustChange){
   if (!S.auth){ await loadUsers(); if (!SERVERSTORE) await startServer(); else { applyScope(); render(); } } else render();
 }
 async function bootAccounts(){
-  try { const j = await api("/api/me"); await afterLogin(j.user, false); }
+  try { const j = await api("/api/me"); await afterLogin(j.user, !!j.user?.mustChange); }
   catch(e){ S.auth = e.status === 401 && e.setup ? "setup" : /^#\/inscription/.test(location.hash) && window.TIKOUN_CONFIG?.signup ? "register" : "login"; if (S.auth === "register"){ const pl = location.hash.split("/")[2]; if (pl === "pro" || pl === "essentiel") S.regPlan = pl; S.ecFor = "reg"; S.ec = {q:"", cp:"", res:null, sel:null, manual:false, busy:false, err:""}; } refreshCaps(); render(); }
 }
 
@@ -126,7 +127,12 @@ function vCompte(){
     <div class="field"><label for="mc-old">Mot de passe actuel</label><input id="mc-old" type="password" autocomplete="current-password"></div>
     <div class="field"><label for="mc-new">Nouveau mot de passe (8 caractères minimum)</label><input id="mc-new" type="password" autocomplete="new-password"></div>
     <div class="row"><button class="btn primary" id="mc-go">Enregistrer</button></div><div class="status" id="mc-st"></div></section>
-  ${vReglages()}`;
+  ${vReglages()}
+  <section class="panel grid" style="max-width:560px"><h3>Supprimer mon compte</h3>
+    <p class="small muted" style="margin:0">Efface définitivement ton compte et tout ce qui t'appartient : contrôles, copies scannées, notes, cours, exercices et images. Pense d'abord à exporter tes notes si tu en as besoin.</p>
+    <div class="field"><label for="del-pw">Mot de passe actuel</label><input id="del-pw" type="password" autocomplete="current-password"></div>
+    <div class="row"><button class="btn" id="del-me" style="color:var(--pen);border-color:var(--pen)">Supprimer définitivement mon compte</button></div><div class="status" id="del-st"></div></section>
+  <p class="small muted"><a href="/mentions-legales" target="_blank" rel="noopener">Mentions légales</a> · <a href="/cgu" target="_blank" rel="noopener">Conditions d'utilisation</a> · <a href="/confidentialite" target="_blank" rel="noopener">Confidentialité</a></p>`;
 }
 /* Comptes (administrateur) */
 const genPw = () => { const a = "abcdefghjkmnpqrstuvwxyz23456789"; let s = ""; for (const b of crypto.getRandomValues(new Uint8Array(10))) s += a[b % a.length]; return s; };
@@ -148,7 +154,7 @@ function vComptes(){
     <td><select data-uplan="${u.id}" style="width:auto" aria-label="Abonnement">${selOpts(["essentiel","pro"], u.plan || "essentiel", x => PLAN[x])}</select></td>
     <td>${(u.plan || "essentiel") === "pro" ? `<label class="row small" style="gap:6px"><input type="checkbox" data-uex="${u.id}"${u.options?.exercices ? " checked" : ""}> ${u.options?.exercices ? "Activée" : "Désactivée"}</label>` : `<span class="muted small">Pro requis</span>`}</td>
     <td class="c num">${nb(u.id)}</td>
-    <td><div class="row"><button class="btn sm" data-ureset="${u.id}">Nouveau mot de passe</button>${u.id !== S.me.id ? `<button class="btn sm ghost" data-uact="${u.id}" data-v="${u.actif ? 0 : 1}">${u.actif ? "Désactiver" : "Réactiver"}</button>` : ""}</div></td></tr>`).join("")}
+    <td><div class="row"><button class="btn sm" data-ureset="${u.id}">Nouveau mot de passe</button>${u.id !== S.me.id ? `<button class="btn sm ghost" data-uact="${u.id}" data-v="${u.actif ? 0 : 1}">${u.actif ? "Désactiver" : "Réactiver"}</button><button class="btn sm ghost" data-udel="${u.id}" style="color:var(--pen)">Supprimer</button>` : ""}</div></td></tr>`).join("")}
   </tbody></table></div><div class="status" id="us-st"></div></section>
   <section class="panel grid" style="max-width:640px"><h3>Ajouter un professeur</h3>
     <div class="form-row"><div class="field"><label for="nu-nom">Nom</label><input id="nu-nom" placeholder="ex. M. Cohen (maths)"></div>
@@ -203,7 +209,13 @@ document.addEventListener("click", async ev => {
       await loadUsers(); render(); $("#nu-st").textContent = `Compte créé : ${j.user.email} · mot de passe provisoire à transmettre.`; return; }
     if (d.ureset){ const pw = genPw(); await api("/api/users/" + d.ureset, {method:"PATCH", body:JSON.stringify({password:pw})}); $("#us-st").innerHTML = `Nouveau mot de passe provisoire pour ${esc(S.users.find(u => u.id === d.ureset)?.email)} : <b class="num">${pw}</b>`; return; }
     if (d.uact){ await api("/api/users/" + d.uact, {method:"PATCH", body:JSON.stringify({actif:d.v === "1"})}); await loadUsers(); return render(); }
-  } catch(e){ const box = $("#au-st") || $("#me-st") || $("#mc-st") || $("#nu-st") || $("#us-st"); if (box) box.textContent = e.message || "Erreur."; }
+    if (d.udel){ const x = (S.users || []).find(u => u.id === d.udel); if (!x) return;
+      if (!confirm(`Supprimer définitivement le compte de ${x.nom} (${x.email}) et toutes ses données (contrôles, copies, notes, images) ?`)) return;
+      await api("/api/users/" + d.udel, {method:"DELETE", body:"{}"}); await loadUsers(); toast("Compte supprimé."); return render(); }
+    if (t.id === "del-me"){ if (!$("#del-pw").value) return void ($("#del-st").textContent = "Entre ton mot de passe.");
+      if (!confirm("Supprimer définitivement ton compte et toutes tes données ? Cette action ne peut pas être annulée.")) return;
+      await api("/api/me", {method:"DELETE", body:JSON.stringify({password:$("#del-pw").value})}); alert("Ton compte et tes données ont été supprimés."); location.href = "/"; return; }
+  } catch(e){ const box = (t.id === "del-me" && $("#del-st")) || $("#au-st") || $("#me-st") || $("#mc-st") || $("#nu-st") || $("#us-st"); if (box) box.textContent = e.message || "Erreur."; else toast(e.message || "Erreur."); }
 });
 document.addEventListener("change", async ev => {
   const el = ev.target;

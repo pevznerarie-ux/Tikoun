@@ -18,12 +18,11 @@
 <script src="config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script>window.MathJax = {tex:{inlineMath:[["$","$"]]}, svg:{fontCache:"global"}, startup:{typeset:false}, options:{enableMenu:false}};</script>
-<script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js"></script>
 <style>
 html,body{margin:0}[hidden]{display:none!important}img{max-width:100%}
 :root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -317,6 +316,8 @@ textarea,input{text-align:start}
 .score .qs.on{background:var(--pen);border-color:var(--pen);color:#fff}
 .copy-nav{padding:8px 12px;border-bottom:1px solid var(--line);gap:8px}
 @media (max-width:760px){.score input{width:58px;font-size:16px;min-height:36px}.qcard .row.between{flex-wrap:wrap}.seg{display:flex}.seg button{flex:1;padding:8px 6px;font-size:14px}.q{padding:12px}.copy-h{flex-wrap:wrap}}
+/* iPhone : un champ en dessous de 16 px fait zoomer tout l'écran au toucher */
+@media (max-width:760px){input,select,textarea{font-size:16px!important}.btn.sm{min-height:38px}.tags .btn.sm{min-width:30px;min-height:30px}}
 </style>
 
 </head>
@@ -360,6 +361,11 @@ const today = () => new Date().toISOString().slice(0, 10);
 const frDate = d => { if (!d) return ""; const x = new Date(d + (d.length === 10 ? "T12:00:00" : "")); return isNaN(x) ? d : x.toLocaleDateString("en-US", {day:"numeric", month:"long", year:"numeric"}); };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const half = v => Math.round(v * 2) / 2;
+/* Lecture des PDF dans un vrai « worker » : l'écran ne fige plus sur les gros PDF du copieur */
+document.addEventListener("DOMContentLoaded", () => { try { if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js"; } catch(e){} });
+/* Filet de sécurité : une erreur imprévue ne laisse pas l'écran figé sans explication */
+window.addEventListener("error", ev => { if (!ev.error || /ResizeObserver|Script error/i.test(ev.message || "")) return; console.error(ev.error); try { toast("Something went wrong. If a button stops responding, reload the page.", 6000); } catch(e){} });
+window.addEventListener("unhandledrejection", ev => { console.error(ev.reason); try { const c = ev.reason?.code; toast(c ? aiErr(c) : "Something went wrong. Try again, or reload the page.", 6000); } catch(e){} });
 function toast(msg, ms = 3500){ const t = document.createElement("div"); t.className = "toast"; t.textContent = msg; document.body.append(t); setTimeout(() => t.remove(), ms); }
 
 const MATIERES = ["Math","English Language Arts","Science","Biology","Chemistry","Physics","History","Social Studies","Spanish","French","Hebrew","Computer Science","Economics","Art","Music"];
@@ -400,6 +406,7 @@ const enteteOf = c => { const t = c?.mise?.entete; return t && t !== OLD_ENTETE 
 const STATUT = {brouillon:["Draft",""], imprime:["Printed","blue"], correction:["Grading in progress","warn"], corrige:["Graded","ok"]};
 
 const aiErr = c => ({
+  cancelled:"Cancelled.", budget:"Daily AI limit reached for your account: try again tomorrow (or ask the administrator to raise it).", timeout:"The AI is taking too long to respond: try again in a moment.", must_change:"Please choose a new password first.",
   no_access:"Your free trial has ended: choose a plan in My account to continue.",
   not_granted:"AI hasn't been enabled for this page.", sampling_disabled:"AI isn't available for this account.",
   rate_limited:"Too many requests at once: wait a minute, then try again.", session_expired:"Session expired: reconnect to Claude.",
@@ -477,11 +484,40 @@ const noteS = n => n == null || isNaN(n) ? "—" : nv(n) + sfx() + (bareme() ===
 /* Serialized writes: one at a time */
 let wq = Promise.resolve();
 function write(path, data, mode = "set"){
-  wq = wq.then(() => mode === "update" ? DB.doc(path).update(data) : mode === "delete" ? DB.doc(path).delete() : DB.doc(path).set(data))
-    .catch(e => { console.error(e); toast(e?.code === "no_access" ? aiErr("no_access") : e?.code === "quota_exceeded" ? "Database full: delete some old tests." : "Couldn't save (" + (e?.code || "erreur") + ")."); });
+  const run = () => mode === "update" ? DB.doc(path).update(data) : mode === "delete" ? DB.doc(path).delete() : DB.doc(path).set(data);
+  const retry = (n) => run().catch(e => { if (n > 0 && e?.code !== "no_access" && e?.code !== "quota_exceeded" && !/403/.test(e?.message || "")) return new Promise(r => setTimeout(r, n === 2 ? 1500 : 4000)).then(() => retry(n - 1)); throw e; });
+  wq = wq.then(() => retry(2))
+    .catch(e => { console.error(e); toast(e?.code === "no_access" ? aiErr("no_access") : e?.code === "quota_exceeded" ? "Database full: delete some old tests." : "⚠ Not saved: the connection to the server failed. Check the network, then redo your last change.", 9000); });
   return wq;
 }
 const saveCtrl = c => { const {id, ...d} = c; return write("controles/" + id, d); };
+/* Relecture d'une page : les notes posées par le professeur et les copies validées ne sont jamais écrasées */
+function keepTeacherNotes(cp, out){
+  const ans = out.answers || {};
+  for (const qid of Object.keys(ans)){
+    const old = cp?.answers?.[qid];
+    if (cp?.validee || old?.valide) delete ans[qid];
+    else if (old && old.note != null) delete ans[qid].note;
+  }
+  if (!cp?.validee) out.validee = false; else delete out.validee;
+  return out;
+}
+/* Élèves retirés (ou classe supprimée) : on efface leurs copies, images, notes, exercices et échantillons d'écriture */
+async function purgeStudents(ids){
+  const set = new Set(ids); if (!set.size) return;
+  const assets = [];
+  const grab = v => { if (typeof v === "string"){ if (/^[a-z0-9]{8,40}$/.test(v)) assets.push(v); } else if (Array.isArray(v)) v.forEach(grab); else if (v && typeof v === "object") Object.values(v).forEach(grab); };
+  for (const [cid, f] of Object.entries(store.feuilles || {})){
+    const copies = f?.copies || {}; if (!Object.keys(copies).some(e => set.has(e))) continue;
+    const keep = {}; for (const [e, cp] of Object.entries(copies)){ if (set.has(e)){ grab(cp.scans); for (const a of Object.values(cp.answers || {})) grab(a?.crop); } else keep[e] = cp; }
+    const {id, ...rest} = f; await write("feuilles/" + cid, {...rest, copies:keep});
+  }
+  for (const k of Object.keys(store.quizrep || {})){ const eid = k.slice(k.indexOf("_") + 1); if (set.has(eid)) await write("quizrep/" + k, null, "delete"); }
+  for (const eid of set) if (store.ecritures?.[eid]){ grab(store.ecritures[eid].samples); await write("ecritures/" + eid, null, "delete"); }
+  const still = new Set(); const keepRef = v => { if (typeof v === "string") still.add(v); else if (Array.isArray(v)) v.forEach(keepRef); else if (v && typeof v === "object") Object.values(v).forEach(keepRef); };
+  keepRef(store.feuilles); keepRef(store.ecritures);   // une image encore utilisée ailleurs n'est jamais effacée
+  for (const a of [...new Set(assets)]) if (!still.has(a)) fetch("/api/files/" + a, {method:"DELETE", credentials:"same-origin"}).catch(() => {});
+}
 
 /* ================= AI ================= */
 async function ai(prompt, opts = {}){
@@ -527,7 +563,7 @@ let rq = false, skipped = false;
 document.addEventListener("focusout", () => { if (skipped) setTimeout(scheduleRender, 0); });
 function scheduleRender(){ if (rq) return; rq = true; requestAnimationFrame(() => { rq = false; render(); }); try { jobsPill(); } catch(e){} }
 function render(){
-  const a = document.activeElement, keep = a && a.id && $("#view").contains(a) ? {id:a.id, s:a.selectionStart, e:a.selectionEnd, v:a.value, typing: ["INPUT","TEXTAREA"].includes(a.tagName) && a.type !== "file"} : null;
+  const a = document.activeElement, keep = a && a.id && $("#view").contains(a) ? {id:a.id, tag:a.tagName, s:a.selectionStart, e:a.selectionEnd, v:a.value, typing: ["INPUT","TEXTAREA"].includes(a.tagName) && !["file","checkbox","radio"].includes(a.type)} : null;
   if (keep?.typing && a.dataset.live !== undefined){ skipped = true; return; } // don't clobber a field being typed
   skipped = false;
   $$(".tab").forEach(t => t.setAttribute("aria-selected", t.dataset.r === navKey()));
@@ -542,8 +578,8 @@ function render(){
     if (S.view === "correct" && fc.statut === "brouillon") html = `<section class="panel empty">The sheets haven't been printed yet. Go through the "Print" step.</section>`;
     html = ctrlFrame(fc, html.replace(/<select id="(corrSel|anSel)"[\s\S]*?<\/select>/, "").replace(/<h2>(Correction|Classe & rattrapage|Scanner les copies)<\/h2>/, "<h3>$1</h3>"));
   }
-  $("#view").innerHTML = `<div class="view">${LOCAL ? `<p class="banner">Database unavailable in this view: nothing is being saved. Open the app from claude.ai.</p>` : ""}${typeof billBanner === "function" ? billBanner() : ""}${html}</div>`;
-  if (keep){ const el = document.getElementById(keep.id); if (el){ el.focus(); try { el.setSelectionRange(keep.s, keep.e); } catch(e){} } }
+  $("#view").innerHTML = `<div class="view">${LOCAL ? `<p class="banner">Database unavailable: nothing is being saved. Reload the page.</p>` : ""}${typeof billBanner === "function" ? billBanner() : ""}${html}</div>`;
+  if (keep){ const el = document.getElementById(keep.id); if (el){ if (keep.typing && el.tagName === keep.tag && el.value !== keep.v) el.value = keep.v; el.focus(); try { el.setSelectionRange(keep.s, keep.e); } catch(e){} } }
   if (S.view === "edit" && S.step === "mise-en-page") drawPreview();
   { const sp = $(".stepper"), on = $(".st.on"); if (sp && on) sp.scrollLeft = on.offsetLeft - sp.clientWidth / 2 + on.clientWidth / 2; }
   if (S.view === "correct" && window.MathJax?.typesetPromise){ const v = $("#view"); MathJax.typesetClear?.([v]); MathJax.typesetPromise([v]).catch(() => {}); }
@@ -619,7 +655,7 @@ function vClasses(){
         <td>${(() => { const w = store.ecritures[e.id]; const sc = w?.parUsage?.[usageOf(S.levelMat)] ?? w?.score; return w ? (sc != null ? `<span class="chip ${tone(sc >= .9 ? 1 : sc >= .75 ? .6 : 0)}" title="Legibility measured on the handwriting sample">${pct(sc)}</span>` : `<span class="chip">sample received</span>`) : `<span class="muted small">—</span>`; })()}</td>
         <td><button class="btn sm ghost" data-rmel="${e.id}" aria-label="Remove">Remove</button></td></tr>`).join("") || `<tr><td colspan="4" class="muted">No students.</td></tr>`}
       </tbody></table></div>
-      <div class="field"><label for="add-el">Add students: one per line, "First Last"</label><textarea id="add-el" data-live placeholder="Mendel Cohen&#10;Yossef Levy"></textarea></div>
+      <div class="field"><label for="add-el">Add students: one per line, "First Last"</label><textarea id="add-el" data-live placeholder="Léa Martin&#10;Hugo Bernard"></textarea></div>
       <div class="row"><button class="btn primary" id="add-go">Add</button></div>
       <div class="grid" style="gap:6px;border-top:1px solid var(--line);padding-top:12px"><div class="row between"><div><b>Handwriting sample</b><div class="small muted">Have students fill this out in September and January (10 min), then scan it. It measures each student's legibility and helps the AI read their handwriting.</div></div>
         <button class="btn" id="fiches">Class sheets (PDF)</button></div><div class="status" id="fi-st"></div></div>
@@ -855,7 +891,7 @@ async function printSheets(c, list){
     ov.remove();
     if (DL){ try { await DL.save({filename:name, data:blob}); st.textContent = "PDF ready. Print it, then scan the papers in the Scan tab."; }
       catch(e){ st.textContent = e?.code === "declined" ? "Download canceled." : "Download not possible in this view."; } }
-    else st.textContent = "Download unavailable in this view: open the app in claude.ai.";
+    else st.textContent = "Download not possible in this browser: try an up-to-date Chrome, Safari or Firefox.";
   }catch(e){ console.error(e); st.textContent = "PDF generation failed."; }
   finally{ ov.remove(); stage.style.left = "-12000px"; stage.innerHTML = ""; }
 }
@@ -910,7 +946,7 @@ function qItem(it){
     ${it.status === "manuel" && !it.lot ? `<div class="row" style="margin-top:6px">
       <select data-mq="${it.id}" data-f="ctrlId" style="width:auto" aria-label="Test"><option value="">Test…</option>${selOpts(printed, it.ctrlId || "", x => x.titre + " · " + (classe(x.classeId)?.nom || ""), x => x.id)}</select>
       ${c ? `<select data-mq="${it.id}" data-f="eleveId" style="width:auto" aria-label="Student"><option value="">Student…</option>${selOpts(studentsOf(c), it.eleveId || "", x => x.prenom + " " + x.nom, x => x.id)}</select>` : ""}
-      <select data-mq="${it.id}" data-f="page" style="width:auto" aria-label="Page">${selOpts(["1","2","3","4"], String(it.page || 1), x => "page " + x)}</select>
+      <select data-mq="${it.id}" data-f="page" style="width:auto" aria-label="Page">${selOpts(Array.from({length:Math.max(4, ...Object.values(feuille(it.ctrlId)?.copies || {}).map(cp => (cp.pages || []).length))}, (_, i) => String(i + 1)), String(it.page || 1), x => "page " + x)}</select>
       <button class="btn sm primary" data-mgo="${it.id}" ${c && it.eleveId ? "" : "disabled"}>Process</button></div>` : ""}
   </div><div class="row">${chip ? `<span class="chip ${chip[1]}">${chip[0]}</span>` : ""}${it.status === "ok" && it.ctrlId ? `<button class="btn sm" data-corr="${it.ctrlId}" data-el="${it.eleveId}">View</button>` : ""}${it.status === "erreur" && !it.lot ? `<button class="btn sm" data-retry="${it.id}">Retry</button>` : ""}${it.lotFix ? `<button class="btn sm primary" data-lotfix="${it.lotFix}">Redo here</button>` : ""}</div></div>`;
 }
@@ -1092,6 +1128,11 @@ function maskHeader(cv, H, boxes){
   const pts = [[-40, -40], [834, -40], [834, top], [-40, top]].map(([x, y]) => applyH(H, x, y));
   g.fillStyle = "#fff"; g.beginPath(); pts.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.closePath(); g.fill(); return o;
 }
+/* Sans repères, on ne peut pas situer l'en-tête exactement : on blanchit le haut de la première page (nom de l'élève) */
+function maskTop(cv, page){
+  const o = document.createElement("canvas"); o.width = cv.width; o.height = cv.height; const g = o.getContext("2d"); g.drawImage(cv, 0, 0);
+  if (+page === 1 || !page){ g.fillStyle = "#fff"; g.fillRect(0, 0, cv.width, Math.round(cv.height * 0.22)); } return o;
+}
 function inkRatio(cv, H, b){ /* part de pixels foncés dans le cadre (lignes grises et bordure exclues) */
   const d = pix(cv), SW = cv.width, SH = cv.height; let dark = 0, n = 0;
   for (let j = 0; j < 24; j++) for (let i = 0; i < 80; i++){
@@ -1220,13 +1261,13 @@ async function processPage(it){
       try {
         let images = [], mode;
         if (cropMode){ const aiB2 = aiB.filter(b => aiQ.includes(b.q)); if (aiB2.some(b => !crops[b.q]?.asset)) throw new Error("crop"); images = aiB2.map(b => crops[b.q].asset); mode = "crops"; }
-        else { const big = scaled(Hm ? maskHeader(it.cv, Hm, boxes) : it.cv, 2200), W = big.width, H = big.height, many = maxImg >= 2;
+        else { const big = scaled(Hm ? maskHeader(it.cv, Hm, boxes) : maskTop(it.cv, it.page), 2200), W = big.width, H = big.height, many = maxImg >= 2;
           const blobs = many ? [await toBlob(crop(big, 0, 0, W, H * 0.56)), await toBlob(crop(big, 0, H * 0.44, W, H * 0.56))] : [await toBlob(big)];
           for (const bl of blobs) images.push((await ASSETS.upload(bl)).id); mode = many ? "halves" : "page"; }
         const qs = aiQ.map(qid => { const q = c.questions.find(x => x.id === qid); if (!q) return null; const ver = cp.version?.[qid] || "standard";
           return {id:qid, points:+q.points, type:q.type === "qcm" ? "qcm" : "", good:vOf(q, ver).bonnes || [], notion:q.notion || "", crop:crops[qid]?.asset || null}; }).filter(Boolean);
         for (const qid of qids){ if (aiQ.includes(qid)) continue; const a = localAns(qid); if (a){ a.crop = crops[qid]?.asset || null; upd.copies[it.eleveId].answers[qid] = a; } }
-        upd.copies[it.eleveId].validee = false;
+        keepTeacherNotes(cp, upd.copies[it.eleveId]);
         await write("feuilles/" + c.id, upd, "update");
         if (c.statut === "imprime"){ c.statut = "correction"; await saveCtrl(c); }
         const j = await api("/api/jobs", {method:"POST", body:JSON.stringify({ctrlId:c.id, eleveId:it.eleveId, page:it.page, name:it.name, prompt:gradePrompt(c, cp, aiQ, mode) + JSON_ONLY, images, qs, bonus:!!bonusMax(c), txt:jobTxt()})});
@@ -1242,7 +1283,7 @@ async function processPage(it){
         const res = await ai(gradePrompt(c, cp, aiQ, "crops"), {images: await Promise.all(aiB2.map(b => toBlob(crops[b.q], .88))), modelTier:"complex"});
         arr = Array.isArray(res?.reponses) ? res.reponses : []; bon = res;
       } else {
-        const big = scaled(Hm ? maskHeader(it.cv, Hm, boxes) : it.cv, 2200), W = big.width, H = big.height;
+        const big = scaled(Hm ? maskHeader(it.cv, Hm, boxes) : maskTop(it.cv, it.page), 2200), W = big.width, H = big.height;
         const many = maxImg >= 2;
         const imgs = many ? [await toBlob(crop(big, 0, 0, W, H * 0.56)), await toBlob(crop(big, 0, H * 0.44, W, H * 0.56))] : [await toBlob(big)];
         const res = await ai(gradePrompt(c, cp, aiQ, many ? "halves" : "page"), {images:imgs, modelTier:"complex"});
@@ -1250,11 +1291,14 @@ async function processPage(it){
       }
       if (bonusMax(c)) upd.copies[it.eleveId].bonusPages = {[it.page]:{proprete:clamp(+bon?.proprete || 0, 0, 1), orthographe:clamp(+bon?.orthographe || 0, 0, 1)}};
     }
+    const missing = [];
     for (const qid of qids){
       const q = c.questions.find(x => x.id === qid); if (!q) continue;
       const ver = cp.version?.[qid] || "standard";
-      const r = arr.find(x => x.id === qid) || {};
+      const r0 = arr.find(x => String(x?.id) === String(qid)), r = r0 || {};
       let ans = localAns(qid);
+      /* Question absente de la réponse de l'IA : jamais de 0 automatique, elle reste « à relire » */
+      if (!ans && !r0 && aiQ.includes(qid)){ missing.push(qid); continue; }
       if (ans);
       else if (q.type === "qcm") ans = qcmAnswer(q, ver, (r.coches || []).map(Number), r.lisible === false);
       else ans = {transcription:String(r.transcription ?? ""), transcriptionIA:String(r.transcription ?? ""), annot:r.annotee != null ? String(r.annotee) : markFautes(String(r.transcription ?? ""), r.fautes), lisible:r.lisible !== false,
@@ -1263,10 +1307,10 @@ async function processPage(it){
       ans.crop = crops[qid]?.asset || null;
       upd.copies[it.eleveId].answers[qid] = ans;
     }
-    upd.copies[it.eleveId].validee = false;
+    keepTeacherNotes(cp, upd.copies[it.eleveId]);
     await write("feuilles/" + c.id, upd, "update");
     if (c.statut === "imprime"){ c.statut = "correction"; await saveCtrl(c); }
-    it.status = "ok"; it.msg = `${qids.length} question(s) read${qcmB.length ? ` · ${qcmB.length} MCQ without AI` : ""}${Hm ? " · cropped frames" : " · full page (markers not found)"}` + (arr.some(r => r.lisible === false) ? " · hard-to-read passage flagged" : ""); if (it.load) freeCv(it); else it.cv = null;
+    it.status = missing.length ? "erreur" : "ok"; it.msg = (missing.length ? `${missing.length} question(s) not read by the AI: retry the page or crop them in grading. ` : "") + `${qids.length - missing.length} question(s) read${qcmB.length ? ` · ${qcmB.length} MCQ without AI` : ""}${Hm ? " · cropped frames" : " · full page (markers not found)"}` + (arr.some(r => r.lisible === false) ? " · hard-to-read passage flagged" : ""); if (it.load) freeCv(it); else it.cv = null;
   }catch(e){ console.error(e); it.status = "erreur"; it.msg = aiErr(e?.code); }
   scheduleRender();
 }
@@ -1553,6 +1597,7 @@ function vAnalyse(){
 async function createRattrapage(c, e, replaceId){
   const f = feuille(c.id), cp = f?.copies?.[e.id]; if (!cp) throw {code:"no_copy"};
   if (!copyDone(c, cp) || final20(c, cp) >= SEUIL) throw {code:"not_failed"};
+  if (!cp.validee && !confirm(`The paper of ${e.prenom} is not approved yet: the remediation would be based on the grade suggested by the AI. Continue?`)) throw {code:"cancelled"};
   if (!replaceId && store.controles.some(x => x.type === "rattrapage" && x.parentId === c.id && x.eleves?.includes(e.id))) throw {code:"ratt_exists"};
   const weak = c.questions.map(q => ({q, a:cp.answers[q.id]})).filter(x => x.a && noteOf(x.a) / x.q.points < 0.6);
   const target = weak.length ? weak : c.questions.map(q => ({q, a:cp.answers[q.id]})).sort((x, y) => noteOf(x.a) / x.q.points - noteOf(y.a) / y.q.points).slice(0, 1);
@@ -1700,7 +1745,7 @@ async function regenExercices(c){
 
 /* ================= Demo ================= */
 async function loadDemo(){
-  const noms = [["Mendel","Azoulay"],["Yossef","Benhamou"],["Levi","Cohen"],["David","Dahan"],["Nathan","Elbaz"],["Eliezer","Fitoussi"],["Samuel","Gozlan"],["Raphael","Haddad"]];
+  const noms = [["Léa","Martin"],["Hugo","Bernard"],["Inès","Dubois"],["Nathan","Robert"],["Chloé","Petit"],["Adam","Durand"],["Jade","Leroy"],["Raphael","Moreau"]];
   const lv = ["standard","standard","approfondi","socle","approfondi","socle","standard","standard"];
   const cid = uid(10);
   await write("classes/" + cid, {nom:"9th A (demo)", niveau:"3e", eleves:noms.map(([p, n], i) => ({id:uid(8), prenom:p, nom:n + " (demo)", niveaux:{"Mathématiques":lv[i]}})), createdAt:new Date().toISOString()});
@@ -1753,11 +1798,13 @@ document.addEventListener("click", async ev => {
   if (t.id === "add-go"){ const cl = classe(S.classeSel); const lines = $("#add-el").value.split("\n").map(s => s.trim()).filter(Boolean);
     if (!lines.length) return; const add = lines.map(l => { const [p, ...n] = l.split(/\s+/); return {id:uid(8), prenom:p, nom:n.join(" "), niveaux:{}}; });
     $("#add-el").value = ""; await write("classes/" + cl.id, {eleves:[...(cl.eleves || []), ...add]}, "update"); toast(add.length + " student(s) added."); return; }
-  if (d.rmel){ const cl = classe(S.classeSel); await write("classes/" + cl.id, {eleves:cl.eleves.filter(e => e.id !== d.rmel)}, "update"); return; }
+  if (d.rmel){ const cl = classe(S.classeSel), e = (cl.eleves || []).find(x => x.id === d.rmel); if (!e) return;
+    if (!confirm(`Remove ${e.prenom} ${e.nom} from the class?\n\nTheir scanned papers, grades and practice results will be deleted. This cannot be undone.`)) return;
+    await write("classes/" + cl.id, {eleves:cl.eleves.filter(x => x.id !== d.rmel)}, "update"); await purgeStudents([d.rmel]); toast("Student removed."); return; }
   if (t.id === "del-cl"){ const cl = classe(S.classeSel); if (!cl) return;
     const n = (cl.eleves || []).length, nc = store.controles.filter(c => c.classeId === cl.id).length;
-    if (!confirm(`Delete the class “ ${cl.nom} ” and its ${n} student(s)?` + (nc ? `\n\n${nc} test(s) stay in the tests list, without a class.` : "") + "\n\nThis cannot be undone.")) return;
-    try { await write("classes/" + cl.id, null, "delete"); S.classeSel = null; toast("Class deleted."); render(); } catch(e){ toast("Could not delete: " + (e?.message || "try again.")); }
+    if (!confirm(`Delete the class “ ${cl.nom} ” and its ${n} student(s)?\n\nTheir scanned papers, grades and practice results will be deleted.` + (nc ? `\n\n${nc} test(s) stay in the test list, without a class or papers.` : "") + "\n\nThis cannot be undone.")) return;
+    try { await purgeStudents((cl.eleves || []).map(e => e.id)); await write("classes/" + cl.id, null, "delete"); S.classeSel = null; toast("Class deleted."); render(); } catch(e){ toast("Could not delete: " + (e?.message || "try again.")); }
     return; }
   if (t.id === "sugg"){ const cl = classe(S.classeSel); S.suggestions = {classeId:cl.id, mat:S.levelMat, map:suggestLevels(cl, S.levelMat)};
     if (!Object.keys(S.suggestions.map).length) toast("No paper approved in " + S.levelMat + " for this class."); return render(); }
@@ -1785,7 +1832,7 @@ document.addEventListener("click", async ev => {
     S.coursId = id; S.coursDraft = null; S.params.matiere = $("#c-mat").value; S.params.niveau = $("#c-niv").value; S.params.classeId = ""; S.wizStep = 2; return render(); }
   if (d.usecours && S.params.kind === "quiz"){ S.params.kind = "controle"; S.qn.coursId = d.usecours; S.qn.classeId = ""; location.hash = "#/exercices/nouveau"; return; }
   if (d.usecours){ const co = store.cours.find(c => c.id === d.usecours); S.coursId = co.id; S.params.matiere = co.matiere; S.params.niveau = co.niveau; S.params.classeId = ""; S.wizStep = 2; return render(); }
-  if (d.delcours){ await write("cours/" + d.delcours, null, "delete"); return; }
+  if (d.delcours){ if (!confirm("Delete this lesson? Tests already created from it are kept.")) return; await write("cours/" + d.delcours, null, "delete"); toast("Lesson deleted."); return; }
   if (t.id === "back1"){ S.wizStep = 1; return render(); }
   if (t.id === "gen" || t.id === "genBlank"){
     if (!S.params.langue) S.params.langue = langueDef(store.cours.find(c => c.id === S.coursId)?.texte);
@@ -1809,7 +1856,9 @@ document.addEventListener("click", async ev => {
     if (d.vt){ S.vtab[d.vt] = d.l; return render(); }
     if (d.qup !== undefined){ const i = +d.qup; [c.questions[i - 1], c.questions[i]] = [c.questions[i], c.questions[i - 1]]; await saveCtrl(c); return; }
     if (d.qdown !== undefined){ const i = +d.qdown; [c.questions[i + 1], c.questions[i]] = [c.questions[i], c.questions[i + 1]]; await saveCtrl(c); return; }
-    if (d.qdel !== undefined){ c.questions.splice(+d.qdel, 1); await saveCtrl(c); return; }
+    if (d.qdel !== undefined){ const printed = c.statut && c.statut !== "brouillon";
+      if (!confirm(printed ? "The sheets are already printed: deleting this question also removes students' answers and grades for it, and changes the totals. Continue?" : "Supprimer cette question ?")) return;
+      c.questions.splice(+d.qdel, 1); await saveCtrl(c); return; }
     if (t.id === "regenCtrl"){ if (!confirm("Replace all questions with a new AI-generated test?")) return;
       t.disabled = true; t.innerHTML = `<span class="thinking">Regenerating (1 to 2 minutes)…</span>`;
       try { const nid = await regenExercices(c); if (nid !== c.id){ toast("Sheets already printed: a new version of the test was created."); S.editId = nid; S.step = "preparer"; return go("edit"); } toast("New test generated."); render(); }
@@ -1820,7 +1869,8 @@ document.addEventListener("click", async ev => {
       try { const nid = await regenExercices(c); if (nid !== c.id){ toast("Sheet already printed: a new exercise sheet has been created."); S.editId = nid; S.step = "preparer"; return go("edit"); } toast("New exercises generated."); }
       catch(er){ toast(aiErr(er?.code)); t.disabled = false; t.textContent = "↻ Regenerate exercises (AI)"; }
       return; }
-    if (t.id === "addQ"){ c.questions.push(mapQ({points:4, lignes:6})); await saveCtrl(c); return; }
+    if (t.id === "addQ"){ if (c.statut && c.statut !== "brouillon" && !confirm("The sheets are already printed: a new question will have no box on papers already handed out and will count in the total. Add it anyway?")) return;
+      c.questions.push(mapQ({points:4, lignes:6})); await saveCtrl(c); return; }
     if (t.id === "addQai" || d.qai !== undefined){
       const co = store.cours.find(x => x.id === c.coursId); const i = d.qai !== undefined ? +d.qai : -1; const q = c.questions[i];
       const st = q ? $("#q-st-" + q.id) : null; t.disabled = true; if (st) st.innerHTML = `<span class="thinking">Rewriting…</span>`; else toast("AI is writing a question…");
@@ -2059,13 +2109,15 @@ function apiSample(){
     const headers = {"content-type":"application/json", "x-tikoun-code":accessCode()};
     if (SB && SB_USER){ const {data} = await SB.auth.getSession(); headers.authorization = "Bearer " + data.session.access_token; }
     let r;
-    try { r = await fetch(cc.endpoint, {method:"POST", signal:opts.signal, headers, body:JSON.stringify({tier:opts.modelTier || "default", feature:opts.feature || "", messages:[{role:"user", content}]})}); }
-    catch(e){ throw {code:e?.name === "AbortError" ? "cancelled" : "upstream_error"}; }
+    try { r = await fetch(cc.endpoint, {method:"POST", signal:opts.signal || (AbortSignal.timeout ? AbortSignal.timeout(210000) : undefined), headers, body:JSON.stringify({tier:opts.modelTier || "default", feature:opts.feature || "", messages:[{role:"user", content}]})}); }
+    catch(e){ throw {code:e?.name === "TimeoutError" ? "timeout" : e?.name === "AbortError" ? "cancelled" : "upstream_error"}; }
     if (!r.ok){
       if (r.status === 401 && window.TIKOUN_CONFIG?.accounts){ S.auth = "login"; scheduleRender(); }
       else if (r.status === 401 && !SB){ NEED_CODE = true; try { localStorage.removeItem("tikoun.code"); } catch(e){} scheduleRender(); }
       const code = r.status === 402 ? "no_access" : r.status === 403 ? "no_option" : r.status === 401 ? "need_code" : r.status === 429 ? "rate_limited" : r.status === 400 || r.status === 413 ? "api_400" : r.status === 503 ? "no_ai" : "upstream_error";
-      let msg = ""; try { msg = (await r.json())?.error?.message || ""; } catch(e){} throw {code, message:msg}; }
+      let msg = "", mc = ""; try { const ej = (await r.json())?.error; msg = ej?.message || ""; mc = ej?.code || ""; } catch(e){}
+      if (mc === "must_change"){ S.auth = "change"; scheduleRender(); }
+      throw {code:mc === "must_change" ? "must_change" : r.status === 429 && /Plafond/.test(msg) ? "budget" : code, message:msg}; }
     const j = await r.json(); const text = (j.content || []).filter(b => b.type === "text").map(b => b.text).join("");
     if (!text.trim()) throw {code:"empty_completion"};
     return asJson ? parseJSONloose(text) : text;
@@ -2411,7 +2463,8 @@ const userName = id => S.users.find(u => u.id === id)?.nom || "";
 async function api(path, opts = {}){
   const r = await fetch(path, {credentials:"same-origin", ...opts, headers:{"content-type":"application/json", ...(opts.headers || {})}});
   let j = {}; try { j = await r.json(); } catch(e){}
-  if (!r.ok) throw {status:r.status, message:j?.error?.message || "Error " + r.status, setup:j?.setup};
+  if (!r.ok){ if (j?.error?.code === "must_change" && S.auth !== "change"){ S.auth = "change"; scheduleRender(); }
+    throw {status:r.status, message:j?.error?.message || (r.status >= 500 ? "Server temporarily unavailable: try again in a moment." : "Error " + r.status), setup:j?.setup}; }
   return j;
 }
 /* Établissement : recherche dans l'annuaire officiel de l'Éducation nationale, ou saisie manuelle (non vérifiée) */
@@ -2492,7 +2545,7 @@ async function afterLogin(user, mustChange){
   if (!S.auth){ await loadUsers(); if (!SERVERSTORE) await startServer(); else { applyScope(); render(); } } else render();
 }
 async function bootAccounts(){
-  try { const j = await api("/api/me"); await afterLogin(j.user, false); }
+  try { const j = await api("/api/me"); await afterLogin(j.user, !!j.user?.mustChange); }
   catch(e){ S.auth = e.status === 401 && e.setup ? "setup" : /^#\/inscription/.test(location.hash) && window.TIKOUN_CONFIG?.signup ? "register" : "login"; if (S.auth === "register"){ const pl = location.hash.split("/")[2]; if (pl === "pro" || pl === "essentiel") S.regPlan = pl; S.ecFor = "reg"; S.ec = {q:"", cp:"", res:null, sel:null, manual:false, busy:false, err:""}; } refreshCaps(); render(); }
 }
 
@@ -2523,7 +2576,12 @@ function vCompte(){
     <div class="field"><label for="mc-old">Current password</label><input id="mc-old" type="password" autocomplete="current-password"></div>
     <div class="field"><label for="mc-new">New password (8 characters minimum)</label><input id="mc-new" type="password" autocomplete="new-password"></div>
     <div class="row"><button class="btn primary" id="mc-go">Save</button></div><div class="status" id="mc-st"></div></section>
-  ${vReglages()}`;
+  ${vReglages()}
+  <section class="panel grid" style="max-width:560px"><h3>Supprimer mon compte</h3>
+    <p class="small muted" style="margin:0">Permanently erases your account and everything you own: tests, scanned papers, grades, lessons, practice and images. Export your grades first if you need them.</p>
+    <div class="field"><label for="del-pw">Current password</label><input id="del-pw" type="password" autocomplete="current-password"></div>
+    <div class="row"><button class="btn" id="del-me" style="color:var(--pen);border-color:var(--pen)">Permanently delete my account</button></div><div class="status" id="del-st"></div></section>
+  <p class="small muted"><a href="/mentions-legales" target="_blank" rel="noopener">Legal notice</a> · <a href="/cgu" target="_blank" rel="noopener">Conditions d'utilisation</a> · <a href="/confidentialite" target="_blank" rel="noopener">Privacy</a></p>`;
 }
 /* Comptes (administrateur) */
 const genPw = () => { const a = "abcdefghjkmnpqrstuvwxyz23456789"; let s = ""; for (const b of crypto.getRandomValues(new Uint8Array(10))) s += a[b % a.length]; return s; };
@@ -2545,7 +2603,7 @@ function vComptes(){
     <td><select data-uplan="${u.id}" style="width:auto" aria-label="Plan">${selOpts(["essentiel","pro"], u.plan || "essentiel", x => PLAN[x])}</select></td>
     <td>${(u.plan || "essentiel") === "pro" ? `<label class="row small" style="gap:6px"><input type="checkbox" data-uex="${u.id}"${u.options?.exercices ? " checked" : ""}> ${u.options?.exercices ? "Enabled" : "Disabled"}</label>` : `<span class="muted small">Pro required</span>`}</td>
     <td class="c num">${nb(u.id)}</td>
-    <td><div class="row"><button class="btn sm" data-ureset="${u.id}">New password</button>${u.id !== S.me.id ? `<button class="btn sm ghost" data-uact="${u.id}" data-v="${u.actif ? 0 : 1}">${u.actif ? "Disable" : "Re-enable"}</button>` : ""}</div></td></tr>`).join("")}
+    <td><div class="row"><button class="btn sm" data-ureset="${u.id}">New password</button>${u.id !== S.me.id ? `<button class="btn sm ghost" data-uact="${u.id}" data-v="${u.actif ? 0 : 1}">${u.actif ? "Disable" : "Re-enable"}</button><button class="btn sm ghost" data-udel="${u.id}" style="color:var(--pen)">Delete</button>` : ""}</div></td></tr>`).join("")}
   </tbody></table></div><div class="status" id="us-st"></div></section>
   <section class="panel grid" style="max-width:640px"><h3>Add a teacher</h3>
     <div class="form-row"><div class="field"><label for="nu-nom">Name</label><input id="nu-nom" placeholder="e.g. Mr. Cohen (math)"></div>
@@ -2600,7 +2658,13 @@ document.addEventListener("click", async ev => {
       await loadUsers(); render(); $("#nu-st").textContent = `Account created: ${j.user.email} · temporary password to share.`; return; }
     if (d.ureset){ const pw = genPw(); await api("/api/users/" + d.ureset, {method:"PATCH", body:JSON.stringify({password:pw})}); $("#us-st").innerHTML = `New temporary password for ${esc(S.users.find(u => u.id === d.ureset)?.email)} : <b class="num">${pw}</b>`; return; }
     if (d.uact){ await api("/api/users/" + d.uact, {method:"PATCH", body:JSON.stringify({actif:d.v === "1"})}); await loadUsers(); return render(); }
-  } catch(e){ const box = $("#au-st") || $("#me-st") || $("#mc-st") || $("#nu-st") || $("#us-st"); if (box) box.textContent = e.message || "Erreur."; }
+    if (d.udel){ const x = (S.users || []).find(u => u.id === d.udel); if (!x) return;
+      if (!confirm(`Permanently delete the account of ${x.nom} (${x.email}) and all their data (tests, papers, grades, images)?`)) return;
+      await api("/api/users/" + d.udel, {method:"DELETE", body:"{}"}); await loadUsers(); toast("Account deleted."); return render(); }
+    if (t.id === "del-me"){ if (!$("#del-pw").value) return void ($("#del-st").textContent = "Enter your password.");
+      if (!confirm("Permanently delete your account and all your data? This cannot be undone.")) return;
+      await api("/api/me", {method:"DELETE", body:JSON.stringify({password:$("#del-pw").value})}); alert("Your account and data have been deleted."); location.href = "/"; return; }
+  } catch(e){ const box = (t.id === "del-me" && $("#del-st")) || $("#au-st") || $("#me-st") || $("#mc-st") || $("#nu-st") || $("#us-st"); if (box) box.textContent = e.message || "Erreur."; else toast(e.message || "Erreur."); }
 });
 document.addEventListener("change", async ev => {
   const el = ev.target;
@@ -3175,7 +3239,7 @@ function quizSuivi(){
 
 /* ---------- Codes élèves (Classes) ---------- */
 const CODE_ALPHA = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-const newCode = () => { let s = ""; for (const b of crypto.getRandomValues(new Uint8Array(6))) s += CODE_ALPHA[b % CODE_ALPHA.length]; return s; };
+const newCode = () => { let s = ""; for (const b of crypto.getRandomValues(new Uint8Array(8))) s += CODE_ALPHA[b % CODE_ALPHA.length]; return s; };
 function codesPanel(cl){
   if (!cl || !window.TIKOUN_CONFIG?.accounts) return "";
   const n = (cl.eleves || []).filter(e => e.code).length, tot = (cl.eleves || []).length;

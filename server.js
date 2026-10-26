@@ -6,8 +6,12 @@
 //   ANTHROPIC_API_KEY : clé IA de l'école
 //   MASTERY_CODE      : code de l'établissement, demandé UNE fois pour créer le premier compte administrateur
 //                       (l'ancienne variable TIKOUN_CODE reste acceptée)
-//   AI_MAX_PER_DAY    : plafond d'appels IA par jour, tous comptes confondus (défaut 400)
-//   AI_MAX_PER_USER_DAY : plafond d'appels IA par jour et par professeur (défaut 80)
+//   AI_BUDGET_USER_DAY : budget IA par professeur et par jour, en dollars (défaut 8 ; ×5 pour l'administrateur)
+//   AI_BUDGET_DAY      : budget IA total par jour, en dollars (défaut 150)
+//   AI_MAX_PER_USER_DAY, AI_MAX_PER_DAY : plafonds d'appels (garde-fou supplémentaire)
+//   FILE_RETENTION_DAYS : durée de conservation des images de copies (défaut 400 jours)
+//   BACKUP_KEY        : si défini, les sauvegardes quotidiennes sont chiffrées (AES-256-GCM)
+//   LEGAL_NAME, LEGAL_FORM, LEGAL_SIREN, LEGAL_ADDRESS, LEGAL_EMAIL, LEGAL_PHONE, LEGAL_DIRECTOR, LEGAL_HOST : mentions légales
 //   ADMIN_EMAIL, ADMIN_PASSWORD (+ ADMIN_NAME) : crée automatiquement l'administrateur au démarrage s'il n'existe aucun compte
 //   ADMIN_RESET_PASSWORD : mot de passe oublié, réinitialise le compte ADMIN_EMAIL (une fois par valeur)
 //   SIGNUP            : "off" pour fermer l'inscription libre des professeurs (ouverte par défaut)
@@ -21,8 +25,10 @@ const env = k => (process.env[k] || "").trim();
 const GRADE_TIER = () => ["quick","default","complex"].includes(env("GRADE_TIER")) ? env("GRADE_TIER") : "complex";
 const MODELS = () => ({quick:env("MODEL_QUICK") || "claude-haiku-4-5-20251001", default:env("MODEL_DEFAULT") || "claude-haiku-4-5-20251001", complex:env("MODEL_COMPLEX") || "claude-sonnet-5"});
 
+const SEC_HEADERS = {"X-Content-Type-Options":"nosniff", "Referrer-Policy":"same-origin", "X-Frame-Options":"DENY", "Strict-Transport-Security":"max-age=31536000",
+  "Content-Security-Policy":"frame-ancestors 'none'; object-src 'none'; base-uri 'self'", "Permissions-Policy":"geolocation=(), microphone=()"};
 function send(res, status, body, type = "text/plain; charset=utf-8", extra = {}){
-  res.writeHead(status, {"Content-Type":type, "X-Content-Type-Options":"nosniff", "Referrer-Policy":"same-origin", ...extra}); res.end(body);
+  res.writeHead(status, {"Content-Type":type, ...SEC_HEADERS, ...extra}); res.end(body);
 }
 /* Langue : cookie « lang » (fr / en), sinon en-tête du navigateur. Messages d'erreur traduits pour l'anglais. */
 const EN_MSG = {"8 caractères minimum":"8 characters minimum","ANTHROPIC_API_KEY manquante sur le serveur":"ANTHROPIC_API_KEY is missing on the server",
@@ -50,7 +56,8 @@ const sendJ = (res, status, obj, extra) => { const DICT = res._lang === "en" ? E
 const same = (a, b) => { const x = Buffer.from(String(a)), y = Buffer.from(String(b)); return x.length === y.length && crypto.timingSafeEqual(x, y); };
 async function readBody(req, max){ const chunks = []; let size = 0; for await (const c of req){ size += c.length; if (size > max) throw new Error("too_large"); chunks.push(c); } return Buffer.concat(chunks); }
 const readJSON = async (req, max = 8e6) => JSON.parse((await readBody(req, max)).toString("utf8") || "null");
-const ipOf = req => String(req.headers["x-forwarded-for"] || req.socket.remoteAddress || "").split(",")[0].trim();
+const ipOf = req => { const real = String(req.headers["x-real-ip"] || "").trim(); if (real) return real;
+  const xs = String(req.headers["x-forwarded-for"] || "").split(",").map(x => x.trim()).filter(Boolean); return xs.length ? xs[xs.length - 1] : String(req.socket.remoteAddress || ""); };
 
 /* ---------- Stockage (Volume Railway) ---------- */
 const DATA = env("DATA_DIR") || env("RAILWAY_VOLUME_MOUNT_PATH") || path.join(ROOT, "data");
@@ -58,8 +65,17 @@ const PERSISTENT = !!(env("DATA_DIR") || env("RAILWAY_VOLUME_MOUNT_PATH"));
 const DOCDIR = path.join(DATA, "docs"), FILEDIR = path.join(DATA, "files");
 fs.mkdirSync(DOCDIR, {recursive:true}); fs.mkdirSync(FILEDIR, {recursive:true});
 const writeAtomic = (f, obj) => { const tmp = f + ".tmp"; fs.writeFileSync(tmp, JSON.stringify(obj)); fs.renameSync(tmp, f); };
-const readJ = (f, d) => { try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch(e){ return d; } };
+const readJ = (f, d, critical) => {
+  let raw; try { raw = fs.readFileSync(f, "utf8"); } catch(e){ return d; }
+  try { return JSON.parse(raw); } catch(e){
+    const keep = f + ".illisible-" + Date.now(); try { fs.copyFileSync(f, keep); } catch(_){}
+    if (critical){ console.error("Fichier illisible : " + f + " (copie gardée : " + keep + "). Démarrage arrêté pour ne rien écraser : restaure une sauvegarde."); process.exit(1); }
+    console.warn("Fichier illisible, valeur par défaut utilisée :", f); return d; } };
 
+/* Propriétaire de chaque image (copies scannées, cadres) : seul son espace peut la voir */
+const FOWN_F = path.join(DATA, "files-owners.json"); let FOWN = readJ(FOWN_F, null);
+let fownTimer = null; const saveFown = () => { clearTimeout(fownTimer); fownTimer = setTimeout(() => writeAtomic(FOWN_F, FOWN), 500); };
+const setOwner = (id, u) => { FOWN[id] = {u:u.id, e:u.espace || u.id}; saveFown(); };
 const DOCS = new Map();
 for (const f of fs.readdirSync(DOCDIR)) if (f.endsWith(".json")){ try { DOCS.set(decodeURIComponent(f.slice(0, -5)), JSON.parse(fs.readFileSync(path.join(DOCDIR, f), "utf8"))); } catch(e){ console.warn("Document illisible", f); } }
 const EPOCH = Date.now().toString(36) + crypto.randomBytes(3).toString("hex"); let SEQ = 0; const LOG = [];
@@ -71,11 +87,14 @@ function persist(p, data){
   LOG.push({seq:++SEQ, path:p, esp, own}); if (LOG.length > 20000) LOG.splice(0, LOG.length - 20000);
 }
 const isObj = x => x && typeof x === "object" && !Array.isArray(x);
+const pipeFile = (f, res) => fs.createReadStream(f).on("error", () => { try { res.destroy(); } catch(e){} }).pipe(res);
+process.on("uncaughtException", e => console.error("Erreur non prévue :", e && e.stack || e));
+process.on("unhandledRejection", e => console.error("Promesse rejetée :", e && e.stack || e));
 const merge = (a, b) => { if (!isObj(a) || !isObj(b)) return b; const r = {...a}; for (const k of Object.keys(b)) r[k] = merge(a[k], b[k]); return r; };
 
 /* ---------- Comptes des professeurs ---------- */
 const USERS_F = path.join(DATA, "users.json"), SESS_F = path.join(DATA, "sessions.json");
-let USERS = readJ(USERS_F, []); let SESS = readJ(SESS_F, {});
+let USERS = readJ(USERS_F, [], true); let SESS = readJ(SESS_F, {});
 for (const u of USERS) if (!u.plan){ u.plan = u.role === "admin" ? "pro" : "essentiel"; u.options = {exercices:u.role === "admin"}; }
 const saveUsers = () => writeAtomic(USERS_F, USERS);
 /* Espaces : chaque professeur inscrit seul a son espace privé (ses classes, ses élèves, ses contrôles).
@@ -97,27 +116,30 @@ const checkPw = (pw, stored) => { const [salt, h] = String(stored || "").split("
 const PLANS = ["essentiel", "pro"];
 const entitled = u => { if (!u) return false; const a = access(u); if (a.mode === "essai" || a.mode === "ecole") return true; if (a.mode === "abonne") return a.plan === "pro"; if (!a.ok) return false; return u.plan === "pro" && !!u.options?.exercices; };
 const AFF = ["ecole", "nom", "les2"];
-const pub = u => ({id:u.id, email:u.email, nom:u.nom, role:u.role, ecole:u.ecole || null, matieres:u.matieres || [], enseigne:u.enseigne || [], affichage:AFF.includes(u.affichage) ? u.affichage : "les2", plan:u.plan || "essentiel", options:{exercices:!!u.options?.exercices}, can:{exercices:entitled(u)}, actif:u.actif !== false, statut:u.statut || "valide", planDemande:u.planDemande || null, createdAt:u.createdAt, bareme:u.bareme || null, partageEcriture:u.role === "admin" || !!u.partageEcriture, espace:u.espace, ref:refCode(u), acces:access(u), billing:BILLING(), parrainage:refStats(u), etab:etabPub(groupOf(u), u), inscription:u.inscription || "admin"});
+const pub = u => ({id:u.id, email:u.email, nom:u.nom, role:u.role, mustChange:!!u.mustChange, ecole:u.ecole || null, matieres:u.matieres || [], enseigne:u.enseigne || [], affichage:AFF.includes(u.affichage) ? u.affichage : "les2", plan:u.plan || "essentiel", options:{exercices:!!u.options?.exercices}, can:{exercices:entitled(u)}, actif:u.actif !== false, statut:u.statut || "valide", planDemande:u.planDemande || null, createdAt:u.createdAt, bareme:u.bareme || null, partageEcriture:!!u.partageEcriture, espace:u.espace, ref:refCode(u), acces:access(u), billing:BILLING(), parrainage:refStats(u), etab:etabPub(groupOf(u), u), inscription:u.inscription || "admin"});
 const sidOf = req => ((req.headers.cookie || "").match(/(?:^|;\s*)sid=([a-f0-9]{64})/) || [])[1] || "";
+const SESSION_DAYS = 30;
 function userOf(req){
   const s = SESS[sidOf(req)]; if (!s || s.exp < Date.now()) return null;
+  if (s.exp - Date.now() < (SESSION_DAYS - 1) * 864e5){ s.exp = Date.now() + SESSION_DAYS * 864e5; saveSess(); }   // session glissante : 30 jours sans connexion
   const u = USERS.find(x => x.id === s.uid); return u && u.actif !== false && (u.statut || "valide") === "valide" ? u : null;
 }
 function openSession(req, res, u, body = {}){
-  const sid = crypto.randomBytes(32).toString("hex"); SESS[sid] = {uid:u.id, exp:Date.now() + 180 * 864e5}; saveSess();
+  const sid = crypto.randomBytes(32).toString("hex"); SESS[sid] = {uid:u.id, exp:Date.now() + SESSION_DAYS * 864e5}; saveSess();
   for (const [k, v] of Object.entries(SESS)) if (v.exp < Date.now()) delete SESS[k];
   const secure = String(req.headers["x-forwarded-proto"] || "").includes("https") ? "; Secure" : "";
-  return sendJ(res, 200, {user:pub(u), ...body}, {"Set-Cookie":`sid=${sid}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${180 * 86400}${secure}`});
+  return sendJ(res, 200, {user:pub(u), ...body}, {"Set-Cookie":`sid=${sid}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_DAYS * 86400}${secure}`});
 }
 const tries = new Map();
-const tooMany = ip => { const now = Date.now(), l = (tries.get(ip) || []).filter(t => now - t < 15 * 60e3); l.push(now); tries.set(ip, l); return l.length > 20; };
+const tooMany = (ip, max = 20) => { const now = Date.now(), l = (tries.get(ip) || []).filter(t => now - t < 15 * 60e3); l.push(now); tries.set(ip, l); return l.length > max; };
+setInterval(() => { const now = Date.now(); for (const [k, l] of tries){ const r = l.filter(t => now - t < 15 * 60e3); if (r.length) tries.set(k, r); else tries.delete(k); } }, 10 * 60e3).unref();
 const validEmail = e => /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/.test(e);
 
 /* Propriété : un prof modifie ses contrôles, cours, copies et bilans ; les classes sont communes ; l'admin peut tout. */
 const OWNED = ["controles","cours","feuilles","bilans","quizzes","quizrep"];
 function ownerOf(p){ const [col, id] = p.split("/"); if (col === "feuilles") return DOCS.get("controles/" + id)?.owner || DOCS.get(p)?.owner || null; return DOCS.get(p)?.owner || null; }
 function espaceFor(p, u){ const [col, id] = p.split("/"); const cur = DOCS.get(p); if (cur?.espace) return cur.espace; if (col === "feuilles") return DOCS.get("controles/" + id)?.espace || u.espace; return u.espace; }
-const dirSees = (u, esp) => { const g = esp && dirGroup(u); if (!g) return false; return [g.directeur, ...(g.membres || [])].some(id => USERS.find(x => x.id === id)?.espace === esp); };
+const dirSees = (u, esp) => { const g = esp && dirGroup(u); if (!g) return false; return [g.directeur, ...(g.membres || [])].some(id => id === esp && USERS.find(x => x.id === id)?.espace === esp); };
 const visible = (u, v) => u.role === "admin" || (isObj(v) && (v.espace === u.espace || v.owner === u.id || dirSees(u, v.espace)));
 const canWrite = (u, p) => { if (u.role === "admin") return true; const cur = DOCS.get(p); if (cur && cur.espace && cur.espace !== u.espace) return false; const o = ownerOf(p); return !o || o === u.id || !OWNED.includes(p.split("/")[0]); };
 const docsFor = u => Object.fromEntries([...DOCS].filter(([k, v]) => visible(u, v)));
@@ -132,7 +154,7 @@ const PRICE = () => ({essentiel_mois:env("STRIPE_PRICE_ESSENTIEL_MOIS"), essenti
   ecole:env("STRIPE_PRICE_ECOLE"), prof_ecole:env("STRIPE_PRICE_PROF_ECOLE") || env("STRIPE_PRICE_PRO_MOIS")});
 const planOfPrice = id => { const P = PRICE(); return id && (id === P.pro_mois || id === P.pro_an || id === P.prof_ecole) ? "pro" : id && (id === P.essentiel_mois || id === P.essentiel_an) ? "essentiel" : null; };
 const LIVE = s => !!s && ["active", "trialing", "past_due"].includes(s.status);
-const GROUPES_F = path.join(DATA, "etablissements.json"); let GROUPES = readJ(GROUPES_F, []);
+const GROUPES_F = path.join(DATA, "etablissements.json"); let GROUPES = readJ(GROUPES_F, [], true);
 const saveGroupes = () => writeAtomic(GROUPES_F, GROUPES);
 const groupOf = u => u && GROUPES.find(g => g.directeur === u.id || (g.membres || []).includes(u.id)) || null;
 const groupLive = g => !!g && (!BILLING() || LIVE(g.sub));
@@ -220,13 +242,15 @@ async function billingApi(req, res, url, p, u){
     if (groupOf(u)) return sendJ(res, 409, {error:{message:"Tu fais déjà partie d'un établissement"}});
     if (tooMany("etab:" + u.id)) return sendJ(res, 429, {error:{message:"Trop d'essais, réessaie dans 15 minutes"}});
     const g = GROUPES.find(x => x.code === String(b.code || "").trim().toUpperCase()); if (!g) return sendJ(res, 404, {error:{message:"Code d'établissement inconnu"}});
-    g.membres = [...new Set([...(g.membres || []), u.id])]; saveGroupes(); if (LIVE(g.sub) && g.payeProfs) stopOwnSubs(g); return sendJ(res, 200, {etab:etabPub(g, u)});
+    g.membres = [...new Set([...(g.membres || []), u.id])]; saveGroupes(); if (LIVE(g.sub) && g.payeProfs) stopOwnSubs(g);
+    if (BILLING() && LIVE(g.sub)) await syncEtab(g).catch(e => console.warn("Stripe sync", e.message));   // le nouveau prof est ajouté à la facture de l'établissement
+    return sendJ(res, 200, {etab:etabPub(g, u)});
   }
   if (p === "/api/etab/quitter" && req.method === "POST"){
     const g = groupOf(u); if (!g) return sendJ(res, 200, {etab:null});
     if (g.directeur === u.id){ if (LIVE(g.sub)) return sendJ(res, 400, {error:{message:"Résilie d'abord l'abonnement de l'établissement"}}); GROUPES = GROUPES.filter(x => x !== g); }
     else g.membres = g.membres.filter(id => id !== u.id);
-    saveGroupes(); return sendJ(res, 200, {etab:null});
+    saveGroupes(); if (g.directeur !== u.id && BILLING() && LIVE(g.sub)) await syncEtab(g).catch(e => console.warn("Stripe sync", e.message)); return sendJ(res, 200, {etab:null});
   }
   const dg = GROUPES.find(x => x.directeur === u.id);
   if (p === "/api/etab/reglages" && req.method === "POST"){
@@ -328,7 +352,7 @@ async function accounts(req, res, url, p, u){
     const n = {id, email, nom:String(b.nom).trim().slice(0, 80), role:"prof", plan:"essentiel", planDemande, statut:"en_attente", options:{exercices:false}, espace:id, ecole, affichage:AFF.includes(b.affichage) ? b.affichage : "les2", pw:hashPw(b.password), createdAt:new Date().toISOString(), cguAt:new Date().toISOString(), inscription:"libre"};
     const rc = String(b.ref || ((req.headers.cookie || "").match(/(?:^|;\s*)mref=([A-Z0-9]{7})/) || [])[1] || "").toUpperCase(), par = rc && USERS.find(v => v.ref === rc);
     if (par) n.referredBy = par.id;
-    USERS.push(n); saveUsers(); console.log(`Inscription à valider · ${email} · ${planDemande} · ${ecole.nom} (${ecole.verifiee ? "vérifiée " + ecole.uai : "non vérifiée"})`);
+    USERS.push(n); saveUsers(); console.log(`Inscription à valider · ${id} · ${planDemande} · ${ecole.nom} (${ecole.verifiee ? "vérifiée " + ecole.uai : "non vérifiée"})`);
     return sendJ(res, 200, {pending:true, user:{nom:n.nom, email:n.email, ecole:n.ecole, planDemande}});
   }
   if (p === "/api/me" && req.method === "GET") return u ? sendJ(res, 200, {user:pub(u)}) : sendJ(res, 401, {setup:USERS.length === 0});
@@ -347,8 +371,11 @@ async function accounts(req, res, url, p, u){
   }
   if (p === "/api/login" && req.method === "POST"){
     if (tooMany(ipOf(req))) return sendJ(res, 429, {error:{message:"Trop d'essais, réessaie dans 15 minutes"}});
-    const b = await readJSON(req, 1e4) || {}; const x = USERS.find(v => v.email === String(b.email || "").trim().toLowerCase());
-    if (!x || !checkPw(b.password, x.pw)) return sendJ(res, 401, {error:{message:"E-mail ou mot de passe incorrect"}});
+    const b = await readJSON(req, 1e4) || {}; const em = String(b.email || "").trim().toLowerCase(), x = USERS.find(v => v.email === em);
+    const failK = "fail:" + em, fails = (tries.get(failK) || []).filter(t => Date.now() - t < 15 * 60e3);
+    if (fails.length >= 8) return sendJ(res, 429, {error:{message:"Trop d'essais, réessaie dans 15 minutes"}});
+    if (!x || !checkPw(b.password, x.pw)){ tooMany(failK); return sendJ(res, 401, {error:{message:"E-mail ou mot de passe incorrect"}}); }
+    tries.delete(failK);
     if (x.statut === "en_attente") return sendJ(res, 403, {pending:true, error:{message:"Ton inscription est en attente de validation par l'équipe Mastery. Tu pourras te connecter dès qu'elle sera acceptée."}});
     if (x.statut === "refuse") return sendJ(res, 403, {error:{message:"Ton inscription n'a pas été acceptée. Contacte l'équipe Mastery."}});
     if (x.actif === false) return sendJ(res, 401, {error:{message:"Compte désactivé"}});
@@ -356,11 +383,14 @@ async function accounts(req, res, url, p, u){
   }
   if (p === "/api/logout" && req.method === "POST"){ delete SESS[sidOf(req)]; saveSess(); return sendJ(res, 200, {}, {"Set-Cookie":"sid=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0"}); }
   if (!u) return sendJ(res, 401, {error:{message:"Connexion requise"}});
+  if (p === "/api/me" && req.method === "DELETE") return deleteAccount(req, res, u, u);
   if (p === "/api/me/password" && req.method === "POST"){
     const b = await readJSON(req, 1e4) || {};
     if (!u.mustChange && !checkPw(b.old, u.pw)) return sendJ(res, 401, {error:{message:"Mot de passe actuel incorrect"}});
     if (String(b.password || "").length < 8) return sendJ(res, 400, {error:{message:"8 caractères minimum"}});
-    u.pw = hashPw(b.password); delete u.mustChange; saveUsers(); return sendJ(res, 200, {user:pub(u)});
+    u.pw = hashPw(b.password); delete u.mustChange; delete u.resetTag; saveUsers();
+    const mine = sidOf(req); for (const [k, v] of Object.entries(SESS)) if (v.uid === u.id && k !== mine) delete SESS[k]; saveSess();
+    return sendJ(res, 200, {user:pub(u)});
   }
   if (p === "/api/me" && req.method === "PATCH"){
     const b = await readJSON(req, 2e4) || {};
@@ -387,6 +417,7 @@ async function accounts(req, res, url, p, u){
   const m = p.match(/^\/api\/users\/([a-f0-9]{16})$/);
   if (m){
     const x = USERS.find(v => v.id === m[1]); if (!x) return sendJ(res, 404, {error:{message:"Compte introuvable"}});
+    if (req.method === "DELETE"){ if (x.id === u.id) return sendJ(res, 400, {error:{message:"Impossible sur ton propre compte"}}); return deleteAccount(req, res, u, x); }
     if (req.method === "PATCH"){
       const b = await readJSON(req, 1e4) || {};
       if (x.id === u.id && (b.role === "prof" || b.actif === false)) return sendJ(res, 400, {error:{message:"Tu ne peux pas te retirer tes propres droits"}});
@@ -438,18 +469,48 @@ async function storage(req, res, url, p, u){
     }
     if (p === "/api/files" && req.method === "POST"){
       if (!access(u).ok) return sendJ(res, 402, {error:{message:NO_ACCESS, code:"no_access"}});
-      const want = url.searchParams.get("id") || "", id = /^[a-z0-9]{8,40}$/.test(want) ? want : crypto.randomBytes(10).toString("hex");
-      fs.writeFileSync(path.join(FILEDIR, id + ".jpg"), await readBody(req, 15e6)); return sendJ(res, 200, {id});
+      const want = url.searchParams.get("id") || "", reuse = /^[a-z0-9]{8,40}$/.test(want) && (!FOWN[want] || FOWN[want].u === u.id);
+      const id = reuse ? want : crypto.randomBytes(10).toString("hex");   // on n'écrase jamais l'image d'un autre
+      fs.writeFileSync(path.join(FILEDIR, id + ".jpg"), await readBody(req, 15e6)); setOwner(id, u); return sendJ(res, 200, {id});
     }
     const m = p.match(/^\/api\/files\/([a-z0-9]{8,40})$/);
-    if (m && req.method === "GET"){ const f = path.join(FILEDIR, m[1] + ".jpg"); if (!fs.existsSync(f)) return send(res, 404, "Introuvable");
-      res.writeHead(200, {"Content-Type":"image/jpeg", "Cache-Control":"private, max-age=86400"}); return fs.createReadStream(f).pipe(res); }
+    if (m && req.method === "DELETE"){ if (FOWN[m[1]] && (FOWN[m[1]].u === u.id || (FOWN[m[1]].e && FOWN[m[1]].e === u.espace) || u.role === "admin")){ fs.rmSync(path.join(FILEDIR, m[1] + ".jpg"), {force:true}); delete FOWN[m[1]]; saveFown(); } return sendJ(res, 200, {ok:true}); }
+    if (m && req.method === "GET"){ const f = path.join(FILEDIR, m[1] + ".jpg"); if (!fs.existsSync(f) || !canSeeFile(u, m[1])) return send(res, 404, "Introuvable");
+      res.writeHead(200, {"Content-Type":"image/jpeg", "Cache-Control":"private, max-age=86400", ...SEC_HEADERS}); return pipeFile(f, res); }
     if (p === "/api/export" && req.method === "GET"){
       const docs = Object.fromEntries([...DOCS].filter(([k, v]) => visible(u, v) && (u.role === "admin" || !OWNED.includes(k.split("/")[0]) || ownerOf(k) === u.id)));
       return send(res, 200, JSON.stringify({tikoun:1, at:new Date().toISOString(), docs, blobs:{}}), TYPES[".json"], {"Content-Disposition":`attachment; filename="mastery-sauvegarde-${new Date().toISOString().slice(0, 10)}.json"`});
     }
     return sendJ(res, 404, {error:{message:"Route inconnue"}});
   } catch(e){ return sendJ(res, e.message === "too_large" ? 413 : 400, {error:{message:e.message === "too_large" ? "Trop lourd" : "Requête invalide"}}); }
+}
+
+/* ---------- Suppression d'un compte (RGPD) : documents, copies, images, tâches, dépôts, échantillons d'écriture ---------- */
+function purgeUser(x){
+  const personal = x.espace === x.id && !USERS.some(v => v !== x && v.espace === x.espace);
+  const docs = [...DOCS].filter(([k, v]) => isObj(v) && (v.owner === x.id || (personal && v.espace === x.espace))).map(([k]) => k);
+  for (const k of docs) persist(k, null);
+  let files = 0; for (const [id, o] of Object.entries(FOWN)) if (o.u === x.id || (personal && o.e === x.espace)){ fs.rmSync(path.join(FILEDIR, id + ".jpg"), {force:true}); delete FOWN[id]; files++; }
+  saveFown();
+  BANQUE = BANQUE.filter(b => b.par !== x.id); saveBanque();
+  JOBS = JOBS.filter(j => j.user !== x.id); saveJobs();
+  for (const l of LOTS.filter(l => l.user === x.id)) for (const ext of [".bin", ".kit.json"]) fs.rmSync(path.join(LOTDIR, l.id + ext), {force:true});
+  LOTS = LOTS.filter(l => l.user !== x.id); saveLots();
+  DEVICES = DEVICES.filter(d => d.par !== x.id); saveDevices();
+  for (const g of GROUPES) g.membres = (g.membres || []).filter(id => id !== x.id);
+  GROUPES = GROUPES.filter(g => g.directeur !== x.id); saveGroupes();
+  for (const [k, v] of Object.entries(SESS)) if (v.uid === x.id) delete SESS[k]; saveSess();
+  USERS = USERS.filter(v => v !== x); saveUsers();
+  console.log(`Compte supprimé · ${x.id} · ${docs.length} document(s), ${files} image(s)`);
+  return {documents:docs.length, images:files};
+}
+async function deleteAccount(req, res, u, x){
+  const b = await readJSON(req, 1e4) || {};
+  if (x === u && !checkPw(b.password, u.pw)) return sendJ(res, 401, {error:{message:"Mot de passe actuel incorrect"}});
+  if (x.role === "admin" && USERS.filter(v => v.role === "admin" && v !== x).length === 0) return sendJ(res, 400, {error:{message:"Impossible de supprimer le dernier administrateur"}});
+  if (LIVE(x.sub)) return sendJ(res, 400, {error:{message:"Résilie d'abord l'abonnement (Gérer mon abonnement)"}});
+  const out = purgeUser(x);
+  return sendJ(res, 200, {ok:true, ...out}, x === u ? {"Set-Cookie":"sid=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0"} : undefined);
 }
 
 /* ---------- Espace élève : quiz d'exercices en ligne (code personnel, sans e-mail) ---------- */
@@ -540,8 +601,29 @@ async function eleveApi(req, res, url, p){
 
 /* ---------- IA ---------- */
 const day = () => new Date().toISOString().slice(0, 10);
+/* Budget IA en dollars (coût estimé d'après les jetons consommés), enregistré sur le disque : il ne repart pas à zéro à chaque mise à jour */
+const USAGE_F = path.join(DATA, "ia-usage.json"); let USAGE = readJ(USAGE_F, {day:day(), users:{}, total:0});
+let usageTimer = null; const saveUsage = () => { clearTimeout(usageTimer); usageTimer = setTimeout(() => writeAtomic(USAGE_F, USAGE), 1000); };
+const PRICES = {quick:[1, 5], default:[1, 5], complex:[3, 15]};   // dollars par million de jetons (entrée, sortie), modifiables par AI_PRICE_<NIVEAU>="entrée,sortie"
+const priceOf = tier => { const e = env("AI_PRICE_" + String(tier).toUpperCase()).split(",").map(Number); return e.length === 2 && e.every(x => x > 0) ? e : PRICES[tier] || PRICES.default; };
+const usageReset = () => { if (USAGE.day !== day()) USAGE = {day:day(), users:{}, total:0}; };
+function budgetLeft(u){
+  usageReset();
+  const cap = (Number(env("AI_BUDGET_USER_DAY")) || 8) * (u.role === "admin" ? 5 : 1), capAll = Number(env("AI_BUDGET_DAY")) || 150;
+  if ((USAGE.total || 0) >= capAll) return "Plafond quotidien de l'IA atteint pour la plateforme : réessaie demain.";
+  if ((USAGE.users[u.id] || 0) >= cap) return "Plafond quotidien de l'IA atteint pour ton compte : réessaie demain.";
+  return null;
+}
+function spend(u, tier, usage){
+  if (!usage) return; usageReset(); const [pi, po] = priceOf(tier);
+  const cost = ((usage.input_tokens || 0) + (usage.cache_creation_input_tokens || 0)) * pi / 1e6 + (usage.output_tokens || 0) * po / 1e6 + (usage.cache_read_input_tokens || 0) * pi * 0.1 / 1e6;
+  USAGE.users[u.id] = (USAGE.users[u.id] || 0) + cost; USAGE.total = (USAGE.total || 0) + cost; saveUsage();
+}
+const tierOk = t => ["quick", "default", "complex"].includes(t) ? t : "default";
+const MAXTOK = {quick:2000, default:8000, complex:12000};
 let counter = {day:day(), n:0}; const perIp = new Map(), perUser = new Map();
 function allowCall(ip, uid){
+  const who = USERS.find(x => x.id === uid); if (who){ const b = budgetLeft(who); if (b) return b; }
   const k = day() + ":" + uid, nu = perUser.get(k) || 0;
   if (nu >= (Number(env("AI_MAX_PER_USER_DAY")) || 1500)) return "Plafond quotidien d'appels IA atteint pour ton compte : réessaie demain.";
   if (perUser.size > 5000) perUser.clear();
@@ -569,18 +651,19 @@ function scrubNames(body, u){
 async function aiProxy(req, res, u){
   if (!env("ANTHROPIC_API_KEY")) return sendJ(res, 503, {error:{message:"ANTHROPIC_API_KEY manquante sur le serveur"}});
   if (!u) return sendJ(res, 401, {error:{message:"Connexion requise"}});
-  let body; try { body = await readJSON(req, 40e6); } catch(e){ return sendJ(res, e.message === "too_large" ? 413 : 400, {error:{message:"Requête invalide"}}); }
+  let body; try { body = await readJSON(req, 25e6); } catch(e){ return sendJ(res, e.message === "too_large" ? 413 : 400, {error:{message:"Requête invalide"}}); }
+  if (!Array.isArray(body?.messages) || body.messages.length > 40) return sendJ(res, 400, {error:{message:"Requête invalide"}});
   if (body?.feature === "exercices" && !entitled(u)) return sendJ(res, 403, {error:{message:"Option Exercices non activée pour ce compte (abonnement Pro)"}});
   if (!access(u).ok) return sendJ(res, 402, {error:{message:NO_ACCESS, code:"no_access"}});
   const stop = allowCall(ipOf(req), u.id); if (stop) return sendJ(res, 429, {error:{message:stop}});
   scrubNames(body, u);
-  const M = MODELS(), model = M[body?.tier] || M.default;
-  const r = await fetch((env("ANTHROPIC_BASE_URL") || "https://api.anthropic.com") + "/v1/messages", {method:"POST",
+  const tier = tierOk(body?.tier), M = MODELS(), model = M[tier];
+  const r = await fetch((env("ANTHROPIC_BASE_URL") || "https://api.anthropic.com") + "/v1/messages", {method:"POST", signal:AbortSignal.timeout(200000),
     headers:{"content-type":"application/json", "x-api-key":env("ANTHROPIC_API_KEY"), "anthropic-version":"2023-06-01"},
-    body:JSON.stringify({model, max_tokens:Math.min(32000, Math.max(1000, +env("AI_MAX_TOKENS") || 16000)), messages:body?.messages})}).catch(() => null);
+    body:JSON.stringify({model, max_tokens:Math.min(+env("AI_MAX_TOKENS") || 32000, MAXTOK[tier]), messages:body.messages})}).catch(() => null);
   if (!r) return sendJ(res, 502, {error:{message:"IA injoignable"}});
   const txt = await r.text();
-  if (r.ok){ try { const us = JSON.parse(txt).usage; console.log(`IA ${model} · ${u.email} · entrée ${us?.input_tokens} · sortie ${us?.output_tokens}`); } catch(e){} }
+  if (r.ok){ try { const us = JSON.parse(txt).usage; spend(u, tier, us); console.log(`IA ${model} · ${u.id} · entrée ${us?.input_tokens} · sortie ${us?.output_tokens}`); } catch(e){} }
   else console.warn("IA erreur", r.status, txt.slice(0, 300));
   send(res, r.status, txt, TYPES[".json"]);
 }
@@ -603,9 +686,12 @@ function looseJSON(t){
 }
 function markF(t, fautes){ let out = t; for (const f of (Array.isArray(fautes) ? fautes : []).map(String).filter(x => x.trim()).slice(0, 8)){ const i = out.indexOf(f); if (i >= 0 && !out.slice(0, i).endsWith("⟦")) out = out.slice(0, i) + "⟦" + f + "⟧" + out.slice(i + f.length); } return out; }
 function jobAnswers(j, res){
-  const T = j.txt || {}, arr = Array.isArray(res?.reponses) ? res.reponses : Array.isArray(res) ? res : [], answers = {};
+  const T = j.txt || {}, arr = Array.isArray(res?.reponses) ? res.reponses : Array.isArray(res) ? res : [], answers = {}, missing = [];
   for (const q of j.qs || []){
-    const r = arr.find(x => x && x.id === q.id) || {}; let ans;
+    const r0 = arr.find(x => x && String(x.id) === String(q.id));
+    /* Question absente de la réponse de l'IA : on ne met surtout pas 0, on la signale pour relecture */
+    if (!r0){ missing.push(q.id); continue; }
+    const r = r0; let ans;
     if (q.type === "qcm"){ const L = "ABCDEFGH", good = new Set((q.good || []).map(Number)), got = [...new Set((r.coches || []).map(Number))].sort(), ok = got.length === good.size && got.every(n => good.has(n));
       ans = {transcription:(T.coche || "Coché : ") + (got.map(n => L[n]).join(", ") || T.aucune || "aucune case"), annot:(T.coche || "Coché : ") + (got.map(n => good.has(n) ? L[n] : `⟦${L[n]}⟧`).join(", ") || `⟦${T.aucune || "aucune case"}⟧`),
         lisible:r.lisible !== false, noteIA:ok ? +q.points : 0, note:null, commentaire:ok ? (T.bonne || "Bonne réponse.") : (T.etait || "La bonne réponse était : ") + [...good].sort().map(n => L[n]).join(", ") + ".",
@@ -616,7 +702,17 @@ function jobAnswers(j, res){
       if (isNoAns(tr)){ ans.noteIA = 0; ans.commentaire = T.vide || "Pas de réponse : revois cette notion."; ans.erreurs = [T.videTag || "pas de réponse"]; ans.acquis = []; } }
     ans.crop = q.crop || null; answers[q.id] = ans;
   }
-  return {answers, lisibleKo:arr.some(r => r && r.lisible === false)};
+  return {answers, missing, lisibleKo:arr.some(r => r && r.lisible === false)};
+}
+/* Une copie déjà validée (ou une note posée par le professeur) n'est pas écrasée par un nouveau passage de l'IA */
+function keepTeacher(cur, eid, answers){
+  const cp = cur?.copies?.[eid], out = {}; let kept = 0;
+  for (const [qid, a] of Object.entries(answers)){
+    const old = cp?.answers?.[qid];
+    if (cp?.validee || old?.valide){ kept++; continue; }
+    if (old && old.note != null){ const {note, ...rest} = a; out[qid] = rest; kept++; } else out[qid] = a;
+  }
+  return {answers:out, kept, validee:!!cp?.validee};
 }
 async function runJob(j){
   const u = USERS.find(x => x.id === j.user); if (!u){ j.status = "erreur"; j.msg = "Compte introuvable"; return; }
@@ -627,25 +723,29 @@ async function runJob(j){
     content.push({type:"image", source:{type:"base64", media_type:"image/jpeg", data:fs.readFileSync(f).toString("base64")}}); }
   content.push({type:"text", text:String(j.prompt || "")});
   const body = {messages:[{role:"user", content}]}; scrubNames(body, u);
-  const M = MODELS(), model = M[j.tier] || M.default;
+  const tier = tierOk(j.tier), M = MODELS(), model = M[tier];
   const r = await fetch((env("ANTHROPIC_BASE_URL") || "https://api.anthropic.com") + "/v1/messages", {method:"POST", signal:AbortSignal.timeout(240000),
     headers:{"content-type":"application/json", "x-api-key":env("ANTHROPIC_API_KEY"), "anthropic-version":"2023-06-01"},
-    body:JSON.stringify({model, max_tokens:Math.min(32000, Math.max(1000, +env("AI_MAX_TOKENS") || 16000)), messages:body.messages})}).catch(e => null);
+    body:JSON.stringify({model, max_tokens:Math.min(+env("AI_MAX_TOKENS") || 32000, MAXTOK[tier]), messages:body.messages})}).catch(e => null);
   if (!r || r.status === 429 || r.status >= 500){ j.tries = (j.tries || 0) + 1; j.status = j.tries >= 4 ? "erreur" : "attente"; j.msg = j.tries >= 4 ? "IA indisponible, relance plus tard" : "Nouvel essai bientôt"; j.notBefore = Date.now() + 20000 * j.tries; return; }
   const txt = await r.text(); let jr = null; try { jr = JSON.parse(txt); } catch(e){}
   if (!r.ok){ j.status = "erreur"; j.msg = "IA : " + (jr?.error?.message || r.status); console.warn("Tâche IA", r.status, txt.slice(0, 200)); return; }
-  console.log(`IA (tâche) ${model} · ${u.email} · entrée ${jr?.usage?.input_tokens} · sortie ${jr?.usage?.output_tokens}`);
+  spend(u, tier, jr?.usage); console.log(`IA (tâche) ${model} · ${u.id} · entrée ${jr?.usage?.input_tokens} · sortie ${jr?.usage?.output_tokens}`);
   const res = looseJSON((jr?.content || []).filter(b => b.type === "text").map(b => b.text).join(""));
   if (!res){ j.tries = (j.tries || 0) + 1; j.status = j.tries >= 3 ? "erreur" : "attente"; j.msg = "Réponse de l'IA illisible"; return; }
   if (j.status === "annule" || cancelled(j.ctrlId, j.eleveId, j.createdAt)){ j.status = "annule"; j.msg = "Annulée (scan recommencé)"; return; }
   const dp = "feuilles/" + j.ctrlId, cur = DOCS.get(dp); if (!cur){ j.status = "erreur"; j.msg = "Feuilles du contrôle introuvables"; return; }
   if (j.status === "annule" || cancelled(j.ctrlId, j.eleveId, j.createdAt)){ j.status = "annule"; j.msg = "Annulée (scan recommencé)"; return; }
-  const {answers, lisibleKo} = jobAnswers(j, res);
-  const patch = {copies:{[j.eleveId]:{answers, validee:false}}};
+  const jr0 = jobAnswers(j, res);
+  if (jr0.missing.length && (j.tries || 0) < 2){ j.tries = (j.tries || 0) + 1; j.status = "attente"; j.msg = "Réponse de l'IA incomplète : nouvel essai"; j.notBefore = Date.now() + 5000; return; }
+  const kt = keepTeacher(cur, j.eleveId, jr0.answers), answers = kt.answers, lisibleKo = jr0.lisibleKo;
+  const patch = {copies:{[j.eleveId]:kt.validee ? {answers} : {answers, validee:false}}};
   if (j.bonus) patch.copies[j.eleveId].bonusPages = {[j.page]:{proprete:clampN(+res?.proprete || 0, 0, 1), orthographe:clampN(+res?.orthographe || 0, 0, 1)}};
   persist(dp, merge(cur, patch));
-  j.status = "fait"; j.doneAt = new Date().toISOString(); j.msg = Object.keys(answers).length + " question(s) corrigée(s)" + (lisibleKo ? " · passage peu lisible signalé" : "");
-  delete j.prompt; delete j.qs;
+  j.status = jr0.missing.length ? "erreur" : "fait"; j.doneAt = new Date().toISOString();
+  j.msg = kt.validee ? "Copie déjà validée : rien n'a été modifié (« Recommencer le scan » pour la refaire)" : Object.keys(answers).length + " question(s) corrigée(s)" + (lisibleKo ? " · passage peu lisible signalé" : "") + (kt.kept ? " · " + kt.kept + " note(s) du professeur gardée(s)" : "")
+    + (jr0.missing.length ? " · " + jr0.missing.length + " question(s) non lue(s) : recadre-les ou relance" : "");
+  if (!jr0.missing.length){ delete j.prompt; delete j.qs; }
 }
 /* « Recommencer le scan » : ce qui était en route pour ce contrôle (ou cet élève) avant la remise à zéro est abandonné */
 const CANCEL = {};
@@ -673,8 +773,8 @@ async function jobsApi(req, res, url, p, u){
     if (!canWrite(u, "feuilles/" + b.ctrlId)) return sendJ(res, 403, {error:{message:"Ce contrôle appartient à un autre professeur"}});
     if (JOBS.filter(j => j.user === u.id && (j.status === "attente" || j.status === "en_cours")).length > 400) return sendJ(res, 429, {error:{message:"Trop de pages en attente"}});
     const j = {id:crypto.randomBytes(8).toString("hex"), user:u.id, status:"attente", createdAt:new Date().toISOString(), name:String(b.name || "").slice(0, 120),
-      ctrlId:b.ctrlId, eleveId:b.eleveId, page:Math.max(1, +b.page || 1), prompt:String(b.prompt || "").slice(0, 200000), tier:["quick","default","complex"].includes(b.tier) ? b.tier : GRADE_TIER(),
-      images:(Array.isArray(b.images) ? b.images : []).filter(x => /^[a-z0-9]{8,40}$/.test(x)).slice(0, 20), bonus:!!b.bonus, txt:isObj(b.txt) ? b.txt : {},
+      ctrlId:b.ctrlId, eleveId:b.eleveId, page:Math.max(1, +b.page || 1), prompt:String(b.prompt || "").slice(0, 60000), tier:GRADE_TIER(),
+      images:(Array.isArray(b.images) ? b.images : []).filter(x => /^[a-z0-9]{8,40}$/.test(x) && canSeeFile(u, x)).slice(0, 12), bonus:!!b.bonus, txt:isObj(b.txt) ? b.txt : {},
       qs:(Array.isArray(b.qs) ? b.qs : []).slice(0, 40).map(q => ({id:String(q.id), points:+q.points || 0, type:q.type === "qcm" ? "qcm" : "", good:Array.isArray(q.good) ? q.good.map(Number) : [], notion:String(q.notion || "").slice(0, 80), crop:/^[a-z0-9]{8,40}$/.test(q.crop || "") ? q.crop : null}))};
     if (!j.images.length || !j.qs.length) return sendJ(res, 400, {error:{message:"Tâche vide"}});
     JOBS.push(j); saveJobs(); setTimeout(pumpJobs, 10); return sendJ(res, 200, {id:j.id});
@@ -704,12 +804,13 @@ const lotPub = l => ({id:l.id, name:l.name, status:l.status, total:l.total || 0,
 async function claude(u, content, tier, maxTok){
   const stop = allowCall("lot:" + u.id, u.id); if (stop){ const e = new Error(stop); e.quota = true; throw e; }
   const body = {messages:[{role:"user", content}]}; scrubNames(body, u);
-  const M = MODELS(), model = M[tier] || M.default;
+  tier = tierOk(tier); const M = MODELS(), model = M[tier];
   const r = await fetch((env("ANTHROPIC_BASE_URL") || "https://api.anthropic.com") + "/v1/messages", {method:"POST", signal:AbortSignal.timeout(120000),
     headers:{"content-type":"application/json", "x-api-key":env("ANTHROPIC_API_KEY"), "anthropic-version":"2023-06-01"},
     body:JSON.stringify({model, max_tokens:maxTok || 1000, messages:body.messages})});
   const txt = await r.text(); let j = null; try { j = JSON.parse(txt); } catch(e){}
   if (!r.ok) throw new Error("IA " + r.status + " " + (j?.error?.message || ""));
+  spend(u, tier, j?.usage);
   return (j?.content || []).filter(b => b.type === "text").map(b => b.text).join("");
 }
 let lotRunning = false;
@@ -722,7 +823,7 @@ async function pumpLots(){
     doc:p => DOCS.get(p),
     controls:() => [...DOCS.keys()].filter(k => k.startsWith("feuilles/") && visible(u, DOCS.get(k))).map(k => k.slice(9)),
     allowed:cid => canWrite(u, "feuilles/" + cid),
-    saveAsset:async buf => { const id = crypto.randomBytes(10).toString("hex"); fs.writeFileSync(path.join(FILEDIR, id + ".jpg"), buf); return id; },
+    saveAsset:async buf => { const id = crypto.randomBytes(10).toString("hex"); fs.writeFileSync(path.join(FILEDIR, id + ".jpg"), buf); setOwner(id, u); return id; },
     patch:(dp, upd) => { const cid = dp.split("/")[1], eid = Object.keys(upd.copies || {})[0]; if (cancelled(cid, eid, l.createdAt)) return; const cur = DOCS.get(dp); if (cur) persist(dp, merge(cur, upd)); },
     addJob:b => { if (cancelled(b.ctrlId, b.eleveId, l.createdAt)) return null; const j = {id:crypto.randomBytes(8).toString("hex"), user:u.id, status:"attente", createdAt:new Date().toISOString(), name:l.name, lot:l.id,
       ctrlId:b.ctrlId, eleveId:b.eleveId, page:b.page, prompt:b.prompt, tier:GRADE_TIER(), images:b.images, bonus:b.bonus, txt:b.txt, qs:b.qs}; JOBS.push(j); saveJobs(); setTimeout(pumpJobs, 10); return j.id; },
@@ -759,7 +860,7 @@ async function lotsApi(req, res, url, p, u){
     fs.writeFileSync(path.join(LOTDIR, l.id + ".bin"), buf); l.file = true; l.status = "attente"; saveLots(); setTimeout(pumpLots, 10); return sendJ(res, 200, {});
   }
   if (m && m[2] && req.method === "GET"){ const f = path.join(LOTDIR, l.id + ".bin"); if (!fs.existsSync(f)) return send(res, 404, "Introuvable");
-    res.writeHead(200, {"Content-Type":l.mime || "application/octet-stream"}); return fs.createReadStream(f).pipe(res); }
+    res.writeHead(200, {"Content-Type":l.mime || "application/octet-stream"}); return pipeFile(f, res); }
   return sendJ(res, 404, {error:{message:"Route inconnue"}});
 }
 
@@ -840,7 +941,7 @@ async function banqueApi(req, res, url, p, u){
   if (!u) return sendJ(res, 401, {error:{message:"Connexion requise"}});
   if (p === "/api/banque/conseils" && req.method === "GET") return sendJ(res, 200, conseils());
   if (p === "/api/banque" && req.method === "POST"){
-    if (u.role !== "admin" && !u.partageEcriture) return sendJ(res, 200, {ignore:true});
+    if (!u.partageEcriture) return sendJ(res, 200, {ignore:true});   // banque d'écriture : accord explicite, y compris pour l'administrateur
     const b = await readJSON(req, 2e5) || {}; const list = Array.isArray(b.items) ? b.items.slice(0, 60) : [b];
     const out = list.map(x => addSample(u, x)).filter(Boolean); return sendJ(res, 200, {ajoutes:out.length, items:u.role === "admin" ? out : undefined});
   }
@@ -868,7 +969,7 @@ async function banqueApi(req, res, url, p, u){
       const src = r.row?.[imgCol]?.src, texte = String(r.row?.[txtCol] ?? "").trim(), ref = "hf:" + key + ":" + r.row_idx;
       if (!src || !texte || BANQUE.some(x => x.ref === ref)) continue;
       try { const im = await fetch(src, {signal:AbortSignal.timeout(20000)}); if (!im.ok) continue; const buf = Buffer.from(await im.arrayBuffer()); if (buf.length > 4e6) continue;
-        const id = crypto.randomBytes(10).toString("hex"); fs.writeFileSync(path.join(FILEDIR, id + ".jpg"), buf); out.push({asset:id, texte, ref}); } catch(e){}
+        const id = crypto.randomBytes(10).toString("hex"); fs.writeFileSync(path.join(FILEDIR, id + ".jpg"), buf); setOwner(id, u); out.push({asset:id, texte, ref}); } catch(e){}
     }
     REGLES.hf[key] = offset + (j.rows || []).length; saveRegles();
     return sendJ(res, 200, {items:out, offset:REGLES.hf[key], total:j.num_rows_total ?? null});
@@ -912,8 +1013,8 @@ async function scanApi(req, res, url, p, u){
     const ct = String(req.headers["content-type"] || "").split(";")[0].trim().toLowerCase();
     if (!["image/jpeg", "image/png", "application/pdf"].includes(ct)) return sendJ(res, 415, {error:{message:"Format accepté : JPEG, PNG ou PDF"}});
     const buf = await readBody(req, 30e6); if (buf.length < 100) return sendJ(res, 400, {error:{message:"Fichier vide"}});
-    const id = crypto.randomBytes(10).toString("hex"); fs.writeFileSync(path.join(FILEDIR, id + ".jpg"), buf);
-    INBOX.push({id:crypto.randomBytes(8).toString("hex"), asset:id, mime:ct, cible:d.cible, appareil:d.id, at:new Date().toISOString(), status:"nouveau"});
+    const id = crypto.randomBytes(10).toString("hex"), iid = crypto.randomBytes(8).toString("hex"); fs.writeFileSync(path.join(FILEDIR, id + ".jpg"), buf); FOWN[id] = {inbox:iid}; saveFown();
+    INBOX.push({id:iid, asset:id, mime:ct, cible:d.cible, appareil:d.id, at:new Date().toISOString(), status:"nouveau"});
     if (INBOX.length > 20000) INBOX = INBOX.filter(x => x.status !== "fait").slice(-20000);
     d.dernier = new Date().toISOString(); d.pages = (d.pages || 0) + 1; saveDevices(); saveInbox();
     return sendJ(res, 200, {ok:true});
@@ -945,28 +1046,57 @@ async function scanApi(req, res, url, p, u){
 }
 
 migrateEspaces();
+/* Première fois : on retrouve à qui appartient chaque image déjà enregistrée (documents, banque, boîte de réception) */
+if (!FOWN){
+  FOWN = {}; const ID = /^[a-z0-9]{8,40}$/;
+  const walk = (v, own) => { if (typeof v === "string"){ if (ID.test(v) && !FOWN[v]) FOWN[v] = own; return; } if (Array.isArray(v)) v.forEach(x => walk(x, own)); else if (isObj(v)) for (const k in v) walk(v[k], own); };
+  for (const [, v] of DOCS) if (isObj(v)) walk(v, {u:v.owner || v.createdBy || null, e:v.espace || null});
+  for (const smp of BANQUE) if (smp.asset && !FOWN[smp.asset]){ const w = USERS.find(x => x.id === smp.par); FOWN[smp.asset] = {u:smp.par || null, e:w?.espace || null}; }
+  for (const it of INBOX) if (it.asset && !FOWN[it.asset]) FOWN[it.asset] = {inbox:it.id};
+  for (const k of Object.keys(FOWN)) if (!fs.existsSync(path.join(FILEDIR, k + ".jpg"))) delete FOWN[k];
+  writeAtomic(FOWN_F, FOWN); console.log("Propriétaires des images :", Object.keys(FOWN).length);
+}
+function canSeeFile(u, id){
+  if (u.role === "admin") return true;
+  const o = FOWN[id]; if (!o) return false;
+  if (o.inbox){ const it = INBOX.find(x => x.id === o.inbox); return !!it && inboxFor(u).includes(it); }
+  return o.u === u.id || (!!o.e && (o.e === u.espace || dirSees(u, o.e)));
+}
 /* ---------- Sauvegardes automatiques : une copie complète par jour sur le Volume, 14 jours gardés ---------- */
 const BAKDIR = path.join(DATA, "backups"); fs.mkdirSync(BAKDIR, {recursive:true});
 function autoBackup(){
   try {
-    const f = path.join(BAKDIR, "mastery-" + new Date().toISOString().slice(0, 10) + ".json");
+    const key = env("BACKUP_KEY"), f = path.join(BAKDIR, "mastery-" + new Date().toISOString().slice(0, 10) + ".json" + (key ? ".enc" : ""));
     if (fs.existsSync(f) || (!USERS.length && !DOCS.size)) return;
-    writeAtomic(f, {mastery:1, at:new Date().toISOString(), users:USERS, docs:Object.fromEntries(DOCS), banque:BANQUE, banqueRegles:REGLES, appareils:DEVICES, inbox:INBOX});
-    const all = fs.readdirSync(BAKDIR).filter(x => /^mastery-\d{4}-\d{2}-\d{2}\.json$/.test(x)).sort();
+    const data = {mastery:1, at:new Date().toISOString(), users:USERS, docs:Object.fromEntries(DOCS), banque:BANQUE, banqueRegles:REGLES, appareils:DEVICES, inbox:INBOX, etablissements:GROUPES, fichiers:FOWN};
+    if (key){ /* AES-256-GCM : sel(16) · iv(12) · tag(16) · données ; clé dérivée de BACKUP_KEY (scrypt) */
+      const salt = crypto.randomBytes(16), iv = crypto.randomBytes(12), k = crypto.scryptSync(key, salt, 32), c = crypto.createCipheriv("aes-256-gcm", k, iv);
+      const enc = Buffer.concat([c.update(JSON.stringify(data)), c.final()]); fs.writeFileSync(f + ".tmp", Buffer.concat([salt, iv, c.getAuthTag(), enc])); fs.renameSync(f + ".tmp", f); }
+    else writeAtomic(f, data);
+    const all = fs.readdirSync(BAKDIR).filter(x => /^mastery-\d{4}-\d{2}-\d{2}\.json(\.enc)?$/.test(x)).sort();
     for (const x of all.slice(0, Math.max(0, all.length - (Number(env("BACKUP_KEEP")) || 14)))) fs.rmSync(path.join(BAKDIR, x), {force:true});
     console.log("Sauvegarde automatique :", path.basename(f));
   } catch(e){ console.warn("Sauvegarde automatique impossible :", e.message); }
 }
 setTimeout(autoBackup, 60e3); setInterval(autoBackup, 3600e3);
+function purgeOldFiles(){
+  try {
+    const keepDays = Number(env("FILE_RETENTION_DAYS")) || 400, lim = Date.now() - keepDays * 864e5, inBank = new Set(BANQUE.map(b => b.asset)); let n = 0;
+    for (const f of fs.readdirSync(FILEDIR)){ if (!f.endsWith(".jpg")) continue; const id = f.slice(0, -4); if (inBank.has(id)) continue;
+      const st = fs.statSync(path.join(FILEDIR, f)); if (st.mtimeMs < lim){ fs.rmSync(path.join(FILEDIR, f), {force:true}); delete FOWN[id]; n++; } }
+    if (n){ saveFown(); console.log("Images de copies supprimées (plus de " + keepDays + " jours) :", n); }
+  } catch(e){ console.warn("Purge des images :", e.message); }
+}
+setTimeout(purgeOldFiles, 120e3); setInterval(purgeOldFiles, 24 * 3600e3);
 function backups(req, res, p, u){
   if (!u) return sendJ(res, 401, {error:{message:"Connexion requise"}});
   if (u.role !== "admin") return sendJ(res, 403, {error:{message:"Réservé à l'administrateur"}});
   if (p === "/api/backups" && req.method === "GET")
-    return sendJ(res, 200, {persistent:PERSISTENT, backups:fs.readdirSync(BAKDIR).filter(x => /^mastery-[\d-]+\.json$/.test(x)).sort().reverse().map(x => ({nom:x, taille:fs.statSync(path.join(BAKDIR, x)).size}))});
-  if (p === "/api/backups/now" && req.method === "POST"){ fs.rmSync(path.join(BAKDIR, "mastery-" + new Date().toISOString().slice(0, 10) + ".json"), {force:true}); autoBackup(); return sendJ(res, 200, {ok:true}); }
-  const m = p.match(/^\/api\/backups\/(mastery-\d{4}-\d{2}-\d{2}\.json)$/);
+    return sendJ(res, 200, {persistent:PERSISTENT, chiffre:!!env("BACKUP_KEY"), backups:fs.readdirSync(BAKDIR).filter(x => /^mastery-[\d-]+\.json(\.enc)?$/.test(x)).sort().reverse().map(x => ({nom:x, taille:fs.statSync(path.join(BAKDIR, x)).size}))});
+  if (p === "/api/backups/now" && req.method === "POST"){ for (const x of [".json", ".json.enc"]) fs.rmSync(path.join(BAKDIR, "mastery-" + new Date().toISOString().slice(0, 10) + x), {force:true}); autoBackup(); return sendJ(res, 200, {ok:true}); }
+  const m = p.match(/^\/api\/backups\/(mastery-\d{4}-\d{2}-\d{2}\.json(?:\.enc)?)$/);
   if (m && req.method === "GET"){ const f = path.join(BAKDIR, m[1]); if (!fs.existsSync(f)) return sendJ(res, 404, {error:{message:"Document introuvable"}});
-    res.writeHead(200, {"Content-Type":TYPES[".json"], "Content-Disposition":`attachment; filename="${m[1]}"`, "Cache-Control":"no-store"}); return fs.createReadStream(f).pipe(res); }
+    res.writeHead(200, {"Content-Type":m[1].endsWith(".enc") ? "application/octet-stream" : TYPES[".json"], "Content-Disposition":`attachment; filename="${m[1]}"`, "Cache-Control":"no-store"}); return pipeFile(f, res); }
   return sendJ(res, 404, {error:{message:"Route inconnue"}});
 }
 http.createServer(async (req, res) => {
@@ -983,6 +1113,7 @@ http.createServer(async (req, res) => {
     if (p === "/api/stripe/webhook" && req.method === "POST") return await stripeWebhook(req, res);
     if (p === "/api/scan/upload") return await scanApi(req, res, url, p, null);
     const u = userOf(req);
+    if (u && u.mustChange && p.startsWith("/api/") && !["/api/me", "/api/me/password", "/api/logout"].includes(p)) return sendJ(res, 403, {error:{message:"Choisis d'abord un nouveau mot de passe", code:"must_change"}});
     if (p.startsWith("/api/eleve/")) return await eleveApi(req, res, url, p);
     if (p === "/eleve" || p === "/eleve/") p = "/eleve.html";
     if (p.startsWith("/api/")){
@@ -1004,20 +1135,23 @@ http.createServer(async (req, res) => {
           : {essentiel:env("PRICE_LABEL_ESSENTIEL") || "12 €/mois", pro:env("PRICE_LABEL_PRO") || "19 €/mois", essentielAn:env("PRICE_LABEL_ESSENTIEL_AN") || "99 €/an", proAn:env("PRICE_LABEL_PRO_AN") || "159 €/an", ecole:env("PRICE_LABEL_ECOLE") || "Sur devis"}}) + ";\n", TYPES[".js"], {"Cache-Control":"no-store"});
     if (p === "/" || p === "") p = u ? "/index.html" : "/landing.html";
     if (p === "/app" || p === "/app/") p = "/index.html";
-    const LEGAL = {"/cgu":"cgu", "/terms":"cgu", "/confidentialite":"confidentialite", "/privacy":"confidentialite"}[p.replace(/\/$/, "")];
+    const LEGAL = {"/cgu":"cgu", "/terms":"cgu", "/confidentialite":"confidentialite", "/privacy":"confidentialite", "/mentions-legales":"mentions-legales", "/legal":"mentions-legales"}[p.replace(/\/$/, "")];
     if (LEGAL){ const f = path.join(ROOT, LEGAL + (res._lang === "en" ? ".en" : res._lang === "pt" ? ".pt" : "") + ".html"); const en = res._lang === "en";
-      const V = {EDITEUR:env("LEGAL_NAME") || "Mastery", ADRESSE:env("LEGAL_ADDRESS") || (en ? "France" : "France"), CONTACT:env("LEGAL_EMAIL") || env("ADMIN_EMAIL") || "contact",
+      const nd = en ? "to be completed" : res._lang === "pt" ? "a completar" : "à compléter";
+      const V = {EDITEUR:env("LEGAL_NAME") || "Mastery", ADRESSE:env("LEGAL_ADDRESS") || nd, CONTACT:env("LEGAL_EMAIL") || env("ADMIN_EMAIL") || "contact",
+        FORME:env("LEGAL_FORM") || nd, SIREN:env("LEGAL_SIREN") || nd, TEL:env("LEGAL_PHONE") || nd, DIRECTEUR:env("LEGAL_DIRECTOR") || nd, REGION:env("HOST_REGION") || (en ? "United States (us-west2)" : res._lang === "pt" ? "Estados Unidos (us-west2)" : "États-Unis (us-west2)"),
         HEBERGEUR:env("LEGAL_HOST") || "Railway Corporation (railway.com), 548 Market St, San Francisco, CA 94104, " + (en ? "USA" : res._lang === "pt" ? "EUA" : "États-Unis")};
-      const html = fs.readFileSync(f, "utf8").replace(/\{\{(EDITEUR|ADRESSE|CONTACT|HEBERGEUR)\}\}/g, (m, k) => V[k].replace(/[<>&"]/g, c => ({"<":"&lt;", ">":"&gt;", "&":"&amp;", '"':"&quot;"}[c])));
+      const html = fs.readFileSync(f, "utf8").replace(/\{\{(EDITEUR|ADRESSE|CONTACT|HEBERGEUR|FORME|SIREN|TEL|DIRECTEUR|REGION)\}\}/g, (m, k) => V[k].replace(/[<>&"]/g, c => ({"<":"&lt;", ">":"&gt;", "&":"&amp;", '"':"&quot;"}[c])));
       return send(res, 200, html, TYPES[".html"], {"Cache-Control":"no-cache"}); }
     if (res._lang !== "fr" && /\.html$/.test(p) && fs.existsSync(path.join(ROOT, p.replace(/\.html$/, "." + res._lang + ".html")))) p = p.replace(/\.html$/, "." + res._lang + ".html");
     const file = path.normalize(path.join(ROOT, p));
-    if (!file.startsWith(ROOT + path.sep) || file.startsWith(path.resolve(DATA)) || /^\/(data|src)(\/|$)/.test(p) || p.split("/").some(s => s.startsWith(".")) || /server\.js$|package(-lock)?\.json$|railway\.json$/.test(file)) return send(res, 404, "Introuvable");
+    if (!file.startsWith(ROOT + path.sep) || file.startsWith(path.resolve(DATA)) || /^\/(data|src|node_modules)(\/|$)/.test(p) || p.split("/").some(s => s.startsWith("."))
+      || !/\.(html|png|jpg|svg|ico|webmanifest|txt|xml|woff2?)$/.test(file) || /\/(README|RAILWAY|SUPABASE)/i.test(file)) return send(res, 404, "Introuvable");
     fs.stat(file, (err, st) => {
       if (err || !st.isFile()) return send(res, 404, "Introuvable");
-      res.writeHead(200, {"Content-Type":TYPES[path.extname(file)] || "application/octet-stream", "X-Content-Type-Options":"nosniff", "Cache-Control":/\.html$/.test(p) ? "no-cache" : "public, max-age=300"});
+      res.writeHead(200, {"Content-Type":TYPES[path.extname(file)] || "application/octet-stream", ...SEC_HEADERS, "Cache-Control":/\.html$/.test(p) ? "no-cache" : "public, max-age=300"});
       if (req.method === "HEAD") return res.end();
-      fs.createReadStream(file).pipe(res);
+      pipeFile(file, res);
     });
   } catch(e){ console.error(e); send(res, 500, "Erreur serveur"); }
 }).listen(PORT, "0.0.0.0", () => console.log(`Mastery en ligne sur le port ${PORT} · ${USERS.length} compte(s) · ${env("ANTHROPIC_API_KEY") ? "IA serveur" : "IA non configurée"} · données ${PERSISTENT ? "sur le volume " + DATA : "TEMPORAIRES : ajoute un Volume Railway monté sur /data"}`));

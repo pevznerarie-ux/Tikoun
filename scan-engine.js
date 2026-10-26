@@ -124,6 +124,10 @@ function maskHeader(cv, H, boxes){
   const pts = [[-40, -40], [834, -40], [834, top], [-40, top]].map(([x, y]) => applyH(H, x, y));
   g.fillStyle = "#fff"; g.beginPath(); pts.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.closePath(); g.fill(); return o;
 }
+function maskTop(cv, page){
+  const o = document.createElement("canvas"); o.width = cv.width; o.height = cv.height; const g = o.getContext("2d"); g.drawImage(cv, 0, 0);
+  if (+page === 1 || !page){ g.fillStyle = "#fff"; g.fillRect(0, 0, cv.width, Math.round(cv.height * 0.22)); } return o;
+}
 function inkRatio(cv, H, b){ /* part de pixels foncés dans le cadre (lignes grises et bordure exclues) */
   const d = pix(cv), SW = cv.width, SH = cv.height; let dark = 0, n = 0;
   for (let j = 0; j < 24; j++) for (let i = 0; i < 80; i++){
@@ -236,7 +240,7 @@ async function analysePage(cv, ctx, st){
       mode = "crops"; for (const qid of aiQ){ const b = aiB.find(x => x.q === qid); const id = await ctx.saveAsset(await toJpeg(warpBox(cv, Hm, b), 0.88)); crops[qid] = id; images.push(id); }
       prompt = P.crops.prompt;
     } else {
-      mode = "halves"; const big = scaled(Hm ? maskHeader(cv, Hm, boxes) : cv, 2200), W = big.width, H = big.height;
+      mode = "halves"; const big = scaled(Hm ? maskHeader(cv, Hm, boxes) : maskTop(cv, page), 2200), W = big.width, H = big.height;
       images.push(await ctx.saveAsset(await toJpeg(crop(big, 0, 0, W, H * 0.56)))); images.push(await ctx.saveAsset(await toJpeg(crop(big, 0, H * 0.44, W, H * 0.56))));
       prompt = P.halves.prompt;
     }

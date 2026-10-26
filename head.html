@@ -11,12 +11,11 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+Hebrew:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Caveat:wght@500;700&family=JetBrains+Mono:wght@500;700&family=Frank+Ruhl+Libre:wght@400;700&display=swap">
 <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
 <script>window.MathJax = {tex:{inlineMath:[["$","$"]]}, svg:{fontCache:"global"}, startup:{typeset:false}, options:{enableMenu:false}};</script>
-<script src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js"></script>
 <style>
 :root{
   --paper:#FAF8F3; --surface:#FFFFFF; --surface-2:#F3EFE6; --ink:#15233F; --muted:#6B6758; --line:#E7E1D4;
@@ -292,6 +291,23 @@ textarea,input{text-align:start}
 #jobs-pill i::after{content:"";position:absolute;inset:0;width:var(--p,0%);background:#D9B26A;transition:width .6s}
 #jobs-pill .btn{flex:none;background:#fff;color:#15233F;border-color:transparent}#jobs-pill .btn.ghost{background:transparent;color:#fff}#jobs-pill.done{background:#1E5C3E}
 @media print{#jobs-pill{display:none}}
+.seg{display:inline-flex;gap:4px;padding:4px;border-radius:10px;background:var(--surface-2);margin:0 0 12px;max-width:100%}
+.seg button{border:0;background:none;padding:8px 14px;border-radius:8px;font:inherit;font-weight:600;color:var(--muted);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.qbq{display:grid;gap:12px}
+.qnav{position:sticky;top:0;z-index:5;display:grid;gap:8px;padding:10px 12px}
+.qnav select{flex:1;min-width:0}
+.qchips{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;-webkit-overflow-scrolling:touch}
+.qchips .chip{border:1px solid var(--line);cursor:pointer;font-size:13px;padding:5px 10px}
+.qchips .chip.cur{background:var(--blue);color:var(--on-blue);border-color:var(--blue)}
+.qchips .chip.ok:not(.cur){background:var(--ok-soft,#E6F4EA);color:var(--ok,#1E7B45)}
+.qcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:grid;gap:10px;scroll-margin-top:120px}
+.score .qs{min-width:40px;min-height:36px;border:1px solid var(--line);background:var(--surface);border-radius:8px;font-family:var(--mono);font-weight:700;cursor:pointer;color:var(--ink)}
+.score .qs.on{background:var(--pen);border-color:var(--pen);color:#fff}
+.copy-nav{padding:8px 12px;border-bottom:1px solid var(--line);gap:8px}
+@media (max-width:760px){.score input{width:58px;font-size:16px;min-height:36px}.qcard .row.between{flex-wrap:wrap}.seg{display:flex}.seg button{flex:1;padding:8px 6px;font-size:14px}.q{padding:12px}.copy-h{flex-wrap:wrap}}
+/* iPhone : un champ en dessous de 16 px fait zoomer tout l'écran au toucher */
+@media (max-width:760px){input,select,textarea{font-size:16px!important}.btn.sm{min-height:38px}.tags .btn.sm{min-width:30px;min-height:30px}}
 </style>
 
 <div class="top">

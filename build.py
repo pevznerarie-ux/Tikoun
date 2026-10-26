@@ -14,7 +14,7 @@ except Exception as e:
     print("EN non générée :", e)
 # Moteur d'analyse côté serveur : mêmes fonctions de lecture que l'application
 import re as _re
-_L = a.split('\n'); _names = ['scaled','crop','flatten','jsqrOn','centre','detectAll','readQR','blobMarkers','markersOk','levD','closest','solve','homography','applyH','sheetToPhoto','warpBox','maskHeader','inkRatio','pix','readMarks','boxScore']
+_L = a.split('\n'); _names = ['scaled','crop','flatten','jsqrOn','centre','detectAll','readQR','blobMarkers','markersOk','levD','closest','solve','homography','applyH','sheetToPhoto','warpBox','maskHeader','maskTop','inkRatio','pix','readMarks','boxScore']
 _starts = {}
 for _i, _l in enumerate(_L):
     _m = _re.match(r'^(?:async )?function (\w+)\(|^const (\w+) = ', _l)
