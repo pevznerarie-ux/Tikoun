@@ -220,9 +220,9 @@ function render(){
   $$(".tab").forEach(t => t.setAttribute("aria-selected", t.dataset.r === navKey()));
   const LOADING = window.TIKOUN_CONFIG?.storage === "server" && !S.auth && (!S.me || typeof DATA_READY === "undefined" || !DATA_READY);
   const V = LOADING ? vLoading : S.auth ? vAuth : (typeof SB !== "undefined" && SB && !SB_USER) ? vLogin : (typeof NEED_CODE !== "undefined" && NEED_CODE) ? vCode : {home:vHome, classes:vClasses, new:vNew, edit:vEdit, scan:vScan, correct:vCorrect, analyse:vAnalyse, suivi:vSuivi, banque:vBanque, direction:vDirection, reglages:vReglages, controles:vControles, exercices:vExercices, quiznew:vQuizNew, quiz:vQuiz, compte:vCompte, comptes:vComptes, entrainement:vEntrainement}[S.view] || vHome;
-  $("#tabs").hidden = V === vLogin || V === vCode || V === vAuth || V === vLoading;
+  $("#tabs").hidden = V === vLogin || V === vCode || V === vAuth || V === vLoading; $("#umenu").hidden = $("#tabs").hidden && !(V === vAuth && S.me);
   { const acc = !!window.TIKOUN_CONFIG?.accounts; const tg = (id, h) => { const e = document.getElementById(id); if (e) e.hidden = h; };
-    tg("tabComptes", !isAdmin()); tg("tabIA", !isAdmin()); { const n = (S.users || []).filter(u => u.statut === "en_attente").length, tc = document.getElementById("tabComptes"); if (tc) tc.textContent = n ? `Comptes (${n})` : "Comptes"; } tg("tabCompte", !(acc && S.me)); tg("tabReglages", acc || !STANDALONE); tg("tabDir", acc && !isBoss()); }
+    tg("tabComptes", !isAdmin()); tg("tabIA", !isAdmin()); { const n = (S.users || []).filter(u => u.statut === "en_attente").length, tc = document.getElementById("tabComptes"); if (tc) tc.textContent = n ? `Comptes (${n})` : "Comptes"; $("#ubtn")?.classList.toggle("dot", !!n && isAdmin()); } tg("tabCompte", !(acc && S.me)); tg("tabReglages", acc || !STANDALONE); tg("tabDir", acc && !isBoss()); }
   let html = V();
   const fc = S.inCtrl && ["edit","scan","correct","analyse"].includes(S.view) && V !== vLogin && ctrl(S.inCtrl);
   if (fc){
@@ -254,23 +254,20 @@ function vHome(){
   const cs = [...store.controles].sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
   const todo = cs.filter(c => c.statut !== "corrige"), done = cs.filter(c => c.statut === "corrige");
   let aValider = 0; cs.forEach(c => { const f = feuille(c.id); if (f) Object.values(f.copies || {}).forEach(cp => { if (!cp.validee && Object.keys(cp.answers || {}).length) aValider++; }); });
-  const line = c => `<div class="item"><div><div class="t">${c.type === "rattrapage" ? '<span class="chip blue">Rattrapage</span> ' : c.type === "exercices" ? '<span class="chip">Exercices</span> ' : ""}${esc(c.titre)}</div>
-      <div class="s">${esc(c.matiere)} · ${esc(classe(c.classeId)?.nom || "?")}${c.type === "rattrapage" ? " · " + esc(studentsOf(c).map(e => e.prenom + " " + e.nom).join(", ")) : ""} · ${frDate(c.date) || "sans date"}</div></div>
-      <div class="row">${chipStatut(c)}<button class="btn sm" data-edit="${c.id}">${c.statut === "brouillon" ? "Modifier" : "Feuilles"}</button>
-      ${c.statut !== "brouillon" ? `<button class="btn sm" data-corr="${c.id}">Correction</button>` : ""}${c.statut === "corrige" || c.statut === "correction" ? `<button class="btn sm" data-an="${c.id}">Analyse</button>` : ""}</div></div>`;
+  const line = c => ctrlRow(c, `${esc(c.matiere)} · ${esc(classe(c.classeId)?.nom || "?")}${c.type === "rattrapage" ? " · " + esc(studentsOf(c).map(e => e.prenom + " " + e.nom).join(", ")) : ""}${c.date ? " · " + esc(frDate(c.date)) : ""}`);
   const nEx = cs.filter(c => c.type === "exercices").length, nCtrl = cs.filter(c => !c.type || c.type === "controle").length;
   const hour = new Date().getHours(), hello = hour < 18 ? "Bonjour" : "Bonsoir";
   return `
   <section class="hero-card">
     <div class="hc-main"><div class="hc-kicker">${esc(new Date().toLocaleDateString("fr-FR", {weekday:"long", day:"numeric", month:"long"}))}</div>
       <h2>${hello}${S.me?.nom ? " " + esc(S.me.nom) : ""}</h2>
-      <p>${aValider ? `<b>${aValider} copie(s)</b> attendent ta validation.` : "Tout est à jour. Prépare ton prochain contrôle ou un quiz d'exercices."}</p>
+      <p>${aValider ? `<b>${aValider} ${aValider > 1 ? "copies à valider" : "copie à valider"}</b>` : "Tout est à jour. Prépare ton prochain contrôle ou un quiz d'exercices."}</p>
       <div class="row" style="margin-top:18px"><button class="btn gold" data-newctrl="1">+ Nouveau contrôle</button><button class="btn on-dark" data-newex="1">${canEx() ? "" : "🔒 "}+ Quiz d'exercices</button><button class="btn on-dark" data-go="scan">Scanner des copies</button></div></div>
     <div class="hc-stats">
-      <div><b class="num">${store.classes.length}</b><span>classe(s)</span></div>
-      <div><b class="num">${nCtrl}</b><span>contrôle(s)</span></div>
-      <div><b class="num">${myQuizzes().length}</b><span>quiz d'exercices</span></div>
-      <div><b class="num"${aValider ? ' style="color:var(--gold-2)"' : ""}>${aValider}</b><span>copie(s) à valider</span></div>
+      <div><b class="num">${store.classes.length}</b><span>Classes</span></div>
+      <div><b class="num">${nCtrl}</b><span>Contrôles</span></div>
+      <div><b class="num">${myQuizzes().length}</b><span>Quiz d'exercices</span></div>
+      <div><b class="num"${aValider ? ' style="color:var(--gold-2)"' : ""}>${aValider}</b><span>Copies à valider</span></div>
     </div>
   </section>
   <section class="panel"><h3>En cours</h3><div style="margin-top:4px">${todo.map(line).join("") || `<p class="muted" style="padding:10px 0">Aucun contrôle en cours.</p>`}</div></section>
@@ -297,7 +294,7 @@ function vClasses(){
     ${cl ? `<div class="grid" style="gap:22px;align-content:start"><section class="panel grid">
       <div class="row between"><h3 style="font-size:20px">${esc(cl.nom)} <span class="muted small">· ${esc(cl.niveau)}</span></h3>
         <div class="row"><select id="lvlMat" style="width:auto" aria-label="Matière">${matOpts(S.levelMat)}</select>
-        <button class="btn sm" id="sugg">Suggérer les niveaux</button><button class="btn sm ghost danger" id="del-cl" title="Supprimer cette classe">🗑 Supprimer la classe</button></div></div>
+        <button class="btn sm" id="sugg">Suggérer les niveaux</button><button class="btn sm ghost danger" id="del-cl" title="Supprimer cette classe">Supprimer la classe</button></div></div>
       ${sug ? `<div class="banner">Suggestions calculées sur les 3 derniers contrôles validés en ${esc(S.levelMat)} (socle : moins de ${noteS(10)} · standard : ${nv(10)}–${noteS(15)} · approfondi : plus de ${noteS(15)}). <button class="btn sm" id="applySug">Appliquer</button></div>` : ""}
       <div class="tbl-wrap"><table><thead><tr><th>Élève</th><th>Niveau · ${esc(S.levelMat)}</th>${sug ? "<th>Suggestion</th>" : ""}<th>Écriture</th><th></th></tr></thead><tbody>
       ${(cl.eleves || []).map(e => `<tr><td style="white-space:normal;min-width:120px"><b>${esc(e.prenom)} ${esc(e.nom)}</b></td>
@@ -580,7 +577,7 @@ function vScan(){
   return `
   <div class="head"><div><h2>Scanner les copies</h2><p>Photos prises au téléphone ou PDF du copieur, dans n'importe quel ordre. Le QR code retrouve l'élève et la page. Chaque page est ensuite lue et corrigée par l'IA.</p></div></div>
   <section class="panel grid">
-    <label class="drop" for="sc-files">📷 Choisir des photos ou un PDF de copies<br><span class="small">Page bien à plat, entière, avec le QR code visible</span></label>
+    <label class="drop" for="sc-files">Choisir des photos ou un PDF de copies<br><span class="small">Page bien à plat, entière, avec le QR code visible</span></label>
     <input id="sc-files" type="file" accept="image/*,application/pdf" multiple hidden>
     ${!AI ? `<p class="banner">L'IA n'est pas disponible dans cette vue : les QR codes seront lus, mais pas les réponses.</p>` : ""}
     ${!printed.length ? `<p class="muted small">Aucun contrôle imprimé pour l'instant.</p>` : ""}
@@ -1061,7 +1058,7 @@ function vByQuestion(c, f, studs){
         ${a.commentaire ? `<div class="small note" dir="auto">${esc(a.commentaire)}</div>` : ""}
         ${(a.erreurs || []).length ? `<div class="tags">${a.erreurs.map((t, j) => `<span class="chip bad">${esc(t)} <button class="btn sm ghost" style="padding:0 4px;min-height:0" data-unerr="${q.id}|${j}" data-eid="${e.id}" aria-label="Retirer cette erreur">×</button></span>`).join("")}</div>` : ""}`
         : `<div class="small muted">Pas encore de réponse lue pour cette question.</div>`}
-      <div class="row" style="gap:6px">${cp ? `<button class="btn sm ghost" data-recrop="${q.id}" data-eid="${e.id}">✂ Recadrer</button>` : ""}${a?.crop ? `<button class="btn sm ghost" data-precise="${q.id}" data-eid="${e.id}">Relire (IA)</button>` : ""}<span class="status" data-st="${e.id}|${q.id}"></span>
+      <div class="row" style="gap:6px">${cp ? `<button class="btn sm ghost" data-recrop="${q.id}" data-eid="${e.id}">Recadrer</button>` : ""}${a?.crop ? `<button class="btn sm ghost" data-precise="${q.id}" data-eid="${e.id}">Relire (IA)</button>` : ""}<span class="status" data-st="${e.id}|${q.id}"></span>
         <button class="btn sm ghost" data-opencopy="${e.id}">Voir la copie</button></div>
     </article>`; }).join("") || `<div class="panel empty">Aucune copie scannée pour ce contrôle.</div>`}
     ${none.length ? `<div class="small muted" style="padding:8px 4px">Pas encore scanné(s) : ${none.map(r => esc(r.e.prenom + " " + r.e.nom)).join(", ")}</div>` : ""}
@@ -1120,7 +1117,7 @@ async function recropOpen(C, eid, qid){
   const close = () => { ov.remove(); document.body.style.overflow = prevOv; window.removeEventListener("resize", show); };
   $("#rc-x").onclick = close;
   const drawBar = () => { bar.innerHTML = scans.map(s => `<button class="btn sm${cur && cur.page === s.page ? " primary" : ""}" data-rcp="${s.page}">Page ${s.page}</button>`).join("")
-    + `<label class="btn sm" style="cursor:pointer">📷 Photo de la page ${ps.page}<input type="file" accept="image/*" id="rc-file" style="display:none"></label>`;
+    + `<label class="btn sm" style="cursor:pointer">Photo de la page ${ps.page}<input type="file" accept="image/*" id="rc-file" style="display:none"></label>`;
     bar.querySelectorAll("[data-rcp]").forEach(b => b.onclick = () => load(scans.find(s => s.page === +b.dataset.rcp)));
     $("#rc-file").onchange = async ev => { const fl = ev.target.files?.[0]; if (!fl) return; tip.textContent = "Préparation de la page…";
       try { const bmp = await createImageBitmap(fl); const c0 = document.createElement("canvas"); c0.width = bmp.width; c0.height = bmp.height; c0.getContext("2d").drawImage(bmp, 0, 0);
@@ -1200,8 +1197,8 @@ function copyView(c, e, cp, studs){
         : `<div class="note" dir="auto">${esc(a.commentaire)}</div>`}
         <div class="tags">${(a.acquis || []).map(t => `<span class="chip ok">${esc(t)}</span>`).join("")}${(a.erreurs || []).map((t, j) => `<span class="chip bad">${esc(t)} <button class="btn sm ghost" style="padding:0 4px;min-height:0" data-unerr="${q.id}|${j}" aria-label="Retirer cette erreur" title="Retirer">×</button></span>`).join("")}</div>
         <div class="small muted">${a.note != null && a.note !== a.noteIA ? `Note IA : ${fmt(a.noteIA)} · modifiée par le professeur` : "Proposé par l'IA"}${a.valide ? " · validé" : ""}</div></div>
-      <div class="row">${cp ? `<button class="btn sm ghost" data-recrop="${q.id}">✂ Recadrer</button>` : ""}${a.crop && a.lisible ? `<button class="btn sm ghost" data-precise="${q.id}">Relire (IA)</button>` : ""}<span class="status" id="pr2-${q.id}"></span>${!edT ? `<button class="btn sm ghost" data-tr="${q.id}">Corriger la transcription</button>` : ""}${!edC ? `<button class="btn sm ghost" data-cm="${q.id}">Modifier le commentaire</button>` : ""}</div>` : ""}
-      ${!a && cp ? `<div class="small muted">Rien n'a été lu pour cette question.</div><div class="row"><button class="btn sm" data-recrop="${q.id}">✂ Recadrer sur la photo</button><span class="status" id="pr2-${q.id}"></span></div>` : ""}
+      <div class="row">${cp ? `<button class="btn sm ghost" data-recrop="${q.id}">Recadrer</button>` : ""}${a.crop && a.lisible ? `<button class="btn sm ghost" data-precise="${q.id}">Relire (IA)</button>` : ""}<span class="status" id="pr2-${q.id}"></span>${!edT ? `<button class="btn sm ghost" data-tr="${q.id}">Corriger la transcription</button>` : ""}${!edC ? `<button class="btn sm ghost" data-cm="${q.id}">Modifier le commentaire</button>` : ""}</div>` : ""}
+      ${!a && cp ? `<div class="small muted">Rien n'a été lu pour cette question.</div><div class="row"><button class="btn sm" data-recrop="${q.id}">Recadrer sur la photo</button><span class="status" id="pr2-${q.id}"></span></div>` : ""}
     </div>`; }).join("")}
   </article>`;
 }
@@ -1713,7 +1710,7 @@ applyRoute(); render();
     [DB, AI, ASSETS, DL] = await Promise.all([use("db"), use("sample"), use("assets"), use("downloads")]);
     if (AI) LIM = await AI.limits().catch(() => null);
     if (!DB){ DB = memDB(); LOCAL = true; }
-    $("#caps").innerHTML = [["IA", AI], ["Photos IA", LIM?.images], ["Sauvegarde", !LOCAL], ["Scans stockés", ASSETS], ["PDF", DL]].map(([l, v]) => `${l} ${v ? "✓" : "✗"}`).join(" · ");
+    $("#caps").textContent = "Menu"; $("#upst").innerHTML = [["IA", AI], ["Photos IA", LIM?.images], ["Sauvegarde", !LOCAL], ["Scans stockés", ASSETS], ["PDF", DL]].map(([l, v]) => `${l} ${v ? "✓" : "✗"}`).join(" · ");
   }
   for (const col of ["classes","cours","controles"]){
     DB.collection(col).onSnapshot(s => { store[col] = s.docs.map(x => ({id:x.id, ...structuredClone(x.data())})); scheduleRender(); }, e => toast("Lecture impossible : " + (e?.code || "")));

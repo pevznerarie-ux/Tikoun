@@ -144,6 +144,8 @@ document.addEventListener("change", async ev => {
 function refreshCaps(){
   if (!STANDALONE) return;
   const aiOk = !!cloudCfg().endpoint;
-  if (window.TIKOUN_CONFIG?.accounts){ $("#caps").innerHTML = S.me ? `${esc(S.me.nom)}${isAdmin() ? " · admin" : ""} · IA ${aiOk ? "✓" : "✗"}${SERVERSTORE && !SRV_PERSIST ? " · ⚠ données temporaires" : ""}` : "Connexion requise"; return; }
-  $("#caps").innerHTML = `IA ${aiOk ? "✓" : "✗ (serveur)"} · Données : ${SB ? (SB_USER ? "en ligne ✓" : "connexion requise") : SERVERSTORE ? (SRV_PERSIST ? "serveur ✓" : "serveur ⚠ temporaire") : (window.TIKOUN_CONFIG?.storage === "server" ? "code requis" : "cet appareil")}`;
+  if (window.TIKOUN_CONFIG?.accounts){ $("#caps").textContent = S.me ? S.me.nom : "Connexion requise"; setAvatar(S.me?.nom);
+    $("#upst").innerHTML = S.me ? `${esc(S.me.email || "")}${aiOk ? "" : `<div class="warn">⚠ IA indisponible</div>`}${SERVERSTORE && !SRV_PERSIST ? `<div class="warn">⚠ Données temporaires</div>` : ""}` : ""; return; }
+  $("#caps").textContent = "Menu"; setAvatar("");
+  $("#upst").innerHTML = `IA ${aiOk ? "✓" : "✗ (serveur)"} · Données : ${SB ? (SB_USER ? "en ligne ✓" : "connexion requise") : SERVERSTORE ? (SRV_PERSIST ? "serveur ✓" : "serveur ⚠ temporaire") : (window.TIKOUN_CONFIG?.storage === "server" ? "code requis" : "cet appareil")}`;
 }

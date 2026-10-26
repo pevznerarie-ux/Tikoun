@@ -63,6 +63,23 @@ function ctrlFrame(c, inner){
   <div class="stepnav">${prev ? `<a class="btn" href="#/controle/${c.id}/${prev[0]}">← ${prev[1]}</a>` : "<span></span>"}${next ? `<a class="btn primary" href="#/controle/${c.id}/${next[0]}">${next[1]} →</a>` : `<a class="btn" href="#/controles">Terminer</a>`}</div>`;
 }
 
+
+/* Ligne de contrôle : une progression lisible et un seul bouton qui mène à l'étape suivante */
+function ctrlNext(c){
+  const pr = ctrlProgress(c), k = pr.sc - pr.va;
+  if (c.statut === "corrige") return {i:5, txt:"Corrigé", tone:"ok"};
+  if (c.statut === "correction") return k > 0 ? {i:4, txt:`${k} ${k > 1 ? "copies à valider" : "copie à valider"}`, tone:"warn"} : {i:4, txt:"Toutes les copies sont validées", tone:"ok"};
+  if (c.statut === "imprime") return {i:3, txt:"Imprimé · copies à scanner", tone:""};
+  return {i:0, txt:"À préparer", tone:""};
+}
+function ctrlRow(c, meta){
+  const nx = ctrlNext(c);
+  return `<a class="crow" href="#/controle/${c.id}/${defaultStep(c)}">
+    <div class="crow-main"><div class="t">${c.type === "rattrapage" ? '<span class="chip blue">Rattrapage</span> ' : c.type === "exercices" ? '<span class="chip">Exercices</span> ' : ""}${esc(c.titre)}</div><div class="s">${meta}</div></div>
+    <div class="crow-prog"><span class="pdots" aria-hidden="true">${STEPS.map((x, j) => `<i class="${j < nx.i ? "d" : j === nx.i ? "c" : ""}"></i>`).join("")}</span><span class="crow-st ${nx.tone}">${nx.txt}</span></div>
+    <span class="btn sm crow-go">${c.statut === "corrige" ? "Voir" : "Continuer"} →</span></a>`;
+}
+
 /* Liste des contrôles, rangés */
 function ctrlList(){
   const f = S.cf = S.cf || {st:"tous", mat:""};
@@ -79,9 +96,7 @@ function vControles(){
   const mats = [...new Set(all.map(c => c.matiere))];
   const of = cl => list.filter(c => cl.id === "__none" ? !classe(c.classeId) : c.classeId === cl.id);
   const line = c => { const pr = ctrlProgress(c);
-    return `<a class="item link" href="#/controle/${c.id}/${defaultStep(c)}"><div><div class="t">${c.type === "rattrapage" ? '<span class="chip blue">Rattrapage</span> ' : c.type === "exercices" ? '<span class="chip">Exercices</span> ' : ""}${esc(c.titre)}</div>
-      <div class="s">${esc(c.matiere)}${c.date ? " · " + esc(frDate(c.date)) : ""}${c.type === "rattrapage" ? " · " + esc(studentsOf(c).map(e => e.prenom + " " + e.nom).join(", ")) : ""}${S.scope === "ecole" && c.owner ? " · " + esc(userName(c.owner) || "?") : ""}${pr.printed ? ` · ${pr.sc}/${pr.n} scannées` : ""}</div></div>
-      <div class="row">${chipStatut(c)}<span class="muted">›</span></div></a>`; };
+    return ctrlRow(c, `${esc(c.matiere)}${c.date ? " · " + esc(frDate(c.date)) : ""}${c.type === "rattrapage" ? " · " + esc(studentsOf(c).map(e => e.prenom + " " + e.nom).join(", ")) : ""}${S.scope === "ecole" && c.owner ? " · " + esc(userName(c.owner) || "?") : ""}${pr.printed ? ` · ${pr.sc}/${pr.n} scannées` : ""}`); };
   const sum = cl => { const cs = of(cl), todo = cs.filter(c => c.statut === "correction").length; return `${cs.length} contrôle(s)${todo ? ` · <b style="color:var(--warn)">${todo} en correction</b>` : ""}${cl.eleves ? " · " + cl.eleves.length + " élèves" : ""}`; };
   return `<div class="head"><div><h2>${S.me && S.scope !== "ecole" ? "Mes contrôles" : "Contrôles"}</h2><p>Classe par classe : ouvre une classe pour voir ses contrôles, réduis-la quand tu as fini.</p></div>
     <div class="row">${isBoss() ? `<select id="scope-sel" style="width:auto" aria-label="Portée">${selOpts(["moi","ecole"], S.scope, x => x === "moi" ? "Mes contrôles" : "Toute l'école")}</select>` : ""}<a class="btn primary" href="#/nouveau">+ Nouveau contrôle</a></div></div>
@@ -111,3 +126,9 @@ document.addEventListener("click", ev => {
   render();
 });
 const accClasses = k => k === "ctrl" ? ctrlClasses() : k === "quiz" ? quizClasses() : store.classes;
+
+/* Menu du compte (en haut à droite) : pages personnelles et de l'établissement */
+function setAvatar(nom){ const el = document.getElementById("uav"); if (!el) return; const ini = String(nom || "").split(/\s+/).filter(w => /^\p{L}/u.test(w)).slice(0, 2).map(w => w[0].toUpperCase()).join(""); el.textContent = ini; el.hidden = !ini; }
+function umenu(open){ const b = $("#ubtn"), p = $("#upop"); if (!b || !p) return; p.hidden = !open; b.setAttribute("aria-expanded", open); }
+document.addEventListener("click", ev => { if (ev.target.closest("#ubtn")) return umenu($("#upop").hidden); if (!ev.target.closest("#upop") || ev.target.closest("a")) umenu(false); });
+document.addEventListener("keydown", ev => { if (ev.key === "Escape") umenu(false); });
