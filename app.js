@@ -415,7 +415,7 @@ function vEdit(){
     <p class="muted small">Un PDF pour toute la classe : une feuille par élève, avec son nom et son QR code sur chaque page. Le niveau n'est pas écrit sur la feuille, il est seulement contenu dans le QR code.</p>
     ${scanned ? `<p class="banner">Des copies ont déjà été scannées. Réimprimer garde les scans et les notes existants, mais une mise en page différente peut décaler les questions par page.</p>` : ""}
     <div class="row"><button class="btn primary" id="print">${printed ? "Réimprimer" : "Générer"} les feuilles · ${studs.length} élève(s)</button>
-      <button class="btn" id="print1">Feuille de l'élève affiché</button><button class="btn ghost sm danger" id="delCtrl">Supprimer le contrôle</button></div>
+      <button class="btn" id="print1">Feuille de l'élève affiché</button></div>
     <div class="status" id="pr-st"></div>
   </section>`;
   return S.step === "mise-en-page" ? partLayout : S.step === "imprimer" ? partPrint + `<section class="panel grid"><h3>Et ensuite</h3><p class="small muted">Fais passer le contrôle, puis scanne les copies à l'étape suivante. L'ordre des copies n'a pas d'importance.</p></section>` : partPrep;
@@ -1447,6 +1447,11 @@ document.addEventListener("click", async ev => {
   if (d.rmel){ const cl = classe(S.classeSel), e = (cl.eleves || []).find(x => x.id === d.rmel); if (!e) return;
     if (!confirm(`Retirer ${e.prenom} ${e.nom} de la classe ?\n\nSes copies scannées, ses notes et ses résultats d'exercices seront supprimés. Cette action est définitive.`)) return;
     await write("classes/" + cl.id, {eleves:cl.eleves.filter(x => x.id !== d.rmel)}, "update"); await purgeStudents([d.rmel]); toast("Élève retiré."); return; }
+  if (t.id === "delCtrlTop"){ const c = ctrl(S.inCtrl); if (!c) return;
+    const n = Object.values(feuille(c.id)?.copies || {}).filter(cp => Object.keys(cp.answers || {}).length).length;
+    if (!confirm(`Supprimer le contrôle « ${c.titre} » ?` + (n ? `\n\n${n} copie(s) scannée(s) et leurs notes seront supprimées.` : "") + "\n\nCette action est définitive.")) return;
+    try { await write("controles/" + c.id, null, "delete"); await write("feuilles/" + c.id, null, "delete"); toast("Contrôle supprimé."); return go("controles"); } catch(e){ toast("Suppression impossible : " + (e?.message || "réessaie.")); }
+    return; }
   if (t.id === "del-cl"){ const cl = classe(S.classeSel); if (!cl) return;
     const n = (cl.eleves || []).length, nc = store.controles.filter(c => c.classeId === cl.id).length;
     if (!confirm(`Supprimer la classe « ${cl.nom} » et ses ${n} élève(s) ?\n\nLeurs copies scannées, notes et résultats d'exercices seront supprimés.` + (nc ? `\n\n${nc} contrôle(s) restent dans la liste des contrôles, sans classe ni copies.` : "") + "\n\nCette action est définitive.")) return;
@@ -1533,8 +1538,6 @@ document.addEventListener("click", async ev => {
     }
     if (t.id === "print") return printSheets(c, studentsOf(c));
     if (t.id === "print1") return printSheets(c, studentsOf(c).filter(e => e.id === S.previewEleve));
-    if (t.id === "delCtrl"){ if (d.sure !== "1"){ d.sure = "1"; t.textContent = "Confirmer : supprimer contrôle et copies"; t.classList.add("pen"); return; }
-      await write("controles/" + c.id, null, "delete"); await write("feuilles/" + c.id, null, "delete"); return go("controles"); }
   }
 
   /* scan */

@@ -441,6 +441,27 @@ input[type=checkbox],input[type=radio]{accent-color:var(--blue)}
 @media (max-width:600px){.crow{grid-template-columns:minmax(0,1fr) auto;gap:8px 12px}.crow-prog{grid-column:1;grid-row:2;justify-items:start;text-align:left}.crow-go{grid-column:2;grid-row:1/3}}
 /* Pages vides : un message centré et l'action juste dessous */
 .panel.empty{padding:44px 24px;display:grid;justify-items:center;align-content:center;gap:14px;text-align:center;color:var(--muted);font-size:15px}
+/* Page de connexion : une carte centrée */
+.auth{min-height:calc(100vh - 160px);display:grid;place-content:center;justify-items:center;gap:16px;padding:12px 0 40px}
+.auth-card{width:min(420px,calc(100vw - 32px));background:var(--surface);border:1px solid var(--line);border-radius:20px;box-shadow:0 1px 2px rgba(16,24,40,.04),0 16px 40px -20px rgba(16,24,40,.18);padding:32px 28px;display:grid;gap:16px}
+.auth-h{text-align:center;display:grid;gap:6px;margin-bottom:4px}.auth-h h2{font-size:26px;font-weight:700;letter-spacing:-.03em}.auth-h p{color:var(--muted);font-size:14.5px}
+.auth-go{width:100%;padding:12px 16px;font-size:15px}
+.auth-note{text-align:center;margin:0}
+.auth-alt{display:grid;gap:8px;justify-items:center;border-top:1px solid var(--line);padding-top:16px}.auth-alt .btn{width:100%}
+.auth-foot{text-align:center}.view .auth-foot a{color:var(--muted);text-decoration:none}.view .auth-foot a:hover{color:var(--ink)}
+.auth-card>.status:empty{display:none}
+@media (max-width:600px){.auth{min-height:auto;place-content:start center;padding-top:8px}.auth-card{padding:24px 20px}}
+/* Banque : barre de recherche et lignes compactes */
+.bk{padding-top:14px}
+.bk-bar{display:flex;gap:8px;flex-wrap:wrap;padding-bottom:12px;border-bottom:1px solid var(--line)}
+.bk-bar input{flex:1 1 220px}.bk-bar select{flex:0 1 200px;width:auto}
+.bk-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:13px 0;border-top:1px solid var(--line)}
+.bk-bar+.bk-row{border-top:0}
+.bk-main{min-width:0}.bk-main .t{font-weight:600}.bk-main .s{font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bk-act{display:flex;gap:6px;align-items:center;flex:none}.bk-act select{width:auto;max-width:180px;padding:6px 10px}
+.bk-row.open{background:var(--surface-2);margin:0 -14px;padding:13px 14px;border-radius:12px}
+.bk-more{display:flex;justify-content:center;padding-top:12px;border-top:1px solid var(--line)}
+@media (max-width:600px){.bk-row{flex-wrap:wrap}.bk-main .s{white-space:normal}.bk-act{width:100%;justify-content:flex-end;flex-wrap:wrap}.bk-act select{flex:1 1 100%;max-width:none}}
 /* Menu du compte */
 .brand{position:relative}
 .umenu{position:relative}
@@ -925,7 +946,7 @@ function vEdit(){
     <p class="muted small">Un PDF pour toute la classe : une feuille par élève, avec son nom et son QR code sur chaque page. Le niveau n'est pas écrit sur la feuille, il est seulement contenu dans le QR code.</p>
     ${scanned ? `<p class="banner">Des copies ont déjà été scannées. Réimprimer garde les scans et les notes existants, mais une mise en page différente peut décaler les questions par page.</p>` : ""}
     <div class="row"><button class="btn primary" id="print">${printed ? "Réimprimer" : "Générer"} les feuilles · ${studs.length} élève(s)</button>
-      <button class="btn" id="print1">Feuille de l'élève affiché</button><button class="btn ghost sm danger" id="delCtrl">Supprimer le contrôle</button></div>
+      <button class="btn" id="print1">Feuille de l'élève affiché</button></div>
     <div class="status" id="pr-st"></div>
   </section>`;
   return S.step === "mise-en-page" ? partLayout : S.step === "imprimer" ? partPrint + `<section class="panel grid"><h3>Et ensuite</h3><p class="small muted">Fais passer le contrôle, puis scanne les copies à l'étape suivante. L'ordre des copies n'a pas d'importance.</p></section>` : partPrep;
@@ -1957,6 +1978,11 @@ document.addEventListener("click", async ev => {
   if (d.rmel){ const cl = classe(S.classeSel), e = (cl.eleves || []).find(x => x.id === d.rmel); if (!e) return;
     if (!confirm(`Retirer ${e.prenom} ${e.nom} de la classe ?\n\nSes copies scannées, ses notes et ses résultats d'exercices seront supprimés. Cette action est définitive.`)) return;
     await write("classes/" + cl.id, {eleves:cl.eleves.filter(x => x.id !== d.rmel)}, "update"); await purgeStudents([d.rmel]); toast("Élève retiré."); return; }
+  if (t.id === "delCtrlTop"){ const c = ctrl(S.inCtrl); if (!c) return;
+    const n = Object.values(feuille(c.id)?.copies || {}).filter(cp => Object.keys(cp.answers || {}).length).length;
+    if (!confirm(`Supprimer le contrôle « ${c.titre} » ?` + (n ? `\n\n${n} copie(s) scannée(s) et leurs notes seront supprimées.` : "") + "\n\nCette action est définitive.")) return;
+    try { await write("controles/" + c.id, null, "delete"); await write("feuilles/" + c.id, null, "delete"); toast("Contrôle supprimé."); return go("controles"); } catch(e){ toast("Suppression impossible : " + (e?.message || "réessaie.")); }
+    return; }
   if (t.id === "del-cl"){ const cl = classe(S.classeSel); if (!cl) return;
     const n = (cl.eleves || []).length, nc = store.controles.filter(c => c.classeId === cl.id).length;
     if (!confirm(`Supprimer la classe « ${cl.nom} » et ses ${n} élève(s) ?\n\nLeurs copies scannées, notes et résultats d'exercices seront supprimés.` + (nc ? `\n\n${nc} contrôle(s) restent dans la liste des contrôles, sans classe ni copies.` : "") + "\n\nCette action est définitive.")) return;
@@ -2043,8 +2069,6 @@ document.addEventListener("click", async ev => {
     }
     if (t.id === "print") return printSheets(c, studentsOf(c));
     if (t.id === "print1") return printSheets(c, studentsOf(c).filter(e => e.id === S.previewEleve));
-    if (t.id === "delCtrl"){ if (d.sure !== "1"){ d.sure = "1"; t.textContent = "Confirmer : supprimer contrôle et copies"; t.classList.add("pen"); return; }
-      await write("controles/" + c.id, null, "delete"); await write("feuilles/" + c.id, null, "delete"); return go("controles"); }
   }
 
   /* scan */
@@ -2547,7 +2571,7 @@ function ctrlFrame(c, inner){
   const i = stepIdx(S.step), pr = ctrlProgress(c), cl = classe(c.classeId);
   const doneUpTo = {brouillon:-1, imprime:2, correction:3, corrige:4}[c.statut] ?? -1;
   const prev = STEPS[i - 1], next = STEPS[i + 1];
-  return `<div class="crumbs small"><a href="#/controles">← Tous les contrôles</a></div>
+  return `<div class="crumbs small row between"><a href="#/controles">← Tous les contrôles</a><button class="btn sm ghost danger" id="delCtrlTop">Supprimer le contrôle</button></div>
   <div class="head"><div><div class="label">${c.type === "rattrapage" ? "Rattrapage" : c.type === "exercices" ? "Exercices" : "Contrôle"} · ${esc(c.matiere)} · ${esc(cl?.nom || "?")}${c.date ? " · " + esc(frDate(c.date)) : ""}</div><h2>${esc(c.titre)}</h2></div>
     <div class="row">${chipStatut(c)}${pr.printed ? `<span class="chip">${pr.sc}/${pr.n} scannées · ${pr.va}/${pr.n} validées</span>` : ""}</div></div>
   <nav class="stepper" aria-label="Étapes">${STEPS.map(([k, l], j) => `<a href="#/controle/${c.id}/${k}" class="st ${j === i ? "on" : j <= doneUpTo ? "done" : ""}" ${j === i ? 'aria-current="step"' : ""}><b>${j + 1}</b><span>${l}</span></a>`).join("")}</nav>
@@ -2703,14 +2727,15 @@ function vAuth(){
     <p class="small muted" style="margin:0">Pendant la bêta, les deux forfaits sont gratuits : aucun paiement n'est demandé. Ton inscription sera validée par l'équipe Mastery.</p>
     <label class="small" style="display:flex;gap:8px;align-items:flex-start;cursor:pointer"><input type="checkbox" id="rg-cgu" style="width:auto;margin-top:3px" ${S.regCgu ? "checked" : ""}><span>J'accepte les <a href="/cgu" target="_blank" rel="noopener" style="color:var(--gold)">conditions d'utilisation</a> et la <a href="/confidentialite" target="_blank" rel="noopener" style="color:var(--gold)">politique de confidentialité</a>. Je m'engage à informer les familles de l'utilisation de Mastery pour mes classes.</span></label>
     <div class="row"><button class="btn primary" id="rg-go">Envoyer ma demande d'inscription</button><button class="btn ghost" id="rg-back">J'ai déjà un compte</button></div><div class="status" id="au-st"></div></section>`;
-  return `<div class="head"><div><h2>Connexion</h2><p>Crée, imprime et corrige tes contrôles avec l'IA.</p></div></div>
-  <section class="panel grid" style="max-width:440px">
-    <div class="field"><label for="lg-mail2">E-mail</label><input id="lg-mail2" type="email" autocomplete="username"></div>
+  return `<div class="auth"><section class="auth-card">
+    <div class="auth-h"><h2>Connexion</h2><p>Crée, imprime et corrige tes contrôles avec l'IA.</p></div>
+    <div class="field"><label for="lg-mail2">E-mail</label><input id="lg-mail2" type="email" autocomplete="username" placeholder="prenom.nom@ecole.fr"></div>
     <div class="field"><label for="lg-pw2">Mot de passe</label><input id="lg-pw2" type="password" autocomplete="current-password"></div>
-    <div class="row"><button class="btn primary" id="lg-go2">Se connecter</button></div>
-    ${window.TIKOUN_CONFIG?.signup ? `<div class="row" style="border-top:1px solid var(--line);padding-top:12px"><span class="small muted">Pas encore de compte ?</span><button class="btn sm" id="rg-open">Créer mon compte professeur</button></div>` : ""}
-    <p class="small muted">Mot de passe oublié : écris à l'administrateur de Mastery pour le réinitialiser.</p><div class="status" id="au-st"></div>
-    <p class="small muted" style="margin:0"><a href="?lang=fr">Français</a> · <a href="?lang=en">English</a> · <a href="?lang=pt">Português</a></p></section>`;
+    <button class="btn primary auth-go" id="lg-go2">Se connecter</button><div class="status" id="au-st"></div>
+    <p class="small muted auth-note">Mot de passe oublié : écris à l'administrateur de Mastery pour le réinitialiser.</p>
+    ${window.TIKOUN_CONFIG?.signup ? `<div class="auth-alt"><span class="small muted">Pas encore de compte ?</span><button class="btn" id="rg-open">Créer mon compte professeur</button></div>` : ""}
+  </section>
+  <p class="small muted auth-foot"><a href="/">← Retour au site</a> · <a href="?lang=fr">Français</a> · <a href="?lang=en">English</a> · <a href="?lang=pt">Português</a></p></div>`;
 }
 const KEEP = ["rg-nom","rg-mail","rg-pw","me-nom","ec-adr","ec-ville","ec-q","ec-cp"]; let kept = {}; S.form = {};
 document.addEventListener("change", async ev => { if (ev.target.id === "rg-cgu") S.regCgu = ev.target.checked;
@@ -3083,20 +3108,29 @@ function vDirection_0(){
 
 /* ================= 5. Banque ================= */
 function vBanque_0(){
-  const b = S.bk = S.bk || {mat:"", niv:"", q:""};
-  const all = store.controles.filter(c => isCtrl(c) && (!b.mat || c.matiere === b.mat) && (!b.niv || c.niveau === b.niv)
+  const b = S.bk = S.bk || {mat:"", niv:"", q:"", n:10, open:null}; b.n = b.n || 10;
+  // Un seul modèle par contrôle : les copies réutilisées (même titre, mêmes questions) sont regroupées
+  const sig = c => [nkey(c.titre), c.matiere, c.niveau, ...(c.questions || []).map(q => nkey(vOf(q, "standard").enonce).slice(0, 80))].join("|");
+  const groups = new Map();
+  [...store.controles].filter(isCtrl).sort((x, y) => (x.createdAt || "").localeCompare(y.createdAt || ""))
+    .forEach(c => { const k = sig(c); const g = groups.get(k); if (g){ g.n++; g.last = c.createdAt || g.last; } else groups.set(k, {c, n:1, last:c.createdAt || ""}); });
+  const all = [...groups.values()].filter(({c}) => (!b.mat || c.matiere === b.mat) && (!b.niv || c.niveau === b.niv)
     && (!b.q || nkey(c.titre + " " + (c.questions || []).map(q => q.notion + " " + vOf(q, "standard").enonce).join(" ")).includes(nkey(b.q))))
-    .sort((x, y) => (y.createdAt || "").localeCompare(x.createdAt || ""));
-  const mats = [...new Set(store.controles.map(c => c.matiere))];
-  return `<div class="head"><div><h2>Banque de contrôles</h2><p>Tout contrôle créé ici se réutilise : pour une autre classe, une autre année, ou question par question. Partage l'application aux autres profs (et aux autres sites) pour une banque commune.</p></div></div>
-  <section class="panel"><div class="form-row">
-    <div class="field"><label for="bk-mat">Matière</label><select id="bk-mat"><option value="">Toutes</option>${selOpts(mats, b.mat)}</select></div>
-    <div class="field"><label for="bk-niv">Niveau</label><select id="bk-niv"><option value="">Tous</option>${selOpts(NIVEAUX, b.niv)}</select></div>
-    <div class="field"><label for="bk-q">Rechercher (notion, mot)</label><input id="bk-q" value="${esc(b.q)}" placeholder="ex. antécédent"></div></div></section>
-  <section class="panel">${all.map(c => `<div class="item" style="align-items:flex-start"><div><div class="t">${esc(c.titre)}</div>
-      <div class="s">${esc(c.matiere)} · ${esc(c.niveau || "")} · ${(c.questions || []).length} questions · créé pour ${esc(classe(c.classeId)?.nom || "?")}</div>
-      <div class="tags" style="margin-top:4px">${[...new Set((c.questions || []).map(q => q.notion).filter(Boolean))].slice(0, 5).map(n => `<span class="chip">${esc(n)}</span>`).join("")}</div></div>
-      <div class="row" style="justify-content:flex-end"><select id="dup-${c.id}" style="width:auto" aria-label="Classe">${selOpts(store.classes, c.classeId, x => x.nom, x => x.id)}</select><button class="btn sm primary" data-dup="${c.id}">Dupliquer</button></div></div>`).join("") || `<p class="empty">Aucun contrôle ne correspond.</p>`}</section>`;
+    .sort((x, y) => (y.last || "").localeCompare(x.last || ""));
+  const mats = [...new Set(store.controles.map(c => c.matiere))], nivs = NIVEAUX.filter(n => store.controles.some(c => c.niveau === n));
+  const row = ({c, n}) => { const notions = [...new Set((c.questions || []).map(q => q.notion).filter(Boolean))], open = b.open === c.id;
+    return `<div class="bk-row${open ? " open" : ""}"><div class="bk-main"><div class="t">${esc(c.titre)}${n > 1 ? ` <span class="chip">${n} utilisations</span>` : ""}</div>
+      <div class="s">${esc(c.matiere)}${c.niveau ? " · " + esc(c.niveau) : ""} · ${(c.questions || []).length} q.${notions.length ? " · " + esc(notions.slice(0, 4).join(", ")) + (notions.length > 4 ? "…" : "") : ""}</div></div>
+      <div class="bk-act">${open ? `<select id="dup-${c.id}" aria-label="Classe">${selOpts(store.classes, c.classeId, x => x.nom, x => x.id)}</select><button class="btn sm primary" data-dup="${c.id}">Créer la copie</button><button class="btn sm ghost" data-bkx="1">Annuler</button>`
+        : `<button class="btn sm" data-bkopen="${c.id}">Réutiliser</button>`}</div></div>`; };
+  return `<div class="head"><div><h2>Banque de contrôles</h2><p>Tes contrôles déjà faits, prêts à réutiliser pour une autre classe ou une autre année.</p></div></div>
+  <section class="panel bk">
+    <div class="bk-bar"><input id="bk-q" type="search" value="${esc(b.q)}" placeholder="Rechercher un titre ou une notion" aria-label="Rechercher">
+      ${mats.length > 1 ? `<select id="bk-mat" aria-label="Matière"><option value="">Toutes les matières</option>${selOpts(mats, b.mat)}</select>` : ""}
+      ${nivs.length > 1 ? `<select id="bk-niv" aria-label="Niveau"><option value="">Tous les niveaux</option>${selOpts(nivs, b.niv)}</select>` : ""}</div>
+    ${all.length ? all.slice(0, b.n).map(row).join("") + (all.length > b.n ? `<div class="bk-more"><button class="btn sm" data-bkmore="1">Voir plus · ${all.length - b.n}</button></div>` : "")
+      : `<p class="empty">${b.q || b.mat || b.niv ? "Aucun contrôle ne correspond." : "Tes contrôles apparaîtront ici dès que tu en auras créé un."}</p>`}
+  </section>`;
 }
 function bankPanel_0(c){
   const seen = new Set(), q = nkey(S.bkq || "");
@@ -3181,10 +3215,13 @@ document.addEventListener("click", async ev => {
   if (t.id === "bankOpen"){ S.bankOpen = !S.bankOpen; return render(); }
   if (d.bankadd){ const [cid, qid] = d.bankadd.split("|"); const src = ctrl(cid)?.questions?.find(q => q.id === qid), c = ctrl(S.editId);
     if (!src || !c) return; const nq = structuredClone(src); nq.id = "q" + uid(5); c.questions.push(nq); await saveCtrl(c); toast("Question ajoutée."); return; }
+  if (d.bkopen){ S.bk.open = d.bkopen; return render(); }
+  if (d.bkx){ S.bk.open = null; return render(); }
+  if (d.bkmore){ S.bk.n = (S.bk.n || 10) + 20; return render(); }
   if (d.dup){ const src = ctrl(d.dup); const cl = $("#dup-" + src.id).value; const id = uid(12);
     const {id:_, analyse, ...rest} = structuredClone(src);
     await write("controles/" + id, {...rest, classeId:cl, niveau:classe(cl)?.niveau || rest.niveau, statut:"brouillon", date:"", createdAt:new Date().toISOString(), sourceId:src.id});
-    S.editId = id; S.step = "preparer"; toast("Copie créée : modifie-la puis imprime."); return go("edit"); }
+    S.editId = id; S.step = "preparer"; if (S.bk) S.bk.open = null; toast("Copie créée : modifie-la puis imprime."); return go("edit"); }
   if (t.id === "rendu1"){ const C = ctrl(S.corrCtrl), e = eleveOf(C, S.corrEleve), st = $("#rd-st");
     await buildPdf([() => ({pages:renduPages(C, e), label:e.prenom})], `Copie corrigée - ${C.titre} - ${e.prenom} ${e.nom}.pdf`, st); return; }
   if (t.id === "renduAll"){ const C = ctrl(S.corrCtrl), f = feuille(C.id), st = $("#rd-st");
@@ -3217,7 +3254,7 @@ document.addEventListener("change", ev => {
   const el = ev.target;
   if (el.id === "su-cl"){ S.su = {cl:el.value}; return render(); }
   if (el.id === "su-mat"){ S.su.mat = el.value; S.su.el = null; return render(); }
-  if (el.id === "bk-mat" || el.id === "bk-niv" || el.id === "bk-q"){ S.bk[el.id.slice(3)] = el.value; return render(); }
+  if (el.id === "bk-mat" || el.id === "bk-niv" || el.id === "bk-q"){ S.bk[el.id.slice(3)] = el.value; S.bk.n = 10; S.bk.open = null; return render(); }
   if (el.id === "bkq-search"){ S.bkq = el.value; return render(); }
 });
 

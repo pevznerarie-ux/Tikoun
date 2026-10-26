@@ -147,20 +147,29 @@ function vDirection_0(){
 
 /* ================= 5. Banque ================= */
 function vBanque_0(){
-  const b = S.bk = S.bk || {mat:"", niv:"", q:""};
-  const all = store.controles.filter(c => isCtrl(c) && (!b.mat || c.matiere === b.mat) && (!b.niv || c.niveau === b.niv)
+  const b = S.bk = S.bk || {mat:"", niv:"", q:"", n:10, open:null}; b.n = b.n || 10;
+  // Un seul modèle par contrôle : les copies réutilisées (même titre, mêmes questions) sont regroupées
+  const sig = c => [nkey(c.titre), c.matiere, c.niveau, ...(c.questions || []).map(q => nkey(vOf(q, "standard").enonce).slice(0, 80))].join("|");
+  const groups = new Map();
+  [...store.controles].filter(isCtrl).sort((x, y) => (x.createdAt || "").localeCompare(y.createdAt || ""))
+    .forEach(c => { const k = sig(c); const g = groups.get(k); if (g){ g.n++; g.last = c.createdAt || g.last; } else groups.set(k, {c, n:1, last:c.createdAt || ""}); });
+  const all = [...groups.values()].filter(({c}) => (!b.mat || c.matiere === b.mat) && (!b.niv || c.niveau === b.niv)
     && (!b.q || nkey(c.titre + " " + (c.questions || []).map(q => q.notion + " " + vOf(q, "standard").enonce).join(" ")).includes(nkey(b.q))))
-    .sort((x, y) => (y.createdAt || "").localeCompare(x.createdAt || ""));
-  const mats = [...new Set(store.controles.map(c => c.matiere))];
-  return `<div class="head"><div><h2>Banque de contrôles</h2><p>Tout contrôle créé ici se réutilise : pour une autre classe, une autre année, ou question par question. Partage l'application aux autres profs (et aux autres sites) pour une banque commune.</p></div></div>
-  <section class="panel"><div class="form-row">
-    <div class="field"><label for="bk-mat">Matière</label><select id="bk-mat"><option value="">Toutes</option>${selOpts(mats, b.mat)}</select></div>
-    <div class="field"><label for="bk-niv">Niveau</label><select id="bk-niv"><option value="">Tous</option>${selOpts(NIVEAUX, b.niv)}</select></div>
-    <div class="field"><label for="bk-q">Rechercher (notion, mot)</label><input id="bk-q" value="${esc(b.q)}" placeholder="ex. antécédent"></div></div></section>
-  <section class="panel">${all.map(c => `<div class="item" style="align-items:flex-start"><div><div class="t">${esc(c.titre)}</div>
-      <div class="s">${esc(c.matiere)} · ${esc(c.niveau || "")} · ${(c.questions || []).length} questions · créé pour ${esc(classe(c.classeId)?.nom || "?")}</div>
-      <div class="tags" style="margin-top:4px">${[...new Set((c.questions || []).map(q => q.notion).filter(Boolean))].slice(0, 5).map(n => `<span class="chip">${esc(n)}</span>`).join("")}</div></div>
-      <div class="row" style="justify-content:flex-end"><select id="dup-${c.id}" style="width:auto" aria-label="Classe">${selOpts(store.classes, c.classeId, x => x.nom, x => x.id)}</select><button class="btn sm primary" data-dup="${c.id}">Dupliquer</button></div></div>`).join("") || `<p class="empty">Aucun contrôle ne correspond.</p>`}</section>`;
+    .sort((x, y) => (y.last || "").localeCompare(x.last || ""));
+  const mats = [...new Set(store.controles.map(c => c.matiere))], nivs = NIVEAUX.filter(n => store.controles.some(c => c.niveau === n));
+  const row = ({c, n}) => { const notions = [...new Set((c.questions || []).map(q => q.notion).filter(Boolean))], open = b.open === c.id;
+    return `<div class="bk-row${open ? " open" : ""}"><div class="bk-main"><div class="t">${esc(c.titre)}${n > 1 ? ` <span class="chip">${n} utilisations</span>` : ""}</div>
+      <div class="s">${esc(c.matiere)}${c.niveau ? " · " + esc(c.niveau) : ""} · ${(c.questions || []).length} q.${notions.length ? " · " + esc(notions.slice(0, 4).join(", ")) + (notions.length > 4 ? "…" : "") : ""}</div></div>
+      <div class="bk-act">${open ? `<select id="dup-${c.id}" aria-label="Classe">${selOpts(store.classes, c.classeId, x => x.nom, x => x.id)}</select><button class="btn sm primary" data-dup="${c.id}">Créer la copie</button><button class="btn sm ghost" data-bkx="1">Annuler</button>`
+        : `<button class="btn sm" data-bkopen="${c.id}">Réutiliser</button>`}</div></div>`; };
+  return `<div class="head"><div><h2>Banque de contrôles</h2><p>Tes contrôles déjà faits, prêts à réutiliser pour une autre classe ou une autre année.</p></div></div>
+  <section class="panel bk">
+    <div class="bk-bar"><input id="bk-q" type="search" value="${esc(b.q)}" placeholder="Rechercher un titre ou une notion" aria-label="Rechercher">
+      ${mats.length > 1 ? `<select id="bk-mat" aria-label="Matière"><option value="">Toutes les matières</option>${selOpts(mats, b.mat)}</select>` : ""}
+      ${nivs.length > 1 ? `<select id="bk-niv" aria-label="Niveau"><option value="">Tous les niveaux</option>${selOpts(nivs, b.niv)}</select>` : ""}</div>
+    ${all.length ? all.slice(0, b.n).map(row).join("") + (all.length > b.n ? `<div class="bk-more"><button class="btn sm" data-bkmore="1">Voir plus · ${all.length - b.n}</button></div>` : "")
+      : `<p class="empty">${b.q || b.mat || b.niv ? "Aucun contrôle ne correspond." : "Tes contrôles apparaîtront ici dès que tu en auras créé un."}</p>`}
+  </section>`;
 }
 function bankPanel_0(c){
   const seen = new Set(), q = nkey(S.bkq || "");
@@ -245,10 +254,13 @@ document.addEventListener("click", async ev => {
   if (t.id === "bankOpen"){ S.bankOpen = !S.bankOpen; return render(); }
   if (d.bankadd){ const [cid, qid] = d.bankadd.split("|"); const src = ctrl(cid)?.questions?.find(q => q.id === qid), c = ctrl(S.editId);
     if (!src || !c) return; const nq = structuredClone(src); nq.id = "q" + uid(5); c.questions.push(nq); await saveCtrl(c); toast("Question ajoutée."); return; }
+  if (d.bkopen){ S.bk.open = d.bkopen; return render(); }
+  if (d.bkx){ S.bk.open = null; return render(); }
+  if (d.bkmore){ S.bk.n = (S.bk.n || 10) + 20; return render(); }
   if (d.dup){ const src = ctrl(d.dup); const cl = $("#dup-" + src.id).value; const id = uid(12);
     const {id:_, analyse, ...rest} = structuredClone(src);
     await write("controles/" + id, {...rest, classeId:cl, niveau:classe(cl)?.niveau || rest.niveau, statut:"brouillon", date:"", createdAt:new Date().toISOString(), sourceId:src.id});
-    S.editId = id; S.step = "preparer"; toast("Copie créée : modifie-la puis imprime."); return go("edit"); }
+    S.editId = id; S.step = "preparer"; if (S.bk) S.bk.open = null; toast("Copie créée : modifie-la puis imprime."); return go("edit"); }
   if (t.id === "rendu1"){ const C = ctrl(S.corrCtrl), e = eleveOf(C, S.corrEleve), st = $("#rd-st");
     await buildPdf([() => ({pages:renduPages(C, e), label:e.prenom})], `Copie corrigée - ${C.titre} - ${e.prenom} ${e.nom}.pdf`, st); return; }
   if (t.id === "renduAll"){ const C = ctrl(S.corrCtrl), f = feuille(C.id), st = $("#rd-st");
@@ -281,7 +293,7 @@ document.addEventListener("change", ev => {
   const el = ev.target;
   if (el.id === "su-cl"){ S.su = {cl:el.value}; return render(); }
   if (el.id === "su-mat"){ S.su.mat = el.value; S.su.el = null; return render(); }
-  if (el.id === "bk-mat" || el.id === "bk-niv" || el.id === "bk-q"){ S.bk[el.id.slice(3)] = el.value; return render(); }
+  if (el.id === "bk-mat" || el.id === "bk-niv" || el.id === "bk-q"){ S.bk[el.id.slice(3)] = el.value; S.bk.n = 10; S.bk.open = null; return render(); }
   if (el.id === "bkq-search"){ S.bkq = el.value; return render(); }
 });
 

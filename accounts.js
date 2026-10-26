@@ -75,14 +75,15 @@ function vAuth(){
     <p class="small muted" style="margin:0">Pendant la bêta, les deux forfaits sont gratuits : aucun paiement n'est demandé. Ton inscription sera validée par l'équipe Mastery.</p>
     <label class="small" style="display:flex;gap:8px;align-items:flex-start;cursor:pointer"><input type="checkbox" id="rg-cgu" style="width:auto;margin-top:3px" ${S.regCgu ? "checked" : ""}><span>J'accepte les <a href="/cgu" target="_blank" rel="noopener" style="color:var(--gold)">conditions d'utilisation</a> et la <a href="/confidentialite" target="_blank" rel="noopener" style="color:var(--gold)">politique de confidentialité</a>. Je m'engage à informer les familles de l'utilisation de Mastery pour mes classes.</span></label>
     <div class="row"><button class="btn primary" id="rg-go">Envoyer ma demande d'inscription</button><button class="btn ghost" id="rg-back">J'ai déjà un compte</button></div><div class="status" id="au-st"></div></section>`;
-  return `<div class="head"><div><h2>Connexion</h2><p>Crée, imprime et corrige tes contrôles avec l'IA.</p></div></div>
-  <section class="panel grid" style="max-width:440px">
-    <div class="field"><label for="lg-mail2">E-mail</label><input id="lg-mail2" type="email" autocomplete="username"></div>
+  return `<div class="auth"><section class="auth-card">
+    <div class="auth-h"><h2>Connexion</h2><p>Crée, imprime et corrige tes contrôles avec l'IA.</p></div>
+    <div class="field"><label for="lg-mail2">E-mail</label><input id="lg-mail2" type="email" autocomplete="username" placeholder="prenom.nom@ecole.fr"></div>
     <div class="field"><label for="lg-pw2">Mot de passe</label><input id="lg-pw2" type="password" autocomplete="current-password"></div>
-    <div class="row"><button class="btn primary" id="lg-go2">Se connecter</button></div>
-    ${window.TIKOUN_CONFIG?.signup ? `<div class="row" style="border-top:1px solid var(--line);padding-top:12px"><span class="small muted">Pas encore de compte ?</span><button class="btn sm" id="rg-open">Créer mon compte professeur</button></div>` : ""}
-    <p class="small muted">Mot de passe oublié : écris à l'administrateur de Mastery pour le réinitialiser.</p><div class="status" id="au-st"></div>
-    <p class="small muted" style="margin:0"><a href="?lang=fr">Français</a> · <a href="?lang=en">English</a> · <a href="?lang=pt">Português</a></p></section>`;
+    <button class="btn primary auth-go" id="lg-go2">Se connecter</button><div class="status" id="au-st"></div>
+    <p class="small muted auth-note">Mot de passe oublié : écris à l'administrateur de Mastery pour le réinitialiser.</p>
+    ${window.TIKOUN_CONFIG?.signup ? `<div class="auth-alt"><span class="small muted">Pas encore de compte ?</span><button class="btn" id="rg-open">Créer mon compte professeur</button></div>` : ""}
+  </section>
+  <p class="small muted auth-foot"><a href="/">← Retour au site</a> · <a href="?lang=fr">Français</a> · <a href="?lang=en">English</a> · <a href="?lang=pt">Português</a></p></div>`;
 }
 const KEEP = ["rg-nom","rg-mail","rg-pw","me-nom","ec-adr","ec-ville","ec-q","ec-cp"]; let kept = {}; S.form = {};
 document.addEventListener("change", async ev => { if (ev.target.id === "rg-cgu") S.regCgu = ev.target.checked;

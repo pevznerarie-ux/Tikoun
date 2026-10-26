@@ -1553,5 +1553,19 @@
  "⚠ IA indisponible": "⚠ AI unavailable",
  "Continuer": "Continue",
  "Menu": "Menu",
- "Quiz d'exercices": "Practice quizzes"
+ "Quiz d'exercices": "Practice quizzes",
+ "← Retour au site": "← Back to website",
+ "prenom.nom@ecole.fr": "firstname.lastname@school.edu",
+ "Contrôle supprimé.": "Test deleted.",
+ "Créer la copie": "Create the copy",
+ "Rechercher un titre ou une notion": "Search a title or a skill",
+ "Réutiliser": "Reuse",
+ "Supprimer le contrôle «": "Delete the test “",
+ "Tes contrôles apparaîtront ici dès que tu en auras créé un.": "Your tests will appear here as soon as you create one.",
+ "Tes contrôles déjà faits, prêts à réutiliser pour une autre classe ou une autre année.": "Your past tests, ready to reuse for another class or another year.",
+ "Tous les niveaux": "All grades",
+ "copie(s) scannée(s) et leurs notes seront supprimées.": "scanned paper(s) and their grades will be deleted.",
+ "Voir plus ·": "See more ·",
+ "» ?": "”?",
+ "utilisations": "uses"
 }

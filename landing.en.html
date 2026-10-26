@@ -244,10 +244,10 @@ footer a{text-decoration:none}footer a:hover{color:var(--paper)}
   .hero{padding-top:110px}
   .stage{height:470px}.sheet{inset:10px 6px 10px 10px;padding:40px 24px 30px}.chip.c1{right:0}.chip.c2{left:0}
   .feats{grid-template-columns:1fr}.feat:nth-child(odd){border-right:0;margin-right:0}.feat{padding-right:0}
-  .links{gap:14px}.nav .btn.sm.ghost{display:none}
+  .links{gap:14px}.links a.lang{display:none}.nav .btn.sm{height:38px;padding:0 14px;font-size:13.5px}
   .faq summary{font-size:20px}
 }
-@media (max-width:440px){.brand .wm{display:none}.links{gap:12px}.nav .btn.sm.gold{padding-left:14px;padding-right:14px}}
+@media (max-width:440px){.brand .wm{display:none}.links{gap:8px}.nav .btn.sm{padding:0 12px}}
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms!important;animation-delay:0s!important;transition-duration:.01ms!important}
   .rv{opacity:1;transform:none;filter:none}
@@ -477,7 +477,7 @@ footer{background:#101828}
 </main>
 
 <footer>
-  <div class="wrap"><span>© 2026 Mastery</span><span><a href="/cgu">Terms of use</a> · <a href="/confidentialite">Privacy</a> · <a href="/mentions-legales">Legal notice</a> · <a href="/app#/connexion">Sign in</a></span></div>
+  <div class="wrap"><span>© 2026 Mastery</span><span><a href="/cgu">Terms of use</a> · <a href="/confidentialite">Privacy</a> · <a href="/mentions-legales">Legal notice</a> · <a href="/app#/connexion">Sign in</a> · <a href="?lang=fr" hreflang="fr">FR</a> <a href="?lang=en" hreflang="en">EN</a> <a href="?lang=pt" hreflang="pt-BR">PT</a></span></div>
 </footer>
 <script src="/config.js"></script>
 <script>(function(){ var c = window.TIKOUN_CONFIG || {}; if (!c.billing) return; document.documentElement.classList.add("bill");
