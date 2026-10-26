@@ -1539,5 +1539,11 @@
  "question(s) non lue(s) par l'IA : relance la page ou recadre-les dans la correction.": "questão(ões) não lida(s) pela IA: reenvie a página ou recorte-as na correção.",
  "Élève retiré.": "Aluno removido.",
  "élève(s) ?\\n\\nLeurs copies scannées, notes et résultats d'exercices seront supprimés.": "aluno(s)?\\n\\nSuas provas digitalizadas, notas e resultados de exercícios serão excluídos.",
- "⚠ Pas enregistré : la connexion au serveur a échoué. Vérifie le réseau puis refais la dernière modification.": "⚠ Não salvo: a conexão com o servidor falhou. Verifique a rede e refaça a última alteração."
+ "⚠ Pas enregistré : la connexion au serveur a échoué. Vérifie le réseau puis refais la dernière modification.": "⚠ Não salvo: a conexão com o servidor falhou. Verifique a rede e refaça a última alteração.",
+ "Supprimer le contrôle": "Excluir prova",
+ "Écris un élève par ligne : « Prénom Nom ».": "Escreva um aluno por linha: “Nome Sobrenome”.",
+ "Créer un nouveau mot de passe provisoire ? L'ancien ne fonctionnera plus.\\n\\n": "Criar uma nova senha provisória? A antiga deixará de funcionar.\\n\\n",
+ "Aucune copie validée pour l'instant : la maîtrise de chaque notion apparaîtra ici dès qu'une copie sera validée. Touche un élève pour son détail.": "Nenhuma prova validada por enquanto: o domínio de cada conteúdo aparecerá aqui assim que uma prova for validada. Toque em um aluno para ver os detalhes.",
+ "Donne un nom à l'appareil (ex. Scanner salle des profs).": "Dê um nome ao aparelho (ex.: Scanner da sala dos professores).",
+ "Entre le code donné par ta direction.": "Digite o código fornecido pela direção da escola."
 }

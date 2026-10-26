@@ -113,7 +113,7 @@ function vSuiviBase(){
         ${bil ? `<textarea id="appr-txt" data-live>${esc(bil.texte)}</textarea><div class="row"><button class="btn sm" id="apprSave">Enregistrer ma version</button><button class="btn sm ghost" id="apprCopy">Copier</button></div>` : `<p class="muted small">Rédigée à partir des notes, des notions et des commentaires de l'année. Tu la relis et la modifies.</p>`}</div>
     </section>`;
   }
-  return top + `<section class="panel"><p class="small muted">Vert : maîtrisé (70 % et plus) · orange : fragile · rouge : non acquis. Touche un élève pour son détail.</p>
+  return top + `<section class="panel"><p class="small muted">${cols.length ? "Vert : maîtrisé (70 % et plus) · orange : fragile · rouge : non acquis. Touche un élève pour son détail." : "Aucune copie validée pour l'instant : la maîtrise de chaque notion apparaîtra ici dès qu'une copie sera validée. Touche un élève pour son détail."}</p>
     <div class="tbl-wrap" style="margin-top:8px"><table><thead><tr><th>Élève</th>${cols.map(k => `<th class="c" title="${esc(st.labels[k])}" style="max-width:110px;overflow:hidden;text-overflow:ellipsis">${esc(st.labels[k].slice(0, 16))}</th>`).join("")}</tr></thead><tbody>
     ${(cl.eleves || []).map(x => `<tr class="clickable ${x.id === S.su.el ? "sel" : ""}" data-suel="${x.id}"><td><b>${esc(x.prenom)} ${esc(x.nom)}</b></td>${cols.map(k => { const r = ms(x.id, k); return `<td class="c"><span class="cell ${tone(r)}" title="${lab(r)}">${r == null ? "—" : Math.round(r * 100)}</span></td>`; }).join("")}</tr>`).join("")}
     </tbody></table></div></section>` + detail;

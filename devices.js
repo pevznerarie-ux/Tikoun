@@ -42,7 +42,7 @@ function devicesPanel(){
     ${(S.dev.list || []).map(d => `<div class="item"><div><div class="t">${esc(d.nom)} <span class="chip">${d.portee === "ecole" ? "Tout l'établissement" : "Mes copies"}</span></div>
       <div class="s">${d.pages} page(s) reçue(s)${d.dernier ? " · dernier envoi le " + esc(frDate(d.dernier.slice(0, 10))) : " · encore aucun envoi"}</div></div>
       <div class="row"><button class="btn sm" data-devsheet="${d.id}">Feuille de réglage</button><button class="btn sm ghost" data-devdel="${d.id}">Retirer</button></div></div>`).join("")}
-    <div class="form-row" style="grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) auto;align-items:end"><div class="field"><label for="dev-nom">Nom de l'appareil</label><input id="dev-nom" placeholder="ex. Scanner salle des profs"></div>
+    <div class="form-row dev-form" style="align-items:end"><div class="field"><label for="dev-nom">Nom de l'appareil</label><input id="dev-nom" placeholder="ex. Scanner salle des profs"></div>
       <div class="field"><label for="dev-portee">Copies de</label><select id="dev-portee"><option value="moi">Moi seulement</option>${dir ? `<option value="ecole">Tout l'établissement</option>` : ""}</select></div>
       <button class="btn primary" id="dev-add">Ajouter</button></div>
     <details><summary class="small" style="cursor:pointer">Réglage Wi-Fi imprimé sur la feuille de réglage (facultatif)</summary>
@@ -65,7 +65,7 @@ document.addEventListener("input", ev => { if (ev.target.id === "dev-ssid") S.de
 document.addEventListener("click", async ev => {
   const t = ev.target.closest("button"); if (!t) return; const d = t.dataset;
   try {
-    if (t.id === "dev-add"){ const j = await api("/api/devices", {method:"POST", body:JSON.stringify({nom:$("#dev-nom").value, portee:$("#dev-portee").value})}); S.dev.list = [...(S.dev.list || []), j.appareil]; render(); toast("Appareil ajouté : imprime sa feuille de réglage."); return; }
+    if (t.id === "dev-add"){ if (!$("#dev-nom").value.trim()){ toast("Donne un nom à l'appareil (ex. Scanner salle des profs)."); $("#dev-nom").focus(); return; } const j = await api("/api/devices", {method:"POST", body:JSON.stringify({nom:$("#dev-nom").value, portee:$("#dev-portee").value})}); S.dev.list = [...(S.dev.list || []), j.appareil]; render(); toast("Appareil ajouté : imprime sa feuille de réglage."); return; }
     if (d.devdel){ if (!confirm("Retirer cet appareil ? Il ne pourra plus envoyer de copies.")) return; await api("/api/devices/" + d.devdel, {method:"DELETE"}); return devLoad(); }
     if (d.devsheet){ const x = (S.dev.list || []).find(y => y.id === d.devsheet); if (x) devSheet(x); return; }
   } catch(e){ toast(e.message || "Erreur"); }

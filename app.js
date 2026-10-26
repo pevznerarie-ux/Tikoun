@@ -226,7 +226,7 @@ function render(){
   let html = V();
   const fc = S.inCtrl && ["edit","scan","correct","analyse"].includes(S.view) && V !== vLogin && ctrl(S.inCtrl);
   if (fc){
-    if (S.view === "correct" && fc.statut === "brouillon") html = `<section class="panel empty">Les feuilles ne sont pas encore imprimées. Passe par l'étape « Imprimer ».</section>`;
+    if ((S.view === "correct" || S.view === "scan") && fc.statut === "brouillon") html = `<section class="panel empty">Les feuilles ne sont pas encore imprimées. Passe par l'étape « Imprimer ».</section>`;
     html = ctrlFrame(fc, html.replace(/<select id="(corrSel|anSel)"[\s\S]*?<\/select>/, "").replace(/<h2>(Correction|Classe & rattrapage|Scanner les copies)<\/h2>/, "<h3>$1</h3>"));
   }
   $("#view").innerHTML = `<div class="view">${LOCAL ? `<p class="banner">Base de données indisponible : rien n'est sauvegardé. Recharge la page.</p>` : ""}${typeof billBanner === "function" ? billBanner() : ""}${html}</div>`;
@@ -294,13 +294,13 @@ function vClasses(){
         <button class="btn sm primary" id="nc-go">Créer</button>
       </div>
     </aside>
-    ${cl ? `<section class="panel grid">
+    ${cl ? `<div class="grid" style="gap:22px;align-content:start"><section class="panel grid">
       <div class="row between"><h3 style="font-size:20px">${esc(cl.nom)} <span class="muted small">· ${esc(cl.niveau)}</span></h3>
         <div class="row"><select id="lvlMat" style="width:auto" aria-label="Matière">${matOpts(S.levelMat)}</select>
-        <button class="btn sm" id="sugg">Suggérer les niveaux</button><button class="btn sm ghost" id="del-cl" title="Supprimer cette classe">🗑 Supprimer la classe</button></div></div>
+        <button class="btn sm" id="sugg">Suggérer les niveaux</button><button class="btn sm ghost danger" id="del-cl" title="Supprimer cette classe">🗑 Supprimer la classe</button></div></div>
       ${sug ? `<div class="banner">Suggestions calculées sur les 3 derniers contrôles validés en ${esc(S.levelMat)} (socle : moins de ${noteS(10)} · standard : ${nv(10)}–${noteS(15)} · approfondi : plus de ${noteS(15)}). <button class="btn sm" id="applySug">Appliquer</button></div>` : ""}
       <div class="tbl-wrap"><table><thead><tr><th>Élève</th><th>Niveau · ${esc(S.levelMat)}</th>${sug ? "<th>Suggestion</th>" : ""}<th>Écriture</th><th></th></tr></thead><tbody>
-      ${(cl.eleves || []).map(e => `<tr><td><b>${esc(e.prenom)} ${esc(e.nom)}</b></td>
+      ${(cl.eleves || []).map(e => `<tr><td style="white-space:normal;min-width:120px"><b>${esc(e.prenom)} ${esc(e.nom)}</b></td>
         <td><select data-lvl="${e.id}" style="width:auto" aria-label="Niveau de ${esc(e.prenom)}">${selOpts(LEVELS, levelOf(e, S.levelMat), l => LVL[l])}</select></td>
         ${sug ? `<td>${sug[e.id] ? `<span class="lvl ${sug[e.id].lvl}">${LVL[sug[e.id].lvl]}</span> <span class="muted small num">${noteS(sug[e.id].avg)}</span>` : `<span class="muted small">pas de note</span>`}</td>` : ""}
         <td>${(() => { const w = store.ecritures[e.id]; const sc = w?.parUsage?.[usageOf(S.levelMat)] ?? w?.score; return w ? (sc != null ? `<span class="chip ${tone(sc >= .9 ? 1 : sc >= .75 ? .6 : 0)}" title="Lisibilité mesurée sur la fiche d'écriture">${pct(sc)}</span>` : `<span class="chip">fiche reçue</span>`) : `<span class="muted small">—</span>`; })()}</td>
@@ -310,7 +310,7 @@ function vClasses(){
       <div class="row"><button class="btn primary" id="add-go">Ajouter</button></div>
       <div class="grid" style="gap:6px;border-top:1px solid var(--line);padding-top:12px"><div class="row between"><div><b>Fiche d'écriture</b><div class="small muted">À faire remplir en septembre et en janvier (10 min), puis à scanner. Mesure la lisibilité de chaque élève et aide l'IA à relire son écriture.</div></div>
         <button class="btn" id="fiches">Fiches de la classe (PDF)</button></div><div class="status" id="fi-st"></div></div>
-    </section>${codesPanel(cl)}` : `<section class="panel empty">Crée ta première classe à gauche.</section>`}
+    </section>${codesPanel(cl)}</div>` : `<section class="panel empty">Crée ta première classe à gauche.</section>`}
   </div>`;
 }
 
@@ -328,7 +328,7 @@ function wizCours(){
   return `
   ${list.length ? `<section class="panel"><h3>Reprendre un cours déjà importé</h3>
     <div style="margin-top:4px">${list.map(c => `<div class="item"><div><div class="t">${esc(c.titre)}</div><div class="s">${esc(c.matiere)} · ${esc(c.niveau)} · ${(c.texte || "").length.toLocaleString("fr-FR")} caractères</div></div>
-      <div class="row"><button class="btn sm primary" data-usecours="${c.id}">Utiliser</button><button class="btn sm ghost" data-delcours="${c.id}">Supprimer</button></div></div>`).join("")}</div></section>` : ""}
+      <div class="row"><button class="btn sm primary" data-usecours="${c.id}">Utiliser</button><button class="btn sm ghost danger" data-delcours="${c.id}">Supprimer</button></div></div>`).join("")}</div></section>` : ""}
   <section class="panel grid">
     <h3>Importer un cours</h3>
     <div class="form-row">
@@ -418,7 +418,7 @@ function vEdit(){
     <p class="muted small">Un PDF pour toute la classe : une feuille par élève, avec son nom et son QR code sur chaque page. Le niveau n'est pas écrit sur la feuille, il est seulement contenu dans le QR code.</p>
     ${scanned ? `<p class="banner">Des copies ont déjà été scannées. Réimprimer garde les scans et les notes existants, mais une mise en page différente peut décaler les questions par page.</p>` : ""}
     <div class="row"><button class="btn primary" id="print">${printed ? "Réimprimer" : "Générer"} les feuilles · ${studs.length} élève(s)</button>
-      <button class="btn" id="print1">Feuille de l'élève affiché</button><button class="btn ghost sm" id="delCtrl">Supprimer</button></div>
+      <button class="btn" id="print1">Feuille de l'élève affiché</button><button class="btn ghost sm danger" id="delCtrl">Supprimer le contrôle</button></div>
     <div class="status" id="pr-st"></div>
   </section>`;
   return S.step === "mise-en-page" ? partLayout : S.step === "imprimer" ? partPrint + `<section class="panel grid"><h3>Et ensuite</h3><p class="small muted">Fais passer le contrôle, puis scanne les copies à l'étape suivante. L'ordre des copies n'a pas d'importance.</p></section>` : partPrep;
@@ -430,7 +430,7 @@ function qEditor(c, q, i){
     <div class="row between"><b>Question ${i + 1}</b><div class="row">
       <button class="btn sm ghost" data-qup="${i}" ${i ? "" : "disabled"} aria-label="Monter">↑</button>
       <button class="btn sm ghost" data-qdown="${i}" ${i < c.questions.length - 1 ? "" : "disabled"} aria-label="Descendre">↓</button>
-      <button class="btn sm ghost" data-qdel="${i}">Supprimer</button></div></div>
+      <button class="btn sm ghost danger" data-qdel="${i}">Supprimer</button></div></div>
     <div class="form-row">
       <div class="field"><label for="q-n-${q.id}">Notion</label><input id="q-n-${q.id}" data-q="${i}" data-k="notion" data-live value="${esc(q.notion || "")}"></div>
       <div class="field"><label for="q-p-${q.id}">Points</label><input id="q-p-${q.id}" type="number" min="0" step="0.5" data-q="${i}" data-k="points" value="${esc(q.points)}"></div>
@@ -512,6 +512,9 @@ function drawPreview(){
     const cl = p.cloneNode(true); cl.style.transform = `scale(${sc})`; cl.style.transformOrigin = "0 0"; holder.append(cl); inner.append(holder); });
   box.append(inner); $("#sheetStage").innerHTML = "";
 }
+/* L'aperçu suit la largeur de l'écran (rotation du téléphone, fenêtre redimensionnée) */
+let prevW = 0, prevT = 0;
+window.addEventListener("resize", () => { clearTimeout(prevT); prevT = setTimeout(() => { const box = $("#preview"); if (!box || S.view !== "edit" || S.step !== "mise-en-page" || box.clientWidth === prevW) return; prevW = box.clientWidth; drawPreview(); }, 150); });
 async function printSheets(c, list){
   const st = $("#pr-st");
   if (!window.html2canvas || !window.jspdf){ st.textContent = "Bibliothèques PDF non chargées : recharge la page."; return; }
@@ -1442,7 +1445,7 @@ document.addEventListener("click", async ev => {
   if (t.id === "nc-go"){ const nom = $("#nc-nom").value.trim(); if (!nom) return toast("Donne un nom à la classe.");
     const id = uid(10); S.classeSel = id; await write("classes/" + id, {nom, niveau:$("#nc-niv").value, eleves:[], createdAt:new Date().toISOString()}); return; }
   if (t.id === "add-go"){ const cl = classe(S.classeSel); const lines = $("#add-el").value.split("\n").map(s => s.trim()).filter(Boolean);
-    if (!lines.length) return; const add = lines.map(l => { const [p, ...n] = l.split(/\s+/); return {id:uid(8), prenom:p, nom:n.join(" "), niveaux:{}}; });
+    if (!lines.length){ toast("Écris un élève par ligne : « Prénom Nom »."); $("#add-el").focus(); return; } const add = lines.map(l => { const [p, ...n] = l.split(/\s+/); return {id:uid(8), prenom:p, nom:n.join(" "), niveaux:{}}; });
     $("#add-el").value = ""; await write("classes/" + cl.id, {eleves:[...(cl.eleves || []), ...add]}, "update"); toast(add.length + " élève(s) ajouté(s)."); return; }
   if (d.rmel){ const cl = classe(S.classeSel), e = (cl.eleves || []).find(x => x.id === d.rmel); if (!e) return;
     if (!confirm(`Retirer ${e.prenom} ${e.nom} de la classe ?\n\nSes copies scannées, ses notes et ses résultats d'exercices seront supprimés. Cette action est définitive.`)) return;
