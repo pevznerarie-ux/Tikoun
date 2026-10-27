@@ -40,7 +40,7 @@ function go(v){
   if (location.hash !== h) location.hash = h; else { render(); window.scrollTo({top:0}); }
 }
 function openCtrl(id, step){ const c = ctrl(id); location.hash = `#/controle/${id}/${step || defaultStep(c)}`; }
-window.addEventListener("hashchange", () => { applyRoute(); render(); window.scrollTo({top:0}); });
+window.addEventListener("hashchange", () => { const a = document.activeElement; if (a && a !== document.body && $("#view")?.contains(a)) a.blur(); flushEdit(); applyRoute(); render(); window.scrollTo({top:0}); });
 
 function navKey(){ if (S.inCtrl || S.view === "edit" || S.view === "new") return "controles"; return {home:"accueil", quiznew:"exercices", quiz:"exercices", scan:"scanner", reglages:"sauvegarde", correct:"controles", analyse:"controles"}[S.view] || S.view; }
 
@@ -58,7 +58,7 @@ function ctrlFrame(c, inner){
   <div class="head"><div><div class="label">${c.type === "rattrapage" ? "Rattrapage" : c.type === "exercices" ? "Exercices" : "Contrôle"} · ${esc(c.matiere)} · ${esc(cl?.nom || "?")}${c.date ? " · " + esc(frDate(c.date)) : ""}</div><h2>${esc(c.titre)}</h2></div>
     <div class="row">${chipStatut(c)}${pr.printed ? `<span class="chip">${pr.sc}/${pr.n} scannées · ${pr.va}/${pr.n} validées</span>` : ""}</div></div>
   <nav class="stepper" aria-label="Étapes">${STEPS.map(([k, l], j) => `<a href="#/controle/${c.id}/${k}" class="st ${j === i ? "on" : j <= doneUpTo ? "done" : ""}" ${j === i ? 'aria-current="step"' : ""}><b>${j + 1}</b><span>${l}</span></a>`).join("")}</nav>
-  ${i <= 2 && c.statut === "brouillon" ? `<p class="small muted">Brouillon · chaque modification est enregistrée automatiquement.</p>` : ""}
+  <p class="small muted" style="margin:0">${i <= 2 && c.statut === "brouillon" ? "Brouillon · " : ""}<span id="savest" class="savest"></span></p>
   ${inner}
   <div class="stepnav">${prev ? `<a class="btn" href="#/controle/${c.id}/${prev[0]}">← ${prev[1]}</a>` : "<span></span>"}${next ? `<a class="btn primary" href="#/controle/${c.id}/${next[0]}">${next[1]} →</a>` : `<a class="btn" href="#/controles">Terminer</a>`}</div>`;
 }

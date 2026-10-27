@@ -3,7 +3,7 @@
 S.auth = null; S.me = null; S.scope = "moi"; S.users = [];
 const isAdmin = () => S.me?.role === "admin";
 const canEx = () => !window.TIKOUN_CONFIG?.accounts || !!S.me?.can?.exercices;
-const lockChip = () => `<span class="chip" title="Feuilles d'exercices régénérables et scannables : abonnement Pro + option activée par la direction">🔒 Option Exercices</span>`;
+const lockChip = () => `<span class="chip" title="Exercices en ligne : à partir du forfait Essentiel">🔒 Option Exercices</span>`;
 const PLAN = {decouverte:"Découverte", essentiel:"Essentiel", complet:"Complet", pro:"Complet"};
 const isBoss = () => isAdmin() || (S.me?.etab?.role === "direction" && S.me?.etab?.actif);
 function scopeCtrls(all){ if (!S.me || (isBoss() && S.scope === "ecole")) return all; return all.filter(c => !c.owner || c.owner === S.me.id); }
@@ -40,6 +40,17 @@ function vAuth(){
     <div class="field"><label for="su-mail">E-mail</label><input id="su-mail" type="email" autocomplete="username"></div>
     <div class="field"><label for="su-pw">Mot de passe (8 caractères minimum)</label><input id="su-pw" type="password" autocomplete="new-password"></div>
     <div class="row"><button class="btn primary" id="su-go">Créer le compte</button></div><div class="status" id="au-st"></div></section>`;
+  if (S.auth === "forgot") return `<div class="auth"><section class="auth-card">
+    <div class="auth-h"><h2>Mot de passe oublié</h2><p>Indique l'e-mail de ton compte.</p></div>
+    ${S.forgot ? `<p class="banner">${S.forgot.mail ? "Si un compte existe avec cet e-mail, tu vas recevoir un lien pour choisir un nouveau mot de passe. Pense à regarder dans les indésirables." : "Ta demande est transmise à l'équipe Mastery, qui va réinitialiser ton mot de passe et te répondre par e-mail."}${S.forgot.contact ? ` Une question : <a href="mailto:${esc(S.forgot.contact)}">${esc(S.forgot.contact)}</a>` : ""}</p>`
+      : `<div class="field"><label for="fg-mail">E-mail</label><input id="fg-mail" type="email" autocomplete="username" value="${esc(S.fgMail || "")}"></div><button class="btn primary auth-go" id="fg-go">Recevoir un lien</button>`}
+    <div class="status" id="au-st"></div>
+    <p class="small auth-note"><button class="btn ghost sm" id="fg-back">← Retour à la connexion</button></p></section></div>`;
+  if (S.auth === "reset") return `<div class="auth"><section class="auth-card">
+    <div class="auth-h"><h2>Nouveau mot de passe</h2><p>Choisis ton nouveau mot de passe Mastery.</p></div>
+    <div class="field"><label for="npw-pw">Nouveau mot de passe (8 caractères minimum)</label><input id="npw-pw" type="password" autocomplete="new-password"></div>
+    <div class="field"><label for="npw-pw2">Confirmer</label><input id="npw-pw2" type="password" autocomplete="new-password"></div>
+    <button class="btn primary auth-go" id="npw-go">Enregistrer et me connecter</button><div class="status" id="au-st"></div></section></div>`;
   if (S.auth === "change") return `<div class="head"><div><h2>Choisis ton mot de passe</h2><p>Bienvenue ${esc(S.me?.nom || "")} : remplace le mot de passe provisoire.</p></div></div>
   <section class="panel grid" style="max-width:440px">
     <div class="field"><label for="ch-pw">Nouveau mot de passe (8 caractères minimum)</label><input id="ch-pw" type="password" autocomplete="new-password"></div>
@@ -50,7 +61,7 @@ function vAuth(){
     <div>${S.pend?.ecole ? ecLine(S.pend.ecole) + `<div style="margin-top:6px">${ecBadge(S.pend.ecole)} <span class="chip">Forfait ${PLAN[S.pend.planDemande] || "Essentiel"} · bêta gratuite</span></div>` : ""}</div>
     <p style="margin:0">Dès que ton compte est validé, connecte-toi avec <b>${esc(S.pend?.email || "")}</b> et ton mot de passe.</p>
     <div class="row"><button class="btn primary" id="rg-back">Aller à la connexion</button><a class="btn ghost" href="/">Retour à l'accueil</a></div></section>`;
-  if (S.auth === "register") return `<div class="head"><div><h2>Créer mon compte professeur</h2><p>Ton espace est privé : tes classes, tes élèves et tes contrôles ne sont visibles que par toi.</p></div></div>
+  if (S.auth === "register") return `<div class="head"><div><h2>Créer mon compte professeur</h2><p>Ton espace est privé : les autres professeurs ne voient ni tes classes, ni tes élèves, ni tes contrôles. Y ont accès la direction de ton établissement si tu la rejoins dans Mastery, et l'équipe Mastery pour le support et la validation des inscriptions. <a href="/confidentialite" target="_blank" rel="noopener" style="color:var(--gold)">En savoir plus</a></p></div></div>
   <section class="panel grid" style="max-width:560px">
     <div class="field"><label for="rg-nom">Ton nom (affiché sur les feuilles si tu le choisis)</label><input id="rg-nom" placeholder="ex. M. Cohen" value="${esc(S.form["rg-nom"] || "")}"></div>
     <div class="field"><label for="rg-mail">E-mail</label><input id="rg-mail" type="email" autocomplete="username" value="${esc(S.form["rg-mail"] || "")}"></div>
@@ -68,7 +79,7 @@ function vAuth(){
     <div class="field"><label for="lg-mail2">E-mail</label><input id="lg-mail2" type="email" autocomplete="username" placeholder="prenom.nom@ecole.fr"></div>
     <div class="field"><label for="lg-pw2">Mot de passe</label><input id="lg-pw2" type="password" autocomplete="current-password"></div>
     <button class="btn primary auth-go" id="lg-go2">Se connecter</button><div class="status" id="au-st"></div>
-    <p class="small muted auth-note">Mot de passe oublié : écris à l'administrateur de Mastery pour le réinitialiser.</p>
+    <p class="small auth-note"><button class="btn ghost sm" id="pw-forgot">Mot de passe oublié ?</button></p>
     ${window.TIKOUN_CONFIG?.signup ? `<div class="auth-alt"><span class="small muted">Pas encore de compte ?</span><button class="btn" id="rg-open">Créer mon compte professeur</button></div>` : ""}
   </section>
   <p class="small muted auth-foot"><a href="/">← Retour au site</a> · <a href="?lang=fr">Français</a> · <a href="?lang=en">English</a> · <a href="?lang=pt">Português</a></p></div>`;
@@ -86,7 +97,8 @@ async function afterLogin(user, mustChange){
 }
 async function bootAccounts(){
   try { const j = await api("/api/me"); await afterLogin(j.user, !!j.user?.mustChange); }
-  catch(e){ S.auth = e.status === 401 && e.setup ? "setup" : /^#\/inscription/.test(location.hash) && window.TIKOUN_CONFIG?.signup ? "register" : "login"; if (S.auth === "register"){ const pl = location.hash.split("/")[2]; if (["decouverte", "essentiel", "complet"].includes(pl)) S.regPlan = pl; else if (pl === "pro") S.regPlan = "complet"; S.ecFor = "reg"; S.ec = {q:"", cp:"", res:null, sel:null, manual:false, busy:false, err:""}; } refreshCaps(); render(); }
+  catch(e){ S.auth = e.status === 401 && e.setup ? "setup" : /^#\/reset\/[a-f0-9]{48}$/.test(location.hash) ? "reset" : /^#\/inscription/.test(location.hash) && window.TIKOUN_CONFIG?.signup ? "register" : "login";
+    if (S.auth === "reset") S.resetTok = location.hash.split("/")[2]; if (S.auth === "register"){ const pl = location.hash.split("/")[2]; if (["decouverte", "essentiel", "complet"].includes(pl)) S.regPlan = pl; else if (pl === "pro") S.regPlan = "complet"; S.ecFor = "reg"; S.ec = {q:"", cp:"", res:null, sel:null, manual:false, busy:false, err:""}; } refreshCaps(); render(); }
 }
 
 /* Mon compte */
@@ -152,12 +164,12 @@ function vComptes(){
   return `<div class="head"><div><h2>Comptes des professeurs</h2><p>Les professeurs inscrits seuls ont un espace privé. Ceux que tu crées ici partagent tes classes.</p></div></div>
   ${pendHtml}
   <section class="panel"><div class="tbl-wrap"><table><thead><tr><th>Nom</th><th>E-mail</th><th>École</th><th>Rôle</th><th>Accès</th><th>Abonnement</th><th>Option Exercices</th><th class="c">Contrôles</th><th></th></tr></thead><tbody>
-  ${ok.map(u => `<tr><td><b>${esc(u.nom)}</b>${u.statut === "refuse" ? ' <span class="chip bad">refusé</span>' : u.actif ? "" : ' <span class="chip bad">désactivé</span>'}</td><td>${esc(u.email)}</td>
+  ${ok.map(u => `<tr><td><b>${esc(u.nom)}</b>${u.statut === "refuse" ? ' <span class="chip bad">refusé</span>' : u.actif ? "" : ' <span class="chip bad">désactivé</span>'}${u.resetDemande ? ' <span class="chip warn">Mot de passe oublié</span>' : ""}</td><td>${esc(u.email)}</td>
     <td>${u.ecole ? `<div class="small"><b>${esc(u.ecole.nom)}</b> ${ecBadge(u.ecole)}<div class="muted">${esc([u.ecole.cp, u.ecole.ville].filter(Boolean).join(" "))}${u.ecole.uai ? " · UAI " + esc(u.ecole.uai) : ""}</div></div>` : `<span class="muted small">—</span>`}</td>
     <td><select data-urole="${u.id}" style="width:auto" aria-label="Rôle">${selOpts(["prof","admin"], u.role, x => x === "admin" ? "Administrateur" : "Professeur")}</select></td>
     <td class="small">${esc(accesLabel(u))}${S.me?.billing && u.inscription === "libre" && u.acces?.mode !== "abonne" ? ` <button class="btn sm ghost" data-ugift="${u.id}" title="Prolonger l'essai d'un mois">+1 mois</button>` : ""}</td>
-    <td><select data-uplan="${u.id}" style="width:auto" aria-label="Abonnement">${selOpts(["essentiel","pro"], u.plan || "essentiel", x => PLAN[x])}</select></td>
-    <td>${(u.plan || "essentiel") === "pro" ? `<label class="row small" style="gap:6px"><input type="checkbox" data-uex="${u.id}"${u.options?.exercices ? " checked" : ""}> ${u.options?.exercices ? "Activée" : "Désactivée"}</label>` : `<span class="muted small">Pro requis</span>`}</td>
+    <td><select data-uplan="${u.id}" style="width:auto" aria-label="Abonnement">${selOpts(["decouverte","essentiel","complet"], u.plan === "pro" ? "complet" : u.plan || "essentiel", x => PLAN[x])}</select></td>
+    <td>${u.plan !== "decouverte" ? `<label class="row small" style="gap:6px"><input type="checkbox" data-uex="${u.id}"${u.options?.exercices ? " checked" : ""}> ${u.options?.exercices ? "Activée" : "Désactivée"}</label>` : `<span class="muted small">À partir d'Essentiel</span>`}</td>
     <td class="c num">${nb(u.id)}</td>
     <td><div class="row">${u.id !== S.me.id ? `<button class="btn sm" data-ureset="${u.id}">Nouveau mot de passe</button><button class="btn sm ghost" data-uact="${u.id}" data-v="${u.actif ? 0 : 1}">${u.actif ? "Désactiver" : "Réactiver"}</button><button class="btn sm ghost danger" data-udel="${u.id}">Supprimer</button>` : ""}</div></td></tr>`).join("")}
   </tbody></table></div><div class="status" id="us-st"></div></section>
@@ -166,8 +178,8 @@ function vComptes(){
       <div class="field"><label for="nu-mail">E-mail</label><input id="nu-mail" type="email"></div></div>
     <div class="form-row"><div class="field"><label for="nu-pw">Mot de passe provisoire</label><input id="nu-pw" value="${genPw()}"></div>
       <div class="field"><label for="nu-role">Rôle</label><select id="nu-role">${selOpts(["prof","admin"], "prof", x => x === "admin" ? "Administrateur" : "Professeur")}</select></div></div>
-    <div class="form-row"><div class="field"><label for="nu-plan">Abonnement</label><select id="nu-plan">${selOpts(["essentiel","pro"], "essentiel", x => PLAN[x])}</select></div>
-      <label class="row small" style="gap:6px;align-self:end"><input type="checkbox" id="nu-ex"> Activer l'option Exercices (Pro)</label></div>
+    <div class="form-row"><div class="field"><label for="nu-plan">Abonnement</label><select id="nu-plan">${selOpts(["decouverte","essentiel","complet"], "complet", x => PLAN[x])}</select></div>
+      <label class="row small" style="gap:6px;align-self:end"><input type="checkbox" id="nu-ex" checked> Activer les exercices en ligne (à partir d'Essentiel)</label></div>
     <p class="small muted">Transmets l'e-mail et le mot de passe provisoire au professeur : il devra le changer à sa première connexion.</p>
     <div class="row"><button class="btn primary" id="nu-go">Créer le compte</button></div><div class="status" id="nu-st"></div></section>`;
 }
@@ -184,6 +196,12 @@ document.addEventListener("click", async ev => {
     if (d.ensdel){ await saveEnseigne(enseigne().filter(m => m !== d.ensdel)); return render(); }
     if (t.id === "rg-open"){ S.auth = "register"; S.ecFor = "reg"; S.ec = {q:"", cp:"", res:null, sel:null, manual:false, busy:false, err:""}; return render(); }
     if (t.id === "rg-back"){ S.auth = "login"; return render(); }
+    if (t.id === "pw-forgot"){ S.auth = "forgot"; S.forgot = null; S.fgMail = $("#lg-mail2")?.value || ""; return render(); }
+    if (t.id === "fg-back"){ S.auth = "login"; return render(); }
+    if (t.id === "fg-go"){ st().innerHTML = `<span class="thinking">Envoi…</span>`;
+      S.forgot = await api("/api/password/forgot", {method:"POST", body:JSON.stringify({email:$("#fg-mail").value})}); return render(); }
+    if (t.id === "npw-go"){ if ($("#npw-pw").value !== $("#npw-pw2").value){ st().textContent = "Les deux mots de passe sont différents."; return; }
+      const j = await api("/api/password/reset", {method:"POST", body:JSON.stringify({token:S.resetTok, password:$("#npw-pw").value})}); history.replaceState(null, "", "#/accueil"); return afterLogin(j.user, false); }
     if (t.id === "rg-go"){ S.ec.sel = ecoleVal(); if (!S.ec.sel.nom || !S.ec.sel.ville){ st().textContent = "Indique le nom de ton école et sa ville."; return; }
       if (!$("#rg-cgu")?.checked){ st().textContent = "Coche la case pour accepter les conditions d'utilisation."; return; }
       st().innerHTML = `<span class="thinking">Création…</span>`;

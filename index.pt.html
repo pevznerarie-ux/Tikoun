@@ -472,6 +472,7 @@ input[type=checkbox],input[type=radio]{accent-color:var(--blue)}
 .quota{display:grid;gap:6px}
 .qbar{height:8px;border-radius:99px;background:var(--surface-2);overflow:hidden}.qbar i{display:block;height:100%;border-radius:99px;background:var(--ok)}.qbar i.half{background:var(--warn)}.qbar i.full{background:var(--bad)}
 .banner.bad{background:var(--bad-soft);color:var(--bad)}
+.savest{font-weight:600}.savest.busy{color:var(--muted)}.savest.ok{color:var(--ok,#2f7d4f)}.savest.bad{color:var(--bad)}
 .tiers{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
 .tier{border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:6px;background:var(--surface)}
 .tier>.btn:first-of-type{margin-top:auto}
@@ -609,7 +610,7 @@ function applyPrefParams(){ const Q = prefs().q;
   S.params._pref = true; }
 function questionRule(p){ const Q = prefs().q, L = {courte:"3 a 5", moyenne:"5 a 8", developpee:"8 a 14"}[Q.longueur] || "5 a 8";
   return `Respostas esperadas: cerca de ${L} linhas por questão (exceto múltipla escolha).` + ((p.types || []).includes("qcm") && Q.justif
-    ? `\nQuestões de múltipla escolha: não use o tipo "qcm". Escreva as alternativas (A, B, C…) no enunciado, peça ao aluno que indique a escolha E a justifique, e preveja linhas de resposta; o gabarito e os critérios avaliam a escolha e a justificativa.` : ""); }
+    ? `\nQuestions à choix : n'utilise pas le type "qcm". Écris les propositions (A, B, C…) dans l'énoncé, demande à l'élève d'indiquer son choix ET de le justifier, et prévois des lignes de réponse ; le corrigé et les critères notent le choix et la justification. Le contrôle contient au moins une question à choix de ce genre.` : ""); }
 function headerFrom(aff){
   const e = S.me?.ecole, ec = e?.nom ? e.nom + (e.ville ? " · " + e.ville : "") : "", nom = S.me?.nom || "";
   if (aff === "ecole") return ec || nom; if (aff === "nom") return nom || ec; return [ec, nom].filter(Boolean).join(" · ");
@@ -625,7 +626,7 @@ const aiErr = c => ({
   image_rejected:"Imagem recusada: tente uma foto JPG ou PNG mais nítida.", invalid_json:"Resposta da IA ilegível: tente novamente.",
   refused:"Solicitação recusada pela IA: reformule.", prompt_too_large:"Documento longo demais: encurte a aula.",
   images_unavailable:"Esta visualização não pode enviar imagens para a IA.", no_ai:"IA indisponível no momento (servidor não configurado?).",
-  no_key:"IA não configurada no servidor.", bad_key:"Chave de IA recusada pelo servidor.", need_code:"Código de acesso obrigatório: recarregue a página.", no_option:"Opção Exercícios não ativada para a sua conta (assinatura Pro).", no_cours:"Aula de origem não encontrada.", not_failed:"Recuperação reservada aos alunos com nota abaixo de 10/20 (prova corrigida).", ratt_exists:"Este aluno já tem uma recuperação para esta prova.", api_400:"Solicitação recusada pela API (documento longo demais ou modelo desconhecido: verifique as Configurações).", no_blob:"Imagem não encontrada.", cloud_write:"Não foi possível salvar online (problema de conexão?)."
+  no_key:"IA não configurada no servidor.", bad_key:"Chave de IA recusada pelo servidor.", need_code:"Código de acesso obrigatório: recarregue a página.", no_option:"Exercícios on-line não ativados para sua conta (a partir do plano Essencial).", no_cours:"Aula de origem não encontrada.", not_failed:"Recuperação reservada aos alunos com nota abaixo de 10/20 (prova corrigida).", ratt_exists:"Este aluno já tem uma recuperação para esta prova.", api_400:"Solicitação recusada pela API (documento longo demais ou modelo desconhecido: verifique as Configurações).", no_blob:"Imagem não encontrada.", cloud_write:"Não foi possível salvar online (problema de conexão?)."
 }[c] || "Falha temporária da IA: tente novamente.");
 
 /* ================= Capabilities ================= */
@@ -661,6 +662,7 @@ const S = {
 
 
 const classe = id => store.classes.find(c => c.id === id);
+const nivOf = cl => cl ? cl.niveau || NIVEAUX.find(n => (cl.nom || "").split(" ")[0] === n) || "" : "";
 const ctrl = id => (store.allCtrl || store.controles).find(c => c.id === id);
 const feuille = id => store.feuilles[id];
 const eleveOf = (c, eid) => (classe(c.classeId)?.eleves || []).find(e => e.id === eid);
@@ -698,10 +700,21 @@ let wq = Promise.resolve();
 function write(path, data, mode = "set"){
   const run = () => mode === "update" ? DB.doc(path).update(data) : mode === "delete" ? DB.doc(path).delete() : DB.doc(path).set(data);
   const retry = (n) => run().catch(e => { if (n > 0 && e?.code !== "no_access" && e?.code !== "quota_exceeded" && !/403/.test(e?.message || "")) return new Promise(r => setTimeout(r, n === 2 ? 1500 : 4000)).then(() => retry(n - 1)); throw e; });
-  wq = wq.then(() => retry(2))
-    .catch(e => { console.error(e); toast(e?.code === "no_access" ? aiErr("no_access") : e?.code === "quota_exceeded" ? "Banco de dados cheio: exclua provas antigas." : "⚠ Não salvo: a conexão com o servidor falhou. Verifique a rede e refaça a última alteração.", 9000); });
+  SAVE.n++; saveState();
+  wq = wq.then(() => retry(2)).then(() => { SAVE.err = false; SAVE.at = Date.now(); })
+    .catch(e => { SAVE.err = true; console.error(e); toast(e?.code === "no_access" ? aiErr("no_access") : e?.code === "quota_exceeded" ? "Banco de dados cheio: exclua provas antigas." : "⚠ Não salvo: a conexão com o servidor falhou. Verifique a rede e refaça a última alteração.", 9000); })
+    .finally(() => { SAVE.n--; saveState(); });
   return wq;
 }
+/* État de l'enregistrement, affiché dans l'éditeur : Enregistrement… / Enregistré / Échec */
+const SAVE = {n:0, err:false, at:0, dirty:false};
+let editPending = null, editTimer = null;
+function flushEdit(){ clearTimeout(editTimer); editTimer = null; const c = editPending; editPending = null; SAVE.dirty = false; return c ? saveCtrl(c) : Promise.resolve(); }
+function saveState(){ const e = document.getElementById("savest"); if (!e) return;
+  const busy = SAVE.n > 0 || SAVE.dirty;
+  e.className = "savest " + (SAVE.err && !busy ? "bad" : busy ? "busy" : SAVE.at ? "ok" : "");
+  e.textContent = SAVE.err && !busy ? "⚠ Falha ao salvar: verifique sua conexão e refaça a última alteração" : busy ? "Enregistrement…" : SAVE.at ? "✓ Salvo" : "Enregistrement automatique"; }
+window.addEventListener("beforeunload", ev => { if (editPending || SAVE.n > 0){ flushEdit(); ev.preventDefault(); ev.returnValue = ""; } });
 const saveCtrl = c => { const {id, ...d} = c; return write("controles/" + id, d); };
 /* Relecture d'une page : les notes posées par le professeur et les copies validées ne sont jamais écrasées */
 function keepTeacherNotes(cp, out){
@@ -790,7 +803,7 @@ function render(){
     if ((S.view === "correct" || S.view === "scan") && fc.statut === "brouillon") html = `<section class="panel empty">As folhas ainda não foram impressas. Passe pela etapa “Imprimir”.</section>`;
     html = ctrlFrame(fc, html.replace(/<select id="(corrSel|anSel)"[\s\S]*?<\/select>/, "").replace(/<h2>(Correction|Classe & rattrapage|Scanner les copies)<\/h2>/, "<h3>$1</h3>"));
   }
-  $("#view").innerHTML = `<div class="view">${LOCAL ? `<p class="banner">Banco de dados indisponível: nada está sendo salvo. Recarregue a página.</p>` : ""}${typeof billBanner === "function" ? billBanner() : ""}${html}</div>`;
+  $("#view").innerHTML = `<div class="view">${LOCAL ? `<p class="banner">Banco de dados indisponível: nada está sendo salvo. Recarregue a página.</p>` : ""}${typeof billBanner === "function" ? billBanner() : ""}${html}</div>`; saveState();
   if (keep){ const el = document.getElementById(keep.id); if (el){ if (keep.typing && el.tagName === keep.tag && el.value !== keep.v) el.value = keep.v; el.focus(); try { el.setSelectionRange(keep.s, keep.e); } catch(e){} } }
   if (S.view === "edit" && S.step === "mise-en-page") drawPreview();
   { const sp = $(".stepper"), on = $(".st.on"); if (sp && on) sp.scrollLeft = on.offsetLeft - sp.clientWidth / 2 + on.clientWidth / 2; }
@@ -807,7 +820,7 @@ function vHome(){
   <section class="panel grid">
     <div class="grid g3">
       <div><div class="label">1 · Turma</div><p>Crie sua turma e cole a lista de alunos.</p></div>
-      <div><div class="label">2 · Prova</div><p>Importe a aula (PDF, foto ou texto). A IA propõe uma prova em 3 níveis. Você edita e depois imprime: uma folha por aluno, com o QR code dele.</p></div>
+      <div><div class="label">2 · Prova</div><p>Importe a aula (PDF, foto ou texto). A IA propõe uma prova, em 3 níveis se você quiser. Você edita e imprime: uma folha por aluno, com seu QR code.</p></div>
       <div><div class="label">3 · Folhas de resposta</div><p>Fotografe ou escaneie as provas dos alunos. O QR code identifica o aluno. A IA lê a letra e corrige. Você valida, depois vê o panorama da turma e cria as recuperações.</p></div>
     </div>
     <div class="row"><button class="btn primary" data-go="classes">Criar uma turma</button><button class="btn" id="demo">Carregar uma turma de demonstração</button></div>
@@ -922,7 +935,7 @@ function wizParams(){
   if (!p.classeId && store.classes[0]) p.classeId = (store.classes.find(c => c.niveau === p.niveau) || store.classes[0]).id;
   if (p.kind !== "controle") p.kind = "controle";
   const EXO = p.kind === "exercices";
-  const T = [["cours","Questões teóricas"],["application","Exercícios de aplicação"],["probleme","Problema / redação"],["texte","Leitura / interpretação de texto"],["traduction","Tradução"],["qcm","Múltipla escolha (corrigida sem IA, grátis)"]];
+  const T = [["cours","Questões teóricas"],["application","Exercícios de aplicação"],["probleme","Problema / redação"],["texte","Leitura / interpretação de texto"],["traduction","Tradução"],["qcm", prefs().q.justif ? "Questões de escolha com justificativa" : "Múltipla escolha (corrigida sem IA, grátis)"]];
   return `
   <section class="panel grid">
     <div class="row between"><div><div class="label">Aulas</div><b>${esc(co?.titre || "?")}</b> <span class="muted small">· ${esc(co?.matiere)} · ${esc(co?.niveau)}</span></div><button class="btn sm" id="back1">Trocar de aula</button></div>
@@ -934,7 +947,8 @@ function wizParams(){
       <div class="field"><label for="p-lang">Idioma da prova</label><select id="p-lang" data-p="langue">${selOpts(LANGUES, p.langue || langueDef(co?.texte))}</select></div>
       <div class="field"><label for="p-dif">Dificuldade</label><select id="p-dif" data-p="difficulte">${selOpts(["facile","moyen","exigeant"], p.difficulte)}</select></div>
     </div>
-    <div class="field"><label>Tipos de questões</label><div class="row">${T.map(([k, l]) => `<label class="row small" style="gap:6px"><input type="checkbox" data-type="${k}"${p.types.includes(k) ? " checked" : ""}> ${l}</label>`).join("")}</div></div>
+    ${(() => { const cl = classe(p.classeId), nv = nivOf(cl); return cl && nv && p.niveau && nv !== p.niveau ? `<p class="banner">Atenção: o nível escolhido (${esc(p.niveau)}) não corresponde à turma ${esc(cl.nom)}. <button class="btn sm" id="p-niv-cl" data-niv="${esc(nv)}">Usar ${esc(nv)}</button></p>` : ""; })()}
+    <div class="field"><label>Tipos de questões</label><div class="row">${T.map(([k, l]) => `<label class="row small" style="gap:6px"><input type="checkbox" data-type="${k}"${p.types.includes(k) ? " checked" : ""}> ${l}</label>`).join("")}</div>${prefs().q.justif ? `<p class="small muted" style="margin:6px 0 0">Questões de escolha: as opções ficam no enunciado, com um espaço para justificar (corrigido pela IA). Para múltipla escolha de marcar, corrigida sem IA, desmarque “sempre deixar um espaço para justificar” em Minha conta.</p>` : ""}</div>
     <label class="row small" style="gap:6px"><input type="checkbox" id="p-diff"${p.differencie ? " checked" : ""}> Folhas diferenciadas: cada questão em 3 níveis (básico, padrão, aprofundado), conforme o nível de cada aluno</label>
     <div class="field"><label for="p-cons">Suas instruções para a IA (opcional)</label><textarea id="p-cons" data-p="consignes" data-live placeholder="ex.: Insistir no conceito de antecedente. Uma questão dissertativa no final.">${esc(p.consignes)}</textarea></div>
     <div class="row"><button class="btn primary" id="gen" ${store.classes.length ? "" : "disabled"}>${EXO ? "Gerar os exercícios (IA)" : "Gerar a prova (IA)"}</button><button class="btn" id="genBlank" ${store.classes.length ? "" : "disabled"}>Começar com uma prova em branco</button><span class="status" id="gen-st"></span></div>
@@ -1899,7 +1913,7 @@ function genPrompt(co, p, n, extra){
   const T = {cours:"questões teóricas", application:"exercícios de aplicação", probleme:"problema ou redação", texte:"leitura / interpretação de texto", traduction:"traduction", qcm:"QCM"};
   return `Você é um professor experiente de ${p.matiere} no Brasil. Prepare ${n === 1 ? "UMA questão" : "uma prova"} para uma turma do ${p.niveau}, a partir da aula abaixo.
 
-Duração: ${p.duree} minutos · Dificuldade: ${p.difficulte} · Tipos: ${(p.types || []).map(t => T[t]).join(", ") || "variados"}
+Duração: ${p.duree} minutos · Dificuldade: ${p.difficulte} · Tipos: ${(p.types || []).map(t => T[t]).join(", ") || "variados"}${(p.types || []).length > 1 && n > 1 ? " (cada tipo pedido aparece pelo menos uma vez, se o número de questões permitir)" : ""}
 ${n > 1 ? `Número de questões: ${n}. Total de pontos: exatamente 20.` : ""}
 ${p.consignes ? "Instruções do professor: " + p.consignes : ""}
 ${langueRule(p.langue)}
@@ -1910,7 +1924,7 @@ Para cada questão, escreva 3 versões da mesma questão, sobre o mesmo conteúd
 - "standard": nível esperado da turma;
 - "approfondi": mais exigente (justificativa, caso geral, extensão).
 Cada versão tem seu enunciado, seu gabarito detalhado e critérios de pontuação cuja soma dá os pontos da questão.
-${(p.types || []).includes("qcm") ? `Você pode incluir questões de múltipla escolha (corrigidas automaticamente, sem IA): para elas "type":"qcm", e em cada versão "choix" (3 a 5 alternativas curtas, sem letra) e "bonnes" (índices das respostas corretas, a partir de 0); "lignes" desnecessário.\n` : ""}Adicione para cada questão: o conteúdo avaliado, 2 a 4 erros típicos frequentes (rótulos de 2 a 5 palavras) e o número de linhas de resposta necessárias (3 a 14).
+${(p.types || []).includes("qcm") && !prefs().q.justif ? `Inclus au moins un QCM (corrigé automatiquement, sans IA) : pour lui "type":"qcm", et dans chaque version "choix" (3 à 5 propositions courtes, sans lettre) et "bonnes" (indices des bonnes réponses, à partir de 0) ; "lignes" inutile.\n` : ""}Adicione para cada questão: o conteúdo avaliado, 2 a 4 erros típicos frequentes (rótulos de 2 a 5 palavras) e o número de linhas de resposta necessárias (3 a 14).
 ${NOSRC}
 
 AULA:
@@ -2067,6 +2081,7 @@ document.addEventListener("click", async ev => {
   if (d.usecours){ const co = store.cours.find(c => c.id === d.usecours); S.coursId = co.id; S.params.matiere = co.matiere; S.params.niveau = co.niveau; S.params.classeId = ""; S.wizStep = 2; return render(); }
   if (d.delcours){ if (!confirm("Excluir esta aula? As avaliações já criadas a partir dela são mantidas.")) return; await write("cours/" + d.delcours, null, "delete"); toast("Aula excluída."); return; }
   if (t.id === "back1"){ S.wizStep = 1; return render(); }
+  if (t.id === "p-niv-cl"){ S.params.niveau = t.dataset.niv; return render(); }
   if (t.id === "gen" || t.id === "genBlank"){
     if (!S.params.langue) S.params.langue = langueDef(store.cours.find(c => c.id === S.coursId)?.texte);
     const p = S.params, co = store.cours.find(c => c.id === S.coursId), st = $("#gen-st");
@@ -2074,7 +2089,7 @@ document.addEventListener("click", async ev => {
     const id = uid(12); const base = {type:EXO ? "exercices" : "controle", titre:p.titre || (EXO ? "Exercícios · " : "") + (co?.titre || "Prova"), gen:{types:p.types, difficulte:p.difficulte, consignes:p.consignes || ""}, matiere:p.matiere, niveau:p.niveau, classeId:p.classeId, coursId:S.coursId, duree:+p.duree || 55,
       differencie:!!p.differencie, langue:p.langue || "", statut:"brouillon", date:"", mise:{affiche:S.me?.affichage || "les2", police:prefs().police, lh:prefs().lh, bareme:prefs().bareme, consignes:EXO ? "Folha de exercícios de prática. Escreva apenas dentro dos quadros." : prefs().consignes}, questions:[], createdAt:new Date().toISOString()};
     if (t.id === "genBlank"){ base.questions = [mapQ({points:4, lignes:6})]; await write("controles/" + id, base); S.editId = id; S.wizStep = 1; S.step = "preparer"; return go("edit"); }
-    t.disabled = true; st.innerHTML = `<span class="thinking">A IA está redigindo ${EXO ? "os exercícios" : "a prova"} em 3 níveis (1 a 2 minutos)…</span>`;
+    t.disabled = true; st.innerHTML = `<span class="thinking">${p.differencie ? `A IA está redigindo ${EXO ? "os exercícios" : "a prova"} em 3 níveis (1 a 2 minutos)…` : `A IA está redigindo ${EXO ? "os exercícios" : "a prova"} (1 a 2 minutos)…`}</span>`;
     try{
       const r = await genQuestions(co, p, clamp(+p.nbq || 5, 1, 10), EXO ? EXO_TXT : "", EXO ? {feature:"exercices"} : {}), qs = r.questions;
       base.titre = p.titre || (EXO && r.titre ? "Exercícios · " + r.titre : r.titre) || base.titre; base.questions = qs;
@@ -2219,10 +2234,32 @@ document.addEventListener("click", async ev => {
   }
 });
 
+/* Champs de l'éditeur de contrôle : applique la saisie au contrôle et le renvoie (null si ce n'est pas un champ de l'éditeur) */
+function applyEdit(el){
+  const d = el.dataset, c = S.view === "edit" ? ctrl(S.editId) : null; if (!c) return null;
+  if (editPending && editPending.id === c.id && editPending !== c) Object.assign(c, structuredClone(editPending));   // le magasin a été rechargé entre-temps : on garde la saisie en attente
+  if (d.c){ c[d.c] = el.type === "number" ? +el.value : el.value; }
+  else if (el.id === "e-diff"){ c.differencie = el.checked; }
+  else if (d.m){ c.mise = {...(c.mise || {}), [d.m]: ["police","lh"].includes(d.m) ? +el.value : el.value}; }
+  else if (d.bo){ c.bonus = {...(c.bonus || {}), [d.bo]:+el.value}; }
+  else if (el.id === "m-bar"){ c.mise = {...(c.mise || {}), bareme:el.checked}; }
+  else if (d.q !== undefined){ const q = c.questions[+d.q]; if (!q) return null;
+    if (d.vk === "choixRaw"){ const lines = el.value.split("\n").map(x => x.trim()).filter(Boolean); q.v = q.v || {};
+      const o = {...(q.v[d.lv] || {enonce:""}), choix:lines.map(x => x.replace(/^\*\s*/, "")), bonnes:lines.map((x, j) => x.startsWith("*") ? j : -1).filter(j => j >= 0)};
+      o.corrige = "Resposta(s) correta(s): " + o.bonnes.map(n => "ABCDEF"[n]).join(", "); o.criteres = "Tudo ou nada."; q.v[d.lv] = o; }
+    else if (d.vk){ q.v = q.v || {}; q.v[d.lv] = {...(q.v[d.lv] || {enonce:"", corrige:"", criteres:""}), [d.vk]:el.value}; }
+    else if (d.k === "erreurs") q.erreurs = el.value.split(";").map(s => s.trim()).filter(Boolean);
+    else if (d.k === "type"){ if (el.value) q.type = "qcm"; else delete q.type; }
+    else q[d.k] = ["points","lignes"].includes(d.k) ? +el.value : el.value; }
+  else return null;
+  return c;
+}
 document.addEventListener("input", ev => {
   const el = ev.target, d = el.dataset;
   if (el.id === "c-texte" || el.id === "c-titre"){ S.coursDraft = {...(S.coursDraft || {}), texte:$("#c-texte")?.value, titre:$("#c-titre")?.value}; }
   if (d.p){ S.params[d.p] = el.value; }
+  if (d.live !== undefined && S.view === "edit" && (d.c || d.q !== undefined)){   // texte : enregistré pendant la frappe, sans attendre la sortie du champ
+    const c = applyEdit(el); if (!c) return; editPending = c; SAVE.dirty = true; saveState(); clearTimeout(editTimer); editTimer = setTimeout(flushEdit, 700); }
 });
 document.addEventListener("change", async ev => {
   const el = ev.target, d = el.dataset;
@@ -2231,7 +2268,7 @@ document.addEventListener("change", async ev => {
     if (!$("#c-titre").value) $("#c-titre").value = fs[0].name.replace(/\.[^.]+$/, "");
     try { await importCourseFiles(fs); } catch(e){ console.error(e); $("#c-st").textContent = e?.code ? aiErr(e.code) : "Não foi possível ler o arquivo."; } return; }
   if (el.id === "c-mat" || el.id === "c-niv"){ S.coursDraft = {...(S.coursDraft || {}), matiere:$("#c-mat").value, niveau:$("#c-niv").value}; return; }
-  if (d.p){ S.params[d.p] = el.value; if (d.p === "niveau") S.params.classeId = S.params.classeId || ""; return; }
+  if (d.p){ S.params[d.p] = el.value; if (d.p === "niveau") S.params.classeId = S.params.classeId || ""; if (d.p === "niveau" || d.p === "classeId") render(); return; }
   if (d.type){ const s = new Set(S.params.types); el.checked ? s.add(d.type) : s.delete(d.type); S.params.types = [...s]; return; }
   if (el.id === "p-diff"){ S.params.differencie = el.checked; return; }
   if (d.kind){ S.params.kind = d.kind; return render(); }
@@ -2249,22 +2286,9 @@ document.addEventListener("change", async ev => {
   if (d.score){ const C = ctrl(S.corrCtrl), q = C.questions.find(x => x.id === d.score); const v = el.value === "" ? null : clamp(half(+el.value), 0, +q.points);
     await write("feuilles/" + C.id, {copies:{[d.eid || S.corrEleve]:{validee:false, answers:{[d.score]:{note:v, valide:false}}}}}, "update"); return; }
   /* editor fields */
-  const c = S.view === "edit" ? ctrl(S.editId) : null; if (!c) return;
   if (el.id === "prevEl"){ S.previewEleve = el.value; return drawPreview(); }
-  if (d.c){ c[d.c] = el.type === "number" ? +el.value : el.value; }
-  else if (el.id === "e-diff"){ c.differencie = el.checked; }
-  else if (d.m){ c.mise = {...(c.mise || {}), [d.m]: ["police","lh"].includes(d.m) ? +el.value : el.value}; }
-  else if (d.bo){ c.bonus = {...(c.bonus || {}), [d.bo]:+el.value}; }
-  else if (el.id === "m-bar"){ c.mise = {...(c.mise || {}), bareme:el.checked}; }
-  else if (d.q !== undefined){ const q = c.questions[+d.q]; if (!q) return;
-    if (d.vk === "choixRaw"){ const lines = el.value.split("\n").map(x => x.trim()).filter(Boolean); q.v = q.v || {};
-      const o = {...(q.v[d.lv] || {enonce:""}), choix:lines.map(x => x.replace(/^\*\s*/, "")), bonnes:lines.map((x, j) => x.startsWith("*") ? j : -1).filter(j => j >= 0)};
-      o.corrige = "Resposta(s) correta(s): " + o.bonnes.map(n => "ABCDEF"[n]).join(", "); o.criteres = "Tudo ou nada."; q.v[d.lv] = o; }
-    else if (d.vk){ q.v = q.v || {}; q.v[d.lv] = {...(q.v[d.lv] || {enonce:"", corrige:"", criteres:""}), [d.vk]:el.value}; }
-    else if (d.k === "erreurs") q.erreurs = el.value.split(";").map(s => s.trim()).filter(Boolean);
-    else if (d.k === "type"){ if (el.value) q.type = "qcm"; else delete q.type; }
-    else q[d.k] = ["points","lignes"].includes(d.k) ? +el.value : el.value; }
-  else return;
+  const c = applyEdit(el); if (!c) return;
+  editPending = null; clearTimeout(editTimer);
   await saveCtrl(c);
 });
 
@@ -2507,20 +2531,28 @@ async function serverDB(){
   if (r.status === 401){ NEED_CODE = true; throw {code:"need_code"}; }
   if (!r.ok) throw {code:"cloud_write", message:"serveur " + r.status};
   const j = await r.json(); let epoch = j.epoch, seq = j.seq; SRV_PERSIST = j.persistent !== false;
+  /* Écritures locales en cours : une synchronisation lancée avant elles ne doit pas remettre l'ancienne version */
+  const pend = {}, touched = {}; let gen = 0;
   const db = memDB(j.docs || {}, async (p, val, op, patch) => {
+    pend[p] = (pend[p] || 0) + 1; touched[p] = ++gen;
+    try { await sendDoc(p, val, op, patch); } finally { pend[p]--; touched[p] = ++gen; }
+  });
+  async function sendDoc(p, val, op, patch){
     const u = "/api/db/doc?path=" + encodeURIComponent(p);
     const res = op === "delete" ? await fetch(u, {method:"DELETE", credentials:"same-origin"})
       : await fetch(u, {method:op === "update" ? "PATCH" : "PUT", credentials:"same-origin", headers:{"content-type":"application/json"}, body:JSON.stringify(op === "update" ? patch : val)});
     if (!res.ok) throw {code:res.status === 401 ? "need_code" : res.status === 402 ? "no_access" : "cloud_write", message:"serveur " + res.status};
-  });
+  }
   let busy = false;
   const pull = async () => {
-    if (busy || document.visibilityState === "hidden") return; busy = true;
+    if (busy || document.visibilityState === "hidden") return; busy = true; const g0 = gen;
+    const fresh = p => !pend[p] && !(touched[p] > g0);
     try {
       const r2 = await fetch(`/api/db/changes?since=${seq}&epoch=${encodeURIComponent(epoch)}`, {credentials:"same-origin"}); if (!r2.ok) return;
-      const k = await r2.json(); epoch = k.epoch; seq = k.seq;
-      if (k.reset){ const cur = db._all(); for (const p of Object.keys(cur)) if (!(p in k.docs)) db._remote(p, null); for (const [p, v] of Object.entries(k.docs)) if (JSON.stringify(cur[p]) !== JSON.stringify(v)) db._remote(p, v); }
-      else for (const c of k.changes || []){ if (JSON.stringify(db._all()[c.path]) !== JSON.stringify(c.data)) db._remote(c.path, c.data); }
+      const k = await r2.json(); let skip = false; const ok = p => fresh(p) || (skip = true, false);
+      if (k.reset){ const cur = db._all(); for (const p of Object.keys(cur)) if (!(p in k.docs) && ok(p)) db._remote(p, null); for (const [p, v] of Object.entries(k.docs)) if (ok(p) && JSON.stringify(cur[p]) !== JSON.stringify(v)) db._remote(p, v); }
+      else for (const c of k.changes || []){ if (ok(c.path) && JSON.stringify(db._all()[c.path]) !== JSON.stringify(c.data)) db._remote(c.path, c.data); }
+      if (!skip){ epoch = k.epoch; seq = k.seq; }   // un document ignoré sera relu à la prochaine synchronisation
     } catch(e){} finally { busy = false; }
   };
   setInterval(pull, 8000); document.addEventListener("visibilitychange", pull);
@@ -2608,7 +2640,7 @@ function go(v){
   if (location.hash !== h) location.hash = h; else { render(); window.scrollTo({top:0}); }
 }
 function openCtrl(id, step){ const c = ctrl(id); location.hash = `#/controle/${id}/${step || defaultStep(c)}`; }
-window.addEventListener("hashchange", () => { applyRoute(); render(); window.scrollTo({top:0}); });
+window.addEventListener("hashchange", () => { const a = document.activeElement; if (a && a !== document.body && $("#view")?.contains(a)) a.blur(); flushEdit(); applyRoute(); render(); window.scrollTo({top:0}); });
 
 function navKey(){ if (S.inCtrl || S.view === "edit" || S.view === "new") return "controles"; return {home:"accueil", quiznew:"exercices", quiz:"exercices", scan:"scanner", reglages:"sauvegarde", correct:"controles", analyse:"controles"}[S.view] || S.view; }
 
@@ -2626,7 +2658,7 @@ function ctrlFrame(c, inner){
   <div class="head"><div><div class="label">${c.type === "rattrapage" ? "Recuperação" : c.type === "exercices" ? "Exercícios" : "Prova"} · ${esc(c.matiere)} · ${esc(cl?.nom || "?")}${c.date ? " · " + esc(frDate(c.date)) : ""}</div><h2>${esc(c.titre)}</h2></div>
     <div class="row">${chipStatut(c)}${pr.printed ? `<span class="chip">${pr.sc}/${pr.n} escaneadas · ${pr.va}/${pr.n} validadas</span>` : ""}</div></div>
   <nav class="stepper" aria-label="Etapas">${STEPS.map(([k, l], j) => `<a href="#/controle/${c.id}/${k}" class="st ${j === i ? "on" : j <= doneUpTo ? "done" : ""}" ${j === i ? 'aria-current="step"' : ""}><b>${j + 1}</b><span>${l}</span></a>`).join("")}</nav>
-  ${i <= 2 && c.statut === "brouillon" ? `<p class="small muted">Rascunho · cada alteração é salva automaticamente.</p>` : ""}
+  <p class="small muted" style="margin:0">${i <= 2 && c.statut === "brouillon" ? "Brouillon · " : ""}<span id="savest" class="savest"></span></p>
   ${inner}
   <div class="stepnav">${prev ? `<a class="btn" href="#/controle/${c.id}/${prev[0]}">← ${prev[1]}</a>` : "<span></span>"}${next ? `<a class="btn primary" href="#/controle/${c.id}/${next[0]}">${next[1]} →</a>` : `<a class="btn" href="#/controles">Concluir</a>`}</div>`;
 }
@@ -2706,7 +2738,7 @@ document.addEventListener("keydown", ev => { if (ev.key === "Escape") umenu(fals
 S.auth = null; S.me = null; S.scope = "moi"; S.users = [];
 const isAdmin = () => S.me?.role === "admin";
 const canEx = () => !window.TIKOUN_CONFIG?.accounts || !!S.me?.can?.exercices;
-const lockChip = () => `<span class="chip" title="Folhas de exercícios regeneráveis e escaneáveis: assinatura Pro + opção ativada pela direção">🔒 Opção Exercícios</span>`;
+const lockChip = () => `<span class="chip" title="Exercícios on-line: a partir do plano Essencial">🔒 Opção Exercícios</span>`;
 const PLAN = {decouverte:"Descoberta", essentiel:"Essencial", complet:"Completo", pro:"Completo"};
 const isBoss = () => isAdmin() || (S.me?.etab?.role === "direction" && S.me?.etab?.actif);
 function scopeCtrls(all){ if (!S.me || (isBoss() && S.scope === "ecole")) return all; return all.filter(c => !c.owner || c.owner === S.me.id); }
@@ -2743,6 +2775,17 @@ function vAuth(){
     <div class="field"><label for="su-mail">E-mail</label><input id="su-mail" type="email" autocomplete="username"></div>
     <div class="field"><label for="su-pw">Senha (mínimo de 8 caracteres)</label><input id="su-pw" type="password" autocomplete="new-password"></div>
     <div class="row"><button class="btn primary" id="su-go">Criar a conta</button></div><div class="status" id="au-st"></div></section>`;
+  if (S.auth === "forgot") return `<div class="auth"><section class="auth-card">
+    <div class="auth-h"><h2>Esqueci a senha</h2><p>Informe o e-mail da sua conta.</p></div>
+    ${S.forgot ? `<p class="banner">${S.forgot.mail ? "Se existir uma conta com este e-mail, você vai receber um link para escolher uma nova senha. Confira também o spam." : "Seu pedido foi enviado à equipe Mastery, que vai redefinir sua senha e responder por e-mail."}${S.forgot.contact ? ` Dúvidas: <a href="mailto:${esc(S.forgot.contact)}">${esc(S.forgot.contact)}</a>` : ""}</p>`
+      : `<div class="field"><label for="fg-mail">E-mail</label><input id="fg-mail" type="email" autocomplete="username" value="${esc(S.fgMail || "")}"></div><button class="btn primary auth-go" id="fg-go">Receber um link</button>`}
+    <div class="status" id="au-st"></div>
+    <p class="small auth-note"><button class="btn ghost sm" id="fg-back">← Voltar para o login</button></p></section></div>`;
+  if (S.auth === "reset") return `<div class="auth"><section class="auth-card">
+    <div class="auth-h"><h2>Nova senha</h2><p>Escolha sua nova senha do Mastery.</p></div>
+    <div class="field"><label for="npw-pw">Nova senha (mínimo de 8 caracteres)</label><input id="npw-pw" type="password" autocomplete="new-password"></div>
+    <div class="field"><label for="npw-pw2">Confirmar</label><input id="npw-pw2" type="password" autocomplete="new-password"></div>
+    <button class="btn primary auth-go" id="npw-go">Salvar e entrar</button><div class="status" id="au-st"></div></section></div>`;
   if (S.auth === "change") return `<div class="head"><div><h2>Escolha sua senha</h2><p>Bem-vindo(a) ${esc(S.me?.nom || "")} : substitua a senha provisória.</p></div></div>
   <section class="panel grid" style="max-width:440px">
     <div class="field"><label for="ch-pw">Nova senha (mínimo de 8 caracteres)</label><input id="ch-pw" type="password" autocomplete="new-password"></div>
@@ -2753,7 +2796,7 @@ function vAuth(){
     <div>${S.pend?.ecole ? ecLine(S.pend.ecole) + `<div style="margin-top:6px">${ecBadge(S.pend.ecole)} <span class="chip">Plano ${PLAN[S.pend.planDemande] || "Essencial"} · beta gratuito</span></div>` : ""}</div>
     <p style="margin:0">Assim que sua conta for validada, entre com <b>${esc(S.pend?.email || "")}</b> e sua senha.</p>
     <div class="row"><button class="btn primary" id="rg-back">Ir para o login</button><a class="btn ghost" href="/">Voltar ao início</a></div></section>`;
-  if (S.auth === "register") return `<div class="head"><div><h2>Criar minha conta de professor</h2><p>Seu espaço é privado: suas turmas, seus alunos e suas provas são visíveis apenas para você.</p></div></div>
+  if (S.auth === "register") return `<div class="head"><div><h2>Criar minha conta de professor</h2><p>Seu espaço é privado: os outros professores não veem suas turmas, alunos nem provas. Têm acesso a direção da sua escola, se você entrar nela no Mastery, e a equipe Mastery, para suporte e aprovação das inscrições. <a href="/confidentialite" target="_blank" rel="noopener" style="color:var(--gold)">Saiba mais</a></p></div></div>
   <section class="panel grid" style="max-width:560px">
     <div class="field"><label for="rg-nom">Seu nome (exibido nas folhas, se você quiser)</label><input id="rg-nom" placeholder="ex. Prof. Cohen" value="${esc(S.form["rg-nom"] || "")}"></div>
     <div class="field"><label for="rg-mail">E-mail</label><input id="rg-mail" type="email" autocomplete="username" value="${esc(S.form["rg-mail"] || "")}"></div>
@@ -2771,7 +2814,7 @@ function vAuth(){
     <div class="field"><label for="lg-mail2">E-mail</label><input id="lg-mail2" type="email" autocomplete="username" placeholder="nome.sobrenome@escola.com.br"></div>
     <div class="field"><label for="lg-pw2">Senha</label><input id="lg-pw2" type="password" autocomplete="current-password"></div>
     <button class="btn primary auth-go" id="lg-go2">Entrar</button><div class="status" id="au-st"></div>
-    <p class="small muted auth-note">Esqueceu a senha: escreva para o administrador do Mastery para redefini-la.</p>
+    <p class="small auth-note"><button class="btn ghost sm" id="pw-forgot">Esqueceu a senha?</button></p>
     ${window.TIKOUN_CONFIG?.signup ? `<div class="auth-alt"><span class="small muted">Ainda não tem conta?</span><button class="btn" id="rg-open">Criar minha conta de professor</button></div>` : ""}
   </section>
   <p class="small muted auth-foot"><a href="/">← Voltar ao site</a> · <a href="?lang=fr">Francês</a> · <a href="?lang=en">English</a> · <a href="?lang=pt">Português</a></p></div>`;
@@ -2789,7 +2832,8 @@ async function afterLogin(user, mustChange){
 }
 async function bootAccounts(){
   try { const j = await api("/api/me"); await afterLogin(j.user, !!j.user?.mustChange); }
-  catch(e){ S.auth = e.status === 401 && e.setup ? "setup" : /^#\/inscription/.test(location.hash) && window.TIKOUN_CONFIG?.signup ? "register" : "login"; if (S.auth === "register"){ const pl = location.hash.split("/")[2]; if (["decouverte", "essentiel", "complet"].includes(pl)) S.regPlan = pl; else if (pl === "pro") S.regPlan = "complet"; S.ecFor = "reg"; S.ec = {q:"", cp:"", res:null, sel:null, manual:false, busy:false, err:""}; } refreshCaps(); render(); }
+  catch(e){ S.auth = e.status === 401 && e.setup ? "setup" : /^#\/reset\/[a-f0-9]{48}$/.test(location.hash) ? "reset" : /^#\/inscription/.test(location.hash) && window.TIKOUN_CONFIG?.signup ? "register" : "login";
+    if (S.auth === "reset") S.resetTok = location.hash.split("/")[2]; if (S.auth === "register"){ const pl = location.hash.split("/")[2]; if (["decouverte", "essentiel", "complet"].includes(pl)) S.regPlan = pl; else if (pl === "pro") S.regPlan = "complet"; S.ecFor = "reg"; S.ec = {q:"", cp:"", res:null, sel:null, manual:false, busy:false, err:""}; } refreshCaps(); render(); }
 }
 
 /* Mon compte */
@@ -2855,12 +2899,12 @@ function vComptes(){
   return `<div class="head"><div><h2>Contas dos professores</h2><p>Os professores que se cadastram sozinhos têm um espaço privado. Os que você cria aqui compartilham suas turmas.</p></div></div>
   ${pendHtml}
   <section class="panel"><div class="tbl-wrap"><table><thead><tr><th>Nome</th><th>E-mail</th><th>Escola</th><th>Função</th><th>Acesso</th><th>Assinatura</th><th>Opção Exercícios</th><th class="c">Provas</th><th></th></tr></thead><tbody>
-  ${ok.map(u => `<tr><td><b>${esc(u.nom)}</b>${u.statut === "refuse" ? ' <span class="chip bad">recusado</span>' : u.actif ? "" : ' <span class="chip bad">desativado</span>'}</td><td>${esc(u.email)}</td>
+  ${ok.map(u => `<tr><td><b>${esc(u.nom)}</b>${u.statut === "refuse" ? ' <span class="chip bad">recusado</span>' : u.actif ? "" : ' <span class="chip bad">desativado</span>'}${u.resetDemande ? ' <span class="chip warn">Esqueci a senha</span>' : ""}</td><td>${esc(u.email)}</td>
     <td>${u.ecole ? `<div class="small"><b>${esc(u.ecole.nom)}</b> ${ecBadge(u.ecole)}<div class="muted">${esc([u.ecole.cp, u.ecole.ville].filter(Boolean).join(" "))}${u.ecole.uai ? " · Código INEP " + esc(u.ecole.uai) : ""}</div></div>` : `<span class="muted small">—</span>`}</td>
     <td><select data-urole="${u.id}" style="width:auto" aria-label="Função">${selOpts(["prof","admin"], u.role, x => x === "admin" ? "Administrador" : "Professor")}</select></td>
     <td class="small">${esc(accesLabel(u))}${S.me?.billing && u.inscription === "libre" && u.acces?.mode !== "abonne" ? ` <button class="btn sm ghost" data-ugift="${u.id}" title="Prolongar o teste por um mês">+1 mês</button>` : ""}</td>
-    <td><select data-uplan="${u.id}" style="width:auto" aria-label="Assinatura">${selOpts(["essentiel","pro"], u.plan || "essentiel", x => PLAN[x])}</select></td>
-    <td>${(u.plan || "essentiel") === "pro" ? `<label class="row small" style="gap:6px"><input type="checkbox" data-uex="${u.id}"${u.options?.exercices ? " checked" : ""}> ${u.options?.exercices ? "Ativada" : "Desativada"}</label>` : `<span class="muted small">Requer Pro</span>`}</td>
+    <td><select data-uplan="${u.id}" style="width:auto" aria-label="Assinatura">${selOpts(["decouverte","essentiel","complet"], u.plan === "pro" ? "complet" : u.plan || "essentiel", x => PLAN[x])}</select></td>
+    <td>${u.plan !== "decouverte" ? `<label class="row small" style="gap:6px"><input type="checkbox" data-uex="${u.id}"${u.options?.exercices ? " checked" : ""}> ${u.options?.exercices ? "Ativada" : "Desativada"}</label>` : `<span class="muted small">A partir do Essencial</span>`}</td>
     <td class="c num">${nb(u.id)}</td>
     <td><div class="row">${u.id !== S.me.id ? `<button class="btn sm" data-ureset="${u.id}">Nova senha</button><button class="btn sm ghost" data-uact="${u.id}" data-v="${u.actif ? 0 : 1}">${u.actif ? "Desativar" : "Reativar"}</button><button class="btn sm ghost danger" data-udel="${u.id}">Excluir</button>` : ""}</div></td></tr>`).join("")}
   </tbody></table></div><div class="status" id="us-st"></div></section>
@@ -2869,8 +2913,8 @@ function vComptes(){
       <div class="field"><label for="nu-mail">E-mail</label><input id="nu-mail" type="email"></div></div>
     <div class="form-row"><div class="field"><label for="nu-pw">Senha provisória</label><input id="nu-pw" value="${genPw()}"></div>
       <div class="field"><label for="nu-role">Função</label><select id="nu-role">${selOpts(["prof","admin"], "prof", x => x === "admin" ? "Administrador" : "Professor")}</select></div></div>
-    <div class="form-row"><div class="field"><label for="nu-plan">Assinatura</label><select id="nu-plan">${selOpts(["essentiel","pro"], "essentiel", x => PLAN[x])}</select></div>
-      <label class="row small" style="gap:6px;align-self:end"><input type="checkbox" id="nu-ex"> Ativar a opção Exercícios (Pro)</label></div>
+    <div class="form-row"><div class="field"><label for="nu-plan">Assinatura</label><select id="nu-plan">${selOpts(["decouverte","essentiel","complet"], "complet", x => PLAN[x])}</select></div>
+      <label class="row small" style="gap:6px;align-self:end"><input type="checkbox" id="nu-ex" checked> Ativar exercícios on-line (a partir do Essencial)</label></div>
     <p class="small muted">Passe o e-mail e a senha provisória ao professor: ele precisará trocá-la no primeiro acesso.</p>
     <div class="row"><button class="btn primary" id="nu-go">Criar a conta</button></div><div class="status" id="nu-st"></div></section>`;
 }
@@ -2887,6 +2931,12 @@ document.addEventListener("click", async ev => {
     if (d.ensdel){ await saveEnseigne(enseigne().filter(m => m !== d.ensdel)); return render(); }
     if (t.id === "rg-open"){ S.auth = "register"; S.ecFor = "reg"; S.ec = {q:"", cp:"", res:null, sel:null, manual:false, busy:false, err:""}; return render(); }
     if (t.id === "rg-back"){ S.auth = "login"; return render(); }
+    if (t.id === "pw-forgot"){ S.auth = "forgot"; S.forgot = null; S.fgMail = $("#lg-mail2")?.value || ""; return render(); }
+    if (t.id === "fg-back"){ S.auth = "login"; return render(); }
+    if (t.id === "fg-go"){ st().innerHTML = `<span class="thinking">Enviando…</span>`;
+      S.forgot = await api("/api/password/forgot", {method:"POST", body:JSON.stringify({email:$("#fg-mail").value})}); return render(); }
+    if (t.id === "npw-go"){ if ($("#npw-pw").value !== $("#npw-pw2").value){ st().textContent = "As duas senhas são diferentes."; return; }
+      const j = await api("/api/password/reset", {method:"POST", body:JSON.stringify({token:S.resetTok, password:$("#npw-pw").value})}); history.replaceState(null, "", "#/accueil"); return afterLogin(j.user, false); }
     if (t.id === "rg-go"){ S.ec.sel = ecoleVal(); if (!S.ec.sel.nom || !S.ec.sel.ville){ st().textContent = "Informe o nome da sua escola e a cidade."; return; }
       if (!$("#rg-cgu")?.checked){ st().textContent = "Marque a caixa para aceitar os termos de uso."; return; }
       st().innerHTML = `<span class="thinking">Criando…</span>`;
