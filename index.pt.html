@@ -468,6 +468,15 @@ input[type=checkbox],input[type=radio]{accent-color:var(--blue)}
 .bk-row.open{background:var(--surface-2);margin:0 -14px;padding:13px 14px;border-radius:12px}
 .bk-more{display:flex;justify-content:center;padding-top:12px;border-top:1px solid var(--line)}
 @media (max-width:600px){.bk-row{flex-wrap:wrap}.bk-main .s{white-space:normal}.bk-act{width:100%;justify-content:flex-end;flex-wrap:wrap}.bk-act select{flex:1 1 100%;max-width:none}}
+/* Forfait : compteur du mois et paliers */
+.quota{display:grid;gap:6px}
+.qbar{height:8px;border-radius:99px;background:var(--surface-2);overflow:hidden}.qbar i{display:block;height:100%;border-radius:99px;background:var(--ok)}.qbar i.half{background:var(--warn)}.qbar i.full{background:var(--bad)}
+.banner.bad{background:var(--bad-soft);color:var(--bad)}
+.tiers{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
+.tier{border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:6px;background:var(--surface)}
+.tier>.btn:first-of-type{margin-top:auto}
+.tier.best,.tier.sel{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue)}
+.tier-p{font-size:22px;font-weight:700;letter-spacing:-.02em}
 /* Menu du compte */
 .brand{position:relative}
 .umenu{position:relative}
@@ -822,8 +831,15 @@ function vHome(){
       <div><b class="num"${aValider ? ' style="color:var(--gold-2)"' : ""}>${aValider}</b><span>Provas a validar</span></div>
     </div>
   </section>
+  ${quotaHome()}
   <section class="panel"><h3>Em andamento</h3><div style="margin-top:4px">${todo.map(line).join("") || `<p class="muted" style="padding:10px 0">Nenhuma prova em andamento.</p>`}</div></section>
   ${done.length ? `<section class="panel"><h3>Corrigidas</h3><div style="margin-top:4px">${done.map(line).join("")}</div></section>` : ""}`;
+}
+
+function quotaHome(){
+  const q = S.me?.quota; if (!q || q.illimite || typeof quotaHtml !== "function") return "";
+  const left = Math.max(0, q.ctrl - q.used), msg = left === 0 ? "Você usou todas as provas do seu plano neste mês." : q.used / q.ctrl >= .5 ? (left > 1 ? `Restam ${left} provas neste mês.` : "Resta 1 prova neste mês.") : "";
+  return `<section class="panel grid" style="gap:10px">${quotaHtml()}${msg ? `<div class="row between banner${left === 0 ? " bad" : ""}"><span>${msg}</span><a class="btn sm" href="#/compte">${left === 0 ? "Adicionar uma prova ou mudar de plano" : "Ver meu plano"}</a></div>` : ""}</section>`;
 }
 
 /* ================= CLASSES ================= */
@@ -1069,6 +1085,9 @@ async function printSheets(c, list){
   const st = $("#pr-st");
   if (!window.html2canvas || !window.jspdf){ st.textContent = "Bibliotecas de PDF não carregadas: recarregue a página."; return; }
   if (!list.length){ st.textContent = "Nenhum aluno nesta turma."; return; }
+  // Forfait : la première impression d'un contrôle utilise un contrôle du mois (réimpression gratuite)
+  if (window.TIKOUN_CONFIG?.accounts && S.me){ try { const j = await api("/api/billing/use", {method:"POST", body:JSON.stringify({ctrlId:c.id})}); if (j.quota) S.me.quota = j.quota; }
+    catch(e){ if (e.status === 402){ st.innerHTML = `${esc(e.message)} <a class="btn sm primary" href="#/compte">Minha assinatura</a>`; return; } } }
   const ov = document.createElement("div"); ov.className = "zoom"; ov.style.alignItems = "center"; ov.style.color = "#fff"; ov.innerHTML = `<div id="ovm" style="font-size:16px">Preparando…</div>`; document.body.append(ov);
   const stage = $("#sheetStage"); stage.style.left = "0"; stage.style.zIndex = "40";
   try{
@@ -1995,6 +2014,8 @@ document.addEventListener("click", async ev => {
   if (d.classe){ S.classeSel = d.classe; S.suggestions = null; return render(); }
   if (t.id === "nc-go"){ const niveau = $("#nc-niv").value, libelle = $("#nc-nom").value.trim(), nom = libelle ? niveau + " " + libelle : niveau;
     if (store.classes.some(c => c.nom === nom)){ toast("Você já tem uma turma “ " + nom + " ”: adicione um rótulo (A, B, Azul…) para diferenciá-las."); $("#nc-nom").focus(); return; }
+    const q = S.me?.quota; if (q && !q.illimite && q.classes != null && (store.allClasses || store.classes).filter(c => c.createdBy === S.me.id).length >= q.classes)
+      return toast("Seu plano não permite mais turmas: mude para o plano superior em Minha conta.");
     const id = uid(10); S.classeSel = id; await write("classes/" + id, {nom, niveau, libelle, eleves:[], createdAt:new Date().toISOString()}); return; }
   if (t.id === "rn-cl"){ const cl = classe(S.classeSel); if (!cl) return;
     const cur = cl.libelle ?? (cl.niveau && cl.nom.startsWith(cl.niveau + " ") ? cl.nom.slice(cl.niveau.length + 1) : cl.nom === cl.niveau ? "" : cl.nom);
@@ -2686,7 +2707,7 @@ S.auth = null; S.me = null; S.scope = "moi"; S.users = [];
 const isAdmin = () => S.me?.role === "admin";
 const canEx = () => !window.TIKOUN_CONFIG?.accounts || !!S.me?.can?.exercices;
 const lockChip = () => `<span class="chip" title="Folhas de exercícios regeneráveis e escaneáveis: assinatura Pro + opção ativada pela direção">🔒 Opção Exercícios</span>`;
-const PLAN = {essentiel:"Essencial", pro:"Pro"};
+const PLAN = {decouverte:"Descoberta", essentiel:"Essencial", complet:"Completo", pro:"Completo"};
 const isBoss = () => isAdmin() || (S.me?.etab?.role === "direction" && S.me?.etab?.actif);
 function scopeCtrls(all){ if (!S.me || (isBoss() && S.scope === "ecole")) return all; return all.filter(c => !c.owner || c.owner === S.me.id); }
 function applyScope(){ store.controles = scopeCtrls(store.allCtrl || []); store.cours = scopeCours(store.allCours || store.cours); store.classes = scopeClasses(store.allClasses || store.classes || []); }
@@ -2740,9 +2761,9 @@ function vAuth(){
     <h3 style="margin-top:6px">Sua escola</h3>
     ${ecoleWidget()}
     <div class="field"><label>Cabeçalho das suas provas e exercícios</label>${affRadios(S.regAff)}</div>
-    <h3 style="margin-top:6px">Seu plano <span class="chip ok" style="vertical-align:middle">Beta gratuito</span></h3>
-    <div class="form-row">${[["essentiel","Essencial","Provas geradas pela IA, folhas com QR code, escaneamento e correção das provas dos alunos, visão da turma, recuperações individuais."],["pro","Pro","Tudo do Essencial + exercícios on-line: quizzes que se renovam, acesso do aluno por código, acompanhamento por conteúdo."]].map(([k, t, d]) => `<label class="panel" style="padding:12px;cursor:pointer;display:grid;gap:4px;${(S.regPlan || "essentiel") === k ? "border-color:var(--blue);box-shadow:0 0 0 2px var(--blue-soft)" : ""}"><span class="row" style="gap:8px"><input type="radio" style="width:auto" name="plan" data-plan="${k}"${(S.regPlan || "essentiel") === k ? " checked" : ""}><b>${t}</b></span><span class="small muted">${d}</span></label>`).join("")}</div>
-    <p class="small muted" style="margin:0">Durante o beta, os dois planos são gratuitos: nenhum pagamento é solicitado. Seu cadastro será validado pela equipe Mastery.</p>
+    <h3 style="margin-top:6px">Seu plano <span class="chip ok" style="vertical-align:middle">${CFG().billing ? "1 mês grátis" : "Beta gratuito"}</span></h3>
+    <div class="tiers">${["decouverte", "essentiel", "complet"].map(k => `<label class="tier${(S.regPlan || "essentiel") === k ? " sel" : ""}" style="cursor:pointer"><span class="row" style="gap:8px"><input type="radio" name="plan" style="width:auto;margin:0" data-plan="${k}"${(S.regPlan || "essentiel") === k ? " checked" : ""}><b>${PLAN[k]}</b></span>${CFG().billing && CFG().prix?.[k] ? `<div class="tier-p">${esc(CFG().prix[k])}</div>` : ""}<span class="small muted">${TIER_TXT[k]}</span></label>`).join("")}</div>
+    <p class="small muted" style="margin:0">${CFG().billing ? "Você começa com um mês de teste grátis no plano Completo, sem cartão de crédito: você escolhe o seu plano no fim do teste. Sua inscrição será aprovada pela equipe Mastery." : "Durante o beta, todos os planos são gratuitos: nenhum pagamento é pedido. Sua inscrição será validada pela equipe Mastery."}</p>
     <label class="small" style="display:flex;gap:8px;align-items:flex-start;cursor:pointer"><input type="checkbox" id="rg-cgu" style="width:auto;margin-top:3px" ${S.regCgu ? "checked" : ""}><span>Aceito os <a href="/cgu" target="_blank" rel="noopener" style="color:var(--gold)">termos de uso</a> e a <a href="/confidentialite" target="_blank" rel="noopener" style="color:var(--gold)">política de privacidade</a>. Comprometo-me a informar as famílias sobre o uso do Mastery nas minhas turmas.</span></label>
     <div class="row"><button class="btn primary" id="rg-go">Enviar meu pedido de cadastro</button><button class="btn ghost" id="rg-back">Já tenho uma conta</button></div><div class="status" id="au-st"></div></section>`;
   return `<div class="auth"><section class="auth-card">
@@ -2768,7 +2789,7 @@ async function afterLogin(user, mustChange){
 }
 async function bootAccounts(){
   try { const j = await api("/api/me"); await afterLogin(j.user, !!j.user?.mustChange); }
-  catch(e){ S.auth = e.status === 401 && e.setup ? "setup" : /^#\/inscription/.test(location.hash) && window.TIKOUN_CONFIG?.signup ? "register" : "login"; if (S.auth === "register"){ const pl = location.hash.split("/")[2]; if (pl === "pro" || pl === "essentiel") S.regPlan = pl; S.ecFor = "reg"; S.ec = {q:"", cp:"", res:null, sel:null, manual:false, busy:false, err:""}; } refreshCaps(); render(); }
+  catch(e){ S.auth = e.status === 401 && e.setup ? "setup" : /^#\/inscription/.test(location.hash) && window.TIKOUN_CONFIG?.signup ? "register" : "login"; if (S.auth === "register"){ const pl = location.hash.split("/")[2]; if (["decouverte", "essentiel", "complet"].includes(pl)) S.regPlan = pl; else if (pl === "pro") S.regPlan = "complet"; S.ecFor = "reg"; S.ec = {q:"", cp:"", res:null, sel:null, manual:false, busy:false, err:""}; } refreshCaps(); render(); }
 }
 
 /* Mon compte */
@@ -2920,21 +2941,32 @@ function billBanner(){
   if (a.mode === "essai" && joursRest(a.fin) <= 7) return `<p class="banner">Teste grátis: ${joursRest(a.fin)} ${JRS}. <a href="#/compte" class="btn sm">Ver assinaturas</a></p>`;
   return "";
 }
+/* Compteur du mois : contrôles imprimés et classes, selon le forfait */
+function quotaHtml(){
+  const q = S.me?.quota; if (!q || q.illimite) return "";
+  const r = q.ctrl ? Math.min(1, q.used / q.ctrl) : 1, left = Math.max(0, q.ctrl - q.used);
+  return `<div class="quota"><div class="row between"><b>${q.used} / ${q.ctrl} ${q.ctrl > 1 ? "provas" : "prova"} neste mês</b><span class="small muted">${left > 1 ? left + " restantes" : left === 1 ? "1 restante" : "crédito esgotado"}</span></div>
+    <div class="qbar"><i style="width:${Math.round(r * 100)}%" class="${r >= 1 ? "full" : r >= .5 ? "half" : ""}"></i></div>
+    ${q.classes != null ? `<div class="small muted">Turmas: ${(store.allClasses || store.classes).filter(c => c.createdBy === S.me?.id).length} / ${q.classes}</div>` : `<div class="small muted">2 provas por mês por turma.</div>`}</div>`;
+}
+const TIER_TXT = {decouverte:"1 turma · 2 provas por mês", essentiel:"Até 3 turmas · 6 provas por mês · exercícios online", complet:"Até 6 turmas · 12 provas por mês · exercícios online"};
 function abonnementPanel(){
   const a = S.me?.acces || {}, P = CFG().prix || {};
-  if (!S.me?.billing || a.mode === "beta") return `<section class="panel grid" style="max-width:640px"><h3>Minha assinatura <span class="chip ok" style="vertical-align:middle">Beta gratuito</span></h3><p class="small muted" style="margin:0">Durante a beta, tudo é grátis. Você será avisado antes da abertura das assinaturas.</p></section>`;
+  if (!S.me?.billing || a.mode === "beta") return `<section class="panel grid" style="max-width:640px"><h3>Minha assinatura <span class="chip ok" style="vertical-align:middle">Beta gratuito</span></h3><p class="small muted" style="margin:0">Durante o beta, tudo é gratuito e ilimitado. Você será avisado antes da abertura das assinaturas.</p></section>`;
   if (a.mode === "inclus") return `<section class="panel grid" style="max-width:640px"><h3>Minha assinatura</h3><p class="small muted" style="margin:0">Sua conta está incluída no acesso da sua escola.</p></section>`;
-  if (a.mode === "ecole") return `<section class="panel grid" style="max-width:640px"><h3>Minha assinatura <span class="chip ok" style="vertical-align:middle">Pro</span></h3><p class="small muted" style="margin:0">Pago pela sua escola: ${esc(a.ecole || "")}.</p></section>`;
+  if (a.mode === "ecole") return `<section class="panel grid" style="max-width:640px"><h3>Minha assinatura <span class="chip ok" style="vertical-align:middle">Escola</span></h3><p class="small muted" style="margin:0">Pago pela sua escola: ${esc(a.ecole || "")}.</p>${quotaHtml()}</section>`;
+  const extra = P.controle ? `<button class="btn sm" id="bil-extra">Adicionar uma prova · ${esc(P.controle)}</button>` : "";
   if (a.mode === "abonne") return `<section class="panel grid" style="max-width:640px"><h3>Minha assinatura <span class="chip ok" style="vertical-align:middle">${PLAN[a.plan] || ""}</span></h3>
-    <p class="small muted" style="margin:0">${a.status === "past_due" ? "⚠ O último pagamento falhou: atualize seu cartão. " : ""}${a.annule ? "Termina em " : "Próxima renovação em "}${a.fin ? frDate(a.fin.slice(0, 10)) : "—"}.</p>
-    <div class="row"><button class="btn" id="bil-portal">Gerenciar minha assinatura (cartão, faturas, cancelamento)</button></div><div class="status" id="bil-st"></div></section>`;
-  const card = (k, t, d, m, an) => `<div class="panel" style="padding:14px;display:grid;gap:6px"><div class="row" style="justify-content:space-between"><b>${t}</b><span class="small muted">${esc(m)} · ou ${esc(an)}</span></div>
-    <div class="small muted">${d}</div><div class="row"><button class="btn sm primary" data-buy="${k}" data-per="mois">${esc(m)}</button><button class="btn sm" data-buy="${k}" data-per="an">${esc(an)}</button></div></div>`;
-  return `<section class="panel grid" style="max-width:640px"><h3>Minha assinatura ${a.mode === "essai" ? `<span class="chip ok" style="vertical-align:middle">Teste grátis · ${joursRest(a.fin)} ${JRS}</span>` : `<span class="chip bad" style="vertical-align:middle">Teste encerrado</span>`}</h3>
-    <p class="small muted" style="margin:0">${a.mode === "essai" ? `Durante o teste, todo o plano Pro fica liberado até ${frDate(a.fin.slice(0, 10))}. Se você assinar agora, o primeiro pagamento só acontece no fim do teste.` : "Seus dados estão guardados. Escolha uma assinatura para continuar criando, digitalizando e corrigindo."}</p>
-    <div class="form-row">${card("essentiel", "Essencial", "Provas criadas pela IA, folhas com QR code, digitalização e correção, recuperações, acompanhamento.", P.essentiel || "", P.essentielAn || "")}
-      ${card("pro", "Pro", "Tudo do Essencial + quizzes on-line para os alunos, acesso por código, acompanhamento por conteúdo.", P.pro || "", P.proAn || "")}</div>
-    <p class="small muted" style="margin:0">Pagamento seguro pelo Stripe. Cancele quando quiser.</p><div class="status" id="bil-st"></div></section>`;
+    <p class="small muted" style="margin:0">${TIER_TXT[a.plan] || ""}. ${a.status === "past_due" ? "⚠ O último pagamento falhou: atualize seu cartão. " : ""}${a.annule ? "Termina em " : "Próxima renovação em "}${a.fin ? frDate(a.fin.slice(0, 10)) : "—"}.</p>
+    ${quotaHtml()}
+    <div class="row">${extra}<button class="btn sm" id="bil-portal">Mudar de plano, cartão, faturas</button></div><div class="status" id="bil-st"></div></section>`;
+  const card = k => `<div class="tier${k === "essentiel" ? " best" : ""}"><b>${PLAN[k]}</b><div class="tier-p">${esc(P[k] || "")}</div><div class="small muted">${TIER_TXT[k]}</div>
+    <div class="grid" style="gap:6px;margin-top:auto"><button class="btn sm ${k === "essentiel" ? "primary" : ""}" data-buy="${k}" data-per="mois">Mensal</button><button class="btn sm ghost" data-buy="${k}" data-per="an">Anual · ${esc(P[k + "An"] || "")}</button></div></div>`;
+  return `<section class="panel grid" style="max-width:760px"><h3>Minha assinatura ${a.mode === "essai" ? `<span class="chip ok" style="vertical-align:middle">Teste grátis · ${joursRest(a.fin)} ${JRS}</span>` : `<span class="chip bad" style="vertical-align:middle">Teste encerrado</span>`}</h3>
+    <p class="small muted" style="margin:0">${a.mode === "essai" ? `Durante o teste, o plano Completo fica aberto até ${frDate(a.fin.slice(0, 10))}. Se você assinar agora, o primeiro pagamento só acontece no fim do teste.` : "Seus dados estão guardados. Escolha um plano para continuar criando, digitalizando e corrigindo."}</p>
+    ${a.mode === "essai" ? quotaHtml() : ""}
+    <div class="tiers">${["decouverte", "essentiel", "complet"].map(card).join("")}</div>
+    <p class="small muted" style="margin:0">Uma prova conta quando as folhas são impressas; reimpressões e recuperações não contam. Anual: 2 meses grátis. Pagamento seguro pela Stripe, cancele quando quiser.</p><div class="status" id="bil-st"></div></section>`;
 }
 function parrainagePanel(){
   if (!S.me?.ref) return ""; const link = location.origin + "/?ref=" + S.me.ref, st = S.me.parrainage || {};
@@ -2951,17 +2983,16 @@ function etabPanel(){
     <details><summary class="small" style="cursor:pointer">Você é da direção? Criar o plano escola</summary>
       <div class="grid" style="margin-top:10px"><div class="form-row"><div class="field"><label for="et-nom">Nome da escola</label><input id="et-nom" value="${esc(S.me?.ecole?.nom || "")}"></div>
         <div class="field"><label for="et-el">Número de alunos</label><input id="et-el" type="number" min="1" inputmode="numeric"></div></div>
-      <label class="row small" style="gap:6px"><input type="checkbox" id="et-pay" style="width:auto"> A escola também paga o plano Pro de todos os seus professores</label>
-      <p class="small muted" style="margin:0">O plano escola libera a visão da direção sobre todas as turmas dos professores que aderirem a ele${S.me?.billing && P.ecole ? ` (${esc(P.ecole)})` : ""}. Ela é independente das assinaturas dos professores.</p>
+      <p class="small muted" style="margin:0">Um preço por aluno por ano${S.me?.billing && P.ecole ? ` (${esc(P.ecole)}, mínimo de 100 alunos)` : ""} : todos os professores que entram na escola estão incluídos, com 2 provas por mês por turma, e a direção vê todas as turmas.</p>
       <div class="row"><button class="btn sm primary" id="et-new">Criar</button></div></div></details><div class="status" id="et-st"></div></section>`;
   if (e.role === "membre") return `<section class="panel grid" style="max-width:640px"><h3>Plano escola</h3>
-    <p class="small" style="margin:0"><b>${esc(e.nom)}</b>${e.payeProfs && e.actif ? " · sua assinatura Pro é custeada" : ""}</p><p class="small muted" style="margin:0">A direção pode consultar as turmas, provas e resultados do seu espaço.</p>
+    <p class="small" style="margin:0"><b>${esc(e.nom)}</b>${e.actif ? " · sua assinatura está coberta" : ""}</p><p class="small muted" style="margin:0">A direção pode consultar as turmas, provas e resultados do seu espaço.</p>
     <div class="row"><button class="btn sm ghost" id="et-quit">Sair da escola</button></div><div class="status" id="et-st"></div></section>`;
   const ab = e.abonnement;
   return `<section class="panel grid" style="max-width:640px"><h3>Plano escola · direção ${e.actif ? `<span class="chip ok" style="vertical-align:middle">Ativo</span>` : `<span class="chip warn" style="vertical-align:middle">Não pago</span>`}</h3>
     <p class="small" style="margin:0"><b>${esc(e.nom)}</b> · código para passar aos professores: <b style="font-family:var(--mono,monospace);letter-spacing:.08em">${esc(e.code)}</b></p>
     <div class="form-row"><div class="field"><label for="et-el">Número de alunos</label><input id="et-el" type="number" min="1" value="${e.eleves || ""}"></div>
-      <label class="row small" style="gap:6px;align-self:end"><input type="checkbox" id="et-pay" style="width:auto"${e.payeProfs ? " checked" : ""}> Pagar o Pro de todos os professores</label></div>
+      <p class="small muted" style="margin:0;align-self:end">${P.ecole ? esc(P.ecole) + " · " : ""}todos os professores estão incluídos.</p></div>
     <div class="row"><button class="btn sm" id="et-save">Salvar</button>${S.me?.billing ? (ab && ["active","trialing","past_due"].includes(ab.status) ? `<button class="btn sm" id="et-portal">Gerenciar a assinatura da escola</button>` : `<button class="btn sm primary" id="et-pay-go">Pagar o plano escola</button>`) : ""}</div>
     ${ab?.fin ? `<p class="small muted" style="margin:0">${ab.annule ? "Termina" : "Renovação"} le ${frDate(ab.fin.slice(0, 10))}.</p>` : ""}
     <div><b class="small">Professores (${(e.membres || []).length})</b>${(e.membres || []).map(m => `<div class="item"><div><div class="t">${esc(m.nom)}</div><div class="s">${esc(m.email)}</div></div><button class="btn sm ghost" data-etout="${m.id}">Remover</button></div>`).join("") || `<p class="small muted">Nenhum professor por enquanto: passe o código para eles.</p>`}</div>
@@ -2972,15 +3003,16 @@ document.addEventListener("click", async ev => {
   const t = ev.target.closest("button"); if (!t) return; const d = t.dataset;
   const say = (id, m) => { const el = $("#" + id); if (el) el.textContent = m; else toast(m); };
   try {
+    if (t.id === "bil-extra"){ t.disabled = true; say("bil-st", "Abrindo o pagamento seguro…"); const j = await api("/api/billing/extra", {method:"POST", body:JSON.stringify({n:1})}); location.href = j.url; return; }
     if (d.buy){ t.disabled = true; say("bil-st", "Abrindo o pagamento seguro…"); const j = await api("/api/billing/checkout", {method:"POST", body:JSON.stringify({plan:d.buy, periode:d.per})}); location.href = j.url; return; }
     if (t.id === "bil-portal" || t.id === "et-portal"){ t.disabled = true; const j = await api("/api/billing/portal", {method:"POST", body:JSON.stringify({etab:t.id === "et-portal"})}); location.href = j.url; return; }
     if (t.id === "ref-copy"){ const v = $("#ref-link").value; try { await navigator.clipboard.writeText(v); } catch(e){ $("#ref-link").select(); document.execCommand("copy"); } toast("Link copiado"); return; }
     if (t.id === "et-join"){ const code = $("#et-code").value.trim(); if (!code){ toast("Digite o código fornecido pela direção da escola."); $("#et-code").focus(); return; } await api("/api/etab/rejoindre", {method:"POST", body:JSON.stringify({code})}); toast("Você entrou na escola"); return refreshMe(); }
-    if (t.id === "et-new"){ await api("/api/etab/creer", {method:"POST", body:JSON.stringify({nom:$("#et-nom").value, eleves:+$("#et-el").value || 0, payeProfs:$("#et-pay").checked})}); toast("Escola criada: passe o código para seus professores"); return refreshMe(); }
-    if (t.id === "et-save"){ await api("/api/etab/reglages", {method:"POST", body:JSON.stringify({eleves:+$("#et-el").value || 0, payeProfs:$("#et-pay").checked})}); toast("Salvo"); return refreshMe(); }
+    if (t.id === "et-new"){ await api("/api/etab/creer", {method:"POST", body:JSON.stringify({nom:$("#et-nom").value, eleves:+$("#et-el").value || 0, payeProfs:true})}); toast("Escola criada: passe o código para seus professores"); return refreshMe(); }
+    if (t.id === "et-save"){ await api("/api/etab/reglages", {method:"POST", body:JSON.stringify({eleves:+$("#et-el").value || 0})}); toast("Salvo"); return refreshMe(); }
     if (d.etout){ if (!confirm("Remover este professor da escola?")) return; await api("/api/etab/reglages", {method:"POST", body:JSON.stringify({retirer:d.etout})}); return refreshMe(); }
     if (t.id === "et-quit"){ if (!confirm(S.me?.etab?.role === "direction" ? "Excluir esta escola?" : "Sair da escola?")) return; await api("/api/etab/quitter", {method:"POST"}); return refreshMe(); }
-    if (t.id === "et-pay-go"){ t.disabled = true; await api("/api/etab/reglages", {method:"POST", body:JSON.stringify({eleves:+$("#et-el").value || 0, payeProfs:$("#et-pay").checked})}); const j = await api("/api/billing/etab", {method:"POST"}); location.href = j.url; return; }
+    if (t.id === "et-pay-go"){ t.disabled = true; await api("/api/etab/reglages", {method:"POST", body:JSON.stringify({eleves:+$("#et-el").value || 0})}); const j = await api("/api/billing/etab", {method:"POST"}); location.href = j.url; return; }
     if (d.ugift){ await api("/api/users/" + d.ugift, {method:"PATCH", body:JSON.stringify({offrirMois:1})}); await loadUsers(); toast("1 mês grátis"); return render(); }
   } catch(e){ t.disabled = false; say(t.id?.startsWith("et") || d.etout ? "et-st" : "bil-st", e.message || "Erro"); }
 });

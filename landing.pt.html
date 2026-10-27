@@ -179,13 +179,14 @@ section{padding:130px 0;position:relative}
 
 /* Forfaits */
 [data-on]{display:none}html.bill [data-on]{display:revert}html.bill [data-off]{display:none}
-.plans{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px}
+.plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:18px}
 .plan{background:#FDFCF8;border:1px solid var(--line);border-radius:18px;padding:38px 34px;display:flex;flex-direction:column;gap:16px;transition:transform .7s var(--ease),box-shadow .7s var(--ease)}
 .plan:hover{transform:translateY(-6px);box-shadow:0 34px 60px -40px rgba(21,35,63,.45)}
 .plan.pro{background:var(--navy);color:var(--paper);border-color:var(--navy)}
 .plan h3{font-size:30px;font-weight:600}
-.price{font-family:var(--serif);font-size:44px;font-weight:600;line-height:1}
-.price small{font-family:var(--sans);font-size:14px;font-weight:500;opacity:.65;margin-left:8px}
+.price{font-family:var(--serif);font-size:clamp(32px,3vw,44px);white-space:nowrap;font-weight:600;line-height:1}
+.price.small-price{font-size:24px;line-height:1.15;white-space:normal}
+.price small{font-family:var(--sans);font-size:14px;font-weight:500;opacity:.65;margin-left:4px}
 .per{font-size:13px;opacity:.7;margin-top:-6px}
 .plan ul{list-style:none;margin:6px 0 10px;padding:0;display:grid;gap:10px;font-size:15px}
 .plan li{display:grid;grid-template-columns:18px 1fr;gap:10px;opacity:.85}
@@ -401,42 +402,55 @@ footer{background:#101828}
 
 <section id="forfaits">
   <div class="wrap">
-    <div class="sec-h"><div class="kicker rv">Planos</div><h2 class="rv" data-off style="--d:.1s">Grátis durante a beta</h2><p class="rv" data-off style="--d:.2s">Escolha seu plano no cadastro. Nenhum pagamento é cobrado durante a fase beta.</p><h2 class="rv" data-on style="--d:.1s">Um mês grátis, depois uma assinatura simples</h2><p class="rv" data-on style="--d:.2s">Todo o plano Pro fica liberado durante o teste, sem cartão de crédito. Depois, você escolhe seu plano, que pode ser cancelado a qualquer momento.</p></div>
+    <div class="sec-h"><div class="kicker rv">Planos</div><h2 class="rv" data-off style="--d:.1s">Grátis durante a beta</h2><p class="rv" data-off style="--d:.2s">Escolha seu plano no cadastro. Nenhum pagamento é cobrado durante a fase beta.</p><h2 class="rv" data-on style="--d:.1s">Um mês grátis, depois o plano ideal para você</h2><p class="rv" data-on style="--d:.2s">O plano Completo fica aberto durante o teste, sem cartão. Uma prova conta quando as folhas são impressas; reimpressões e recuperações não contam. Cancele quando quiser.</p></div>
     <div class="plans">
       <div class="plan rv">
-        <h3>Essencial</h3>
-        <div class="price" data-off>0 €<small>durante a beta</small></div><div class="price" data-on data-prix="essentiel"></div><div class="per" data-on>Preço anual: <span data-prix="essentielAn"></span></div>
+        <h3>Descoberta</h3>
+        <div class="price" data-off>0 €<small>durante a beta</small></div><div class="price" data-on data-prix="decouverte"></div>
+        <div class="per">1 turma · 2 provas por mês<span data-on> · anual <span data-prix="decouverteAn"></span></span></div>
         <ul>
           <li>Provas geradas a partir das suas aulas</li>
           <li>Folhas por aluno com QR code</li>
           <li>Digitalização, leitura da letra e correção</li>
-          <li>Visão da turma e acompanhamento dos alunos</li>
-          <li>Recuperações individuais</li>
+          <li>Visão da turma e recuperações individuais</li>
         </ul>
-        <a class="btn ghost" href="/app#/inscription/essentiel">Escolher Essencial</a>
+        <a class="btn ghost" href="/app#/inscription/decouverte">Escolher Descoberta</a>
       </div>
       <div class="plan pro rv" style="--d:.1s">
-        <h3>Pro</h3>
-        <div class="price" data-off>0 €<small>durante a beta</small></div><div class="price" data-on data-prix="pro"></div><div class="per" data-on>Preço anual: <span data-prix="proAn"></span></div>
+        <h3>Essencial</h3>
+        <div class="price" data-off>0 €<small>durante a beta</small></div><div class="price" data-on data-prix="essentiel"></div>
+        <div class="per">Até 3 turmas · 6 provas por mês<span data-on> · anual <span data-prix="essentielAn"></span></span></div>
         <ul>
-          <li>Tudo do plano Essencial</li>
+          <li>Tudo do plano Descoberta</li>
           <li>Exercícios on-line tirados das suas aulas</li>
-          <li>Novas questões a cada tentativa</li>
           <li>Acesso do aluno por código pessoal e acompanhamento por conteúdo</li>
         </ul>
-        <a class="btn" href="/app#/inscription/pro">Escolher Pro</a>
+        <a class="btn" href="/app#/inscription/essentiel">Escolher Essencial</a>
       </div>
       <div class="plan rv" style="--d:.2s">
-        <h3>Escola</h3>
-        <div class="price" data-off>0 €<small>durante a beta</small></div><div class="price" data-on><span data-prix="ecole"></span></div>
+        <h3>Completo</h3>
+        <div class="price" data-off>0 €<small>durante a beta</small></div><div class="price" data-on data-prix="complet"></div>
+        <div class="per">Até 6 turmas · 12 provas por mês<span data-on> · anual <span data-prix="completAn"></span></span></div>
         <ul>
+          <li>Tudo do plano Essencial</li>
+          <li>Para professores com várias turmas</li>
+          <li>Provas extras avulsas se precisar</li>
+        </ul>
+        <a class="btn ghost" href="/app#/inscription/complet">Escolher Completo</a>
+      </div>
+      <div class="plan rv" style="--d:.3s">
+        <h3>Escola</h3>
+        <div class="price" data-off>0 €<small>durante a beta</small></div><div class="price small-price" data-on><span data-prix="ecole"></span></div>
+        <div class="per">Todos os professores incluídos · mínimo de 100 alunos</div>
+        <ul>
+          <li>2 provas por mês por turma</li>
           <li>Visão da direção sobre todas as turmas</li>
-          <li>Resultados, recuperações e alunos com dificuldade por disciplina</li>
           <li>Os professores entram na escola com um código</li>
-          <li>Opção: a escola paga o Pro de todos os seus professores</li>
+          <li>Fatura anual</li>
         </ul>
         <a class="btn ghost" href="/app#/inscription">Criar a conta da direção</a>
       </div>
+    </div>
     </div>
     <p class="referral rv" data-on><b>Indicação:</b> convide um colega com seu link. Ele ganha um mês de teste a mais, e você um mês grátis assim que ele assinar.</p>
   </div>
@@ -480,7 +494,7 @@ footer{background:#101828}
 </footer>
 <script src="/config.js"></script>
 <script>(function(){ var c = window.TIKOUN_CONFIG || {}; if (!c.billing) return; document.documentElement.classList.add("bill");
-  var p = c.prix || {}; document.querySelectorAll("[data-prix]").forEach(function(e){ var v = p[e.getAttribute("data-prix")]; if (v) e.textContent = v; }); })();</script>
+  var p = c.prix || {}; document.querySelectorAll("[data-prix]").forEach(function(e){ var v = p[e.getAttribute("data-prix")]; if (!v) return; var m = e.closest(".price") && !e.closest(".small-price") && v.match(/^(.*?)(\/.*)$/); if (m){ e.textContent = m[1]; var u = document.createElement("small"); u.textContent = m[2]; e.appendChild(u); } else e.textContent = v; }); })();</script>
 <script>
 (function(){
   var nav = document.getElementById("nav"), prog = document.getElementById("prog");

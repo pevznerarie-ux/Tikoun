@@ -4,7 +4,7 @@ S.auth = null; S.me = null; S.scope = "moi"; S.users = [];
 const isAdmin = () => S.me?.role === "admin";
 const canEx = () => !window.TIKOUN_CONFIG?.accounts || !!S.me?.can?.exercices;
 const lockChip = () => `<span class="chip" title="Feuilles d'exercices régénérables et scannables : abonnement Pro + option activée par la direction">🔒 Option Exercices</span>`;
-const PLAN = {essentiel:"Essentiel", pro:"Pro"};
+const PLAN = {decouverte:"Découverte", essentiel:"Essentiel", complet:"Complet", pro:"Complet"};
 const isBoss = () => isAdmin() || (S.me?.etab?.role === "direction" && S.me?.etab?.actif);
 function scopeCtrls(all){ if (!S.me || (isBoss() && S.scope === "ecole")) return all; return all.filter(c => !c.owner || c.owner === S.me.id); }
 function applyScope(){ store.controles = scopeCtrls(store.allCtrl || []); store.cours = scopeCours(store.allCours || store.cours); store.classes = scopeClasses(store.allClasses || store.classes || []); }
@@ -58,9 +58,9 @@ function vAuth(){
     <h3 style="margin-top:6px">Ton établissement</h3>
     ${ecoleWidget()}
     <div class="field"><label>En-tête de tes contrôles et exercices</label>${affRadios(S.regAff)}</div>
-    <h3 style="margin-top:6px">Ton forfait <span class="chip ok" style="vertical-align:middle">Bêta gratuite</span></h3>
-    <div class="form-row">${[["essentiel","Essentiel","Contrôles générés par l'IA, feuilles avec QR code, scan et correction des copies, vue classe, rattrapages individuels."],["pro","Pro","Tout Essentiel + exercices en ligne : quiz régénérables, accès élève par code, suivi par notion."]].map(([k, t, d]) => `<label class="panel" style="padding:12px;cursor:pointer;display:grid;gap:4px;${(S.regPlan || "essentiel") === k ? "border-color:var(--blue);box-shadow:0 0 0 2px var(--blue-soft)" : ""}"><span class="row" style="gap:8px"><input type="radio" style="width:auto" name="plan" data-plan="${k}"${(S.regPlan || "essentiel") === k ? " checked" : ""}><b>${t}</b></span><span class="small muted">${d}</span></label>`).join("")}</div>
-    <p class="small muted" style="margin:0">Pendant la bêta, les deux forfaits sont gratuits : aucun paiement n'est demandé. Ton inscription sera validée par l'équipe Mastery.</p>
+    <h3 style="margin-top:6px">Ton forfait <span class="chip ok" style="vertical-align:middle">${CFG().billing ? "1 mois gratuit" : "Bêta gratuite"}</span></h3>
+    <div class="tiers">${["decouverte", "essentiel", "complet"].map(k => `<label class="tier${(S.regPlan || "essentiel") === k ? " sel" : ""}" style="cursor:pointer"><span class="row" style="gap:8px"><input type="radio" name="plan" style="width:auto;margin:0" data-plan="${k}"${(S.regPlan || "essentiel") === k ? " checked" : ""}><b>${PLAN[k]}</b></span>${CFG().billing && CFG().prix?.[k] ? `<div class="tier-p">${esc(CFG().prix[k])}</div>` : ""}<span class="small muted">${TIER_TXT[k]}</span></label>`).join("")}</div>
+    <p class="small muted" style="margin:0">${CFG().billing ? "Tu commences par un mois d'essai gratuit sur le forfait Complet, sans carte bancaire : tu choisiras ton forfait à la fin de l'essai. Ton inscription sera validée par l'équipe Mastery." : "Pendant la bêta, tous les forfaits sont gratuits : aucun paiement n'est demandé. Ton inscription sera validée par l'équipe Mastery."}</p>
     <label class="small" style="display:flex;gap:8px;align-items:flex-start;cursor:pointer"><input type="checkbox" id="rg-cgu" style="width:auto;margin-top:3px" ${S.regCgu ? "checked" : ""}><span>J'accepte les <a href="/cgu" target="_blank" rel="noopener" style="color:var(--gold)">conditions d'utilisation</a> et la <a href="/confidentialite" target="_blank" rel="noopener" style="color:var(--gold)">politique de confidentialité</a>. Je m'engage à informer les familles de l'utilisation de Mastery pour mes classes.</span></label>
     <div class="row"><button class="btn primary" id="rg-go">Envoyer ma demande d'inscription</button><button class="btn ghost" id="rg-back">J'ai déjà un compte</button></div><div class="status" id="au-st"></div></section>`;
   return `<div class="auth"><section class="auth-card">
@@ -86,7 +86,7 @@ async function afterLogin(user, mustChange){
 }
 async function bootAccounts(){
   try { const j = await api("/api/me"); await afterLogin(j.user, !!j.user?.mustChange); }
-  catch(e){ S.auth = e.status === 401 && e.setup ? "setup" : /^#\/inscription/.test(location.hash) && window.TIKOUN_CONFIG?.signup ? "register" : "login"; if (S.auth === "register"){ const pl = location.hash.split("/")[2]; if (pl === "pro" || pl === "essentiel") S.regPlan = pl; S.ecFor = "reg"; S.ec = {q:"", cp:"", res:null, sel:null, manual:false, busy:false, err:""}; } refreshCaps(); render(); }
+  catch(e){ S.auth = e.status === 401 && e.setup ? "setup" : /^#\/inscription/.test(location.hash) && window.TIKOUN_CONFIG?.signup ? "register" : "login"; if (S.auth === "register"){ const pl = location.hash.split("/")[2]; if (["decouverte", "essentiel", "complet"].includes(pl)) S.regPlan = pl; else if (pl === "pro") S.regPlan = "complet"; S.ecFor = "reg"; S.ec = {q:"", cp:"", res:null, sel:null, manual:false, busy:false, err:""}; } refreshCaps(); render(); }
 }
 
 /* Mon compte */
@@ -238,21 +238,32 @@ function billBanner(){
   if (a.mode === "essai" && joursRest(a.fin) <= 7) return `<p class="banner">Essai gratuit : ${joursRest(a.fin)} ${JRS}. <a href="#/compte" class="btn sm">Voir les abonnements</a></p>`;
   return "";
 }
+/* Compteur du mois : contrôles imprimés et classes, selon le forfait */
+function quotaHtml(){
+  const q = S.me?.quota; if (!q || q.illimite) return "";
+  const r = q.ctrl ? Math.min(1, q.used / q.ctrl) : 1, left = Math.max(0, q.ctrl - q.used);
+  return `<div class="quota"><div class="row between"><b>${q.used} / ${q.ctrl} ${q.ctrl > 1 ? "contrôles" : "contrôle"} ce mois-ci</b><span class="small muted">${left > 1 ? left + " restants" : left === 1 ? "1 restant" : "crédit épuisé"}</span></div>
+    <div class="qbar"><i style="width:${Math.round(r * 100)}%" class="${r >= 1 ? "full" : r >= .5 ? "half" : ""}"></i></div>
+    ${q.classes != null ? `<div class="small muted">Classes : ${(store.allClasses || store.classes).filter(c => c.createdBy === S.me?.id).length} / ${q.classes}</div>` : `<div class="small muted">2 contrôles par mois et par classe.</div>`}</div>`;
+}
+const TIER_TXT = {decouverte:"1 classe · 2 contrôles par mois", essentiel:"Jusqu'à 3 classes · 6 contrôles par mois · exercices en ligne", complet:"Jusqu'à 6 classes · 12 contrôles par mois · exercices en ligne"};
 function abonnementPanel(){
   const a = S.me?.acces || {}, P = CFG().prix || {};
-  if (!S.me?.billing || a.mode === "beta") return `<section class="panel grid" style="max-width:640px"><h3>Mon abonnement <span class="chip ok" style="vertical-align:middle">Bêta gratuite</span></h3><p class="small muted" style="margin:0">Pendant la bêta, tout est gratuit. Tu seras prévenu avant l'ouverture des abonnements.</p></section>`;
+  if (!S.me?.billing || a.mode === "beta") return `<section class="panel grid" style="max-width:640px"><h3>Mon abonnement <span class="chip ok" style="vertical-align:middle">Bêta gratuite</span></h3><p class="small muted" style="margin:0">Pendant la bêta, tout est gratuit et illimité. Tu seras prévenu avant l'ouverture des abonnements.</p></section>`;
   if (a.mode === "inclus") return `<section class="panel grid" style="max-width:640px"><h3>Mon abonnement</h3><p class="small muted" style="margin:0">Ton compte est inclus dans l'accès de ton établissement.</p></section>`;
-  if (a.mode === "ecole") return `<section class="panel grid" style="max-width:640px"><h3>Mon abonnement <span class="chip ok" style="vertical-align:middle">Pro</span></h3><p class="small muted" style="margin:0">Payé par ton établissement : ${esc(a.ecole || "")}.</p></section>`;
+  if (a.mode === "ecole") return `<section class="panel grid" style="max-width:640px"><h3>Mon abonnement <span class="chip ok" style="vertical-align:middle">Établissement</span></h3><p class="small muted" style="margin:0">Payé par ton établissement : ${esc(a.ecole || "")}.</p>${quotaHtml()}</section>`;
+  const extra = P.controle ? `<button class="btn sm" id="bil-extra">Ajouter un contrôle · ${esc(P.controle)}</button>` : "";
   if (a.mode === "abonne") return `<section class="panel grid" style="max-width:640px"><h3>Mon abonnement <span class="chip ok" style="vertical-align:middle">${PLAN[a.plan] || ""}</span></h3>
-    <p class="small muted" style="margin:0">${a.status === "past_due" ? "⚠ Le dernier paiement a échoué : mets à jour ta carte. " : ""}${a.annule ? "Se termine le " : "Prochain renouvellement le "}${a.fin ? frDate(a.fin.slice(0, 10)) : "—"}.</p>
-    <div class="row"><button class="btn" id="bil-portal">Gérer mon abonnement (carte, factures, résiliation)</button></div><div class="status" id="bil-st"></div></section>`;
-  const card = (k, t, d, m, an) => `<div class="panel" style="padding:14px;display:grid;gap:6px"><div class="row" style="justify-content:space-between"><b>${t}</b><span class="small muted">${esc(m)} · ou ${esc(an)}</span></div>
-    <div class="small muted">${d}</div><div class="row"><button class="btn sm primary" data-buy="${k}" data-per="mois">${esc(m)}</button><button class="btn sm" data-buy="${k}" data-per="an">${esc(an)}</button></div></div>`;
-  return `<section class="panel grid" style="max-width:640px"><h3>Mon abonnement ${a.mode === "essai" ? `<span class="chip ok" style="vertical-align:middle">Essai gratuit · ${joursRest(a.fin)} ${JRS}</span>` : `<span class="chip bad" style="vertical-align:middle">Essai terminé</span>`}</h3>
-    <p class="small muted" style="margin:0">${a.mode === "essai" ? `Pendant l'essai, tout le forfait Pro est ouvert, jusqu'au ${frDate(a.fin.slice(0, 10))}. Si tu t'abonnes maintenant, le premier paiement n'a lieu qu'à la fin de l'essai.` : "Tes données sont conservées. Choisis un abonnement pour continuer à créer, scanner et corriger."}</p>
-    <div class="form-row">${card("essentiel", "Essentiel", "Contrôles par l'IA, feuilles avec QR code, scan et correction, rattrapages, suivi.", P.essentiel || "", P.essentielAn || "")}
-      ${card("pro", "Pro", "Tout Essentiel + quiz en ligne pour les élèves, accès par code, suivi par notion.", P.pro || "", P.proAn || "")}</div>
-    <p class="small muted" style="margin:0">Paiement sécurisé par Stripe. Résiliable à tout moment.</p><div class="status" id="bil-st"></div></section>`;
+    <p class="small muted" style="margin:0">${TIER_TXT[a.plan] || ""}. ${a.status === "past_due" ? "⚠ Le dernier paiement a échoué : mets à jour ta carte. " : ""}${a.annule ? "Se termine le " : "Prochain renouvellement le "}${a.fin ? frDate(a.fin.slice(0, 10)) : "—"}.</p>
+    ${quotaHtml()}
+    <div class="row">${extra}<button class="btn sm" id="bil-portal">Changer de forfait, carte, factures</button></div><div class="status" id="bil-st"></div></section>`;
+  const card = k => `<div class="tier${k === "essentiel" ? " best" : ""}"><b>${PLAN[k]}</b><div class="tier-p">${esc(P[k] || "")}</div><div class="small muted">${TIER_TXT[k]}</div>
+    <div class="grid" style="gap:6px;margin-top:auto"><button class="btn sm ${k === "essentiel" ? "primary" : ""}" data-buy="${k}" data-per="mois">Mensuel</button><button class="btn sm ghost" data-buy="${k}" data-per="an">Annuel · ${esc(P[k + "An"] || "")}</button></div></div>`;
+  return `<section class="panel grid" style="max-width:760px"><h3>Mon abonnement ${a.mode === "essai" ? `<span class="chip ok" style="vertical-align:middle">Essai gratuit · ${joursRest(a.fin)} ${JRS}</span>` : `<span class="chip bad" style="vertical-align:middle">Essai terminé</span>`}</h3>
+    <p class="small muted" style="margin:0">${a.mode === "essai" ? `Pendant l'essai, le forfait Complet est ouvert jusqu'au ${frDate(a.fin.slice(0, 10))}. Si tu t'abonnes maintenant, le premier paiement n'a lieu qu'à la fin de l'essai.` : "Tes données sont conservées. Choisis un forfait pour continuer à créer, scanner et corriger."}</p>
+    ${a.mode === "essai" ? quotaHtml() : ""}
+    <div class="tiers">${["decouverte", "essentiel", "complet"].map(card).join("")}</div>
+    <p class="small muted" style="margin:0">Un contrôle compte quand ses feuilles sont imprimées ; réimpressions et rattrapages ne comptent pas. Annuel : 2 mois offerts. Paiement sécurisé par Stripe, résiliable à tout moment.</p><div class="status" id="bil-st"></div></section>`;
 }
 function parrainagePanel(){
   if (!S.me?.ref) return ""; const link = location.origin + "/?ref=" + S.me.ref, st = S.me.parrainage || {};
@@ -269,17 +280,16 @@ function etabPanel(){
     <details><summary class="small" style="cursor:pointer">Tu es la direction ? Créer le forfait établissement</summary>
       <div class="grid" style="margin-top:10px"><div class="form-row"><div class="field"><label for="et-nom">Nom de l'établissement</label><input id="et-nom" value="${esc(S.me?.ecole?.nom || "")}"></div>
         <div class="field"><label for="et-el">Nombre d'élèves</label><input id="et-el" type="number" min="1" inputmode="numeric"></div></div>
-      <label class="row small" style="gap:6px"><input type="checkbox" id="et-pay" style="width:auto"> L'établissement paie aussi l'abonnement Pro de tous ses professeurs</label>
-      <p class="small muted" style="margin:0">Le forfait établissement ouvre la vue direction sur toutes les classes des professeurs qui le rejoignent${S.me?.billing && P.ecole ? ` (${esc(P.ecole)})` : ""}. Il est indépendant des abonnements des professeurs.</p>
+      <p class="small muted" style="margin:0">Un prix par élève et par an${S.me?.billing && P.ecole ? ` (${esc(P.ecole)}, 100 élèves au minimum)` : ""} : tous les professeurs qui rejoignent l'établissement sont inclus, avec 2 contrôles par mois et par classe, et la direction voit toutes les classes.</p>
       <div class="row"><button class="btn sm primary" id="et-new">Créer</button></div></div></details><div class="status" id="et-st"></div></section>`;
   if (e.role === "membre") return `<section class="panel grid" style="max-width:640px"><h3>Forfait établissement</h3>
-    <p class="small" style="margin:0"><b>${esc(e.nom)}</b>${e.payeProfs && e.actif ? " · ton abonnement Pro est pris en charge" : ""}</p><p class="small muted" style="margin:0">La direction peut consulter les classes, contrôles et résultats de ton espace.</p>
+    <p class="small" style="margin:0"><b>${esc(e.nom)}</b>${e.actif ? " · ton abonnement est pris en charge" : ""}</p><p class="small muted" style="margin:0">La direction peut consulter les classes, contrôles et résultats de ton espace.</p>
     <div class="row"><button class="btn sm ghost" id="et-quit">Quitter l'établissement</button></div><div class="status" id="et-st"></div></section>`;
   const ab = e.abonnement;
   return `<section class="panel grid" style="max-width:640px"><h3>Forfait établissement · direction ${e.actif ? `<span class="chip ok" style="vertical-align:middle">Actif</span>` : `<span class="chip warn" style="vertical-align:middle">Non payé</span>`}</h3>
     <p class="small" style="margin:0"><b>${esc(e.nom)}</b> · code à donner aux professeurs : <b style="font-family:var(--mono,monospace);letter-spacing:.08em">${esc(e.code)}</b></p>
     <div class="form-row"><div class="field"><label for="et-el">Nombre d'élèves</label><input id="et-el" type="number" min="1" value="${e.eleves || ""}"></div>
-      <label class="row small" style="gap:6px;align-self:end"><input type="checkbox" id="et-pay" style="width:auto"${e.payeProfs ? " checked" : ""}> Payer le Pro de tous les professeurs</label></div>
+      <p class="small muted" style="margin:0;align-self:end">${P.ecole ? esc(P.ecole) + " · " : ""}tous les professeurs sont inclus.</p></div>
     <div class="row"><button class="btn sm" id="et-save">Enregistrer</button>${S.me?.billing ? (ab && ["active","trialing","past_due"].includes(ab.status) ? `<button class="btn sm" id="et-portal">Gérer l'abonnement de l'établissement</button>` : `<button class="btn sm primary" id="et-pay-go">Payer le forfait établissement</button>`) : ""}</div>
     ${ab?.fin ? `<p class="small muted" style="margin:0">${ab.annule ? "Se termine" : "Renouvellement"} le ${frDate(ab.fin.slice(0, 10))}.</p>` : ""}
     <div><b class="small">Professeurs (${(e.membres || []).length})</b>${(e.membres || []).map(m => `<div class="item"><div><div class="t">${esc(m.nom)}</div><div class="s">${esc(m.email)}</div></div><button class="btn sm ghost" data-etout="${m.id}">Retirer</button></div>`).join("") || `<p class="small muted">Aucun professeur pour l'instant : donne-leur le code.</p>`}</div>
@@ -290,17 +300,18 @@ document.addEventListener("click", async ev => {
   const t = ev.target.closest("button"); if (!t) return; const d = t.dataset;
   const say = (id, m) => { const el = $("#" + id); if (el) el.textContent = m; else toast(m); };
   try {
+    if (t.id === "bil-extra"){ t.disabled = true; say("bil-st", "Ouverture du paiement sécurisé…"); const j = await api("/api/billing/extra", {method:"POST", body:JSON.stringify({n:1})}); location.href = j.url; return; }
     if (d.buy){ t.disabled = true; say("bil-st", "Ouverture du paiement sécurisé…"); const j = await api("/api/billing/checkout", {method:"POST", body:JSON.stringify({plan:d.buy, periode:d.per})}); location.href = j.url; return; }
     if (t.id === "bil-portal" || t.id === "et-portal"){ t.disabled = true; const j = await api("/api/billing/portal", {method:"POST", body:JSON.stringify({etab:t.id === "et-portal"})}); location.href = j.url; return; }
     if (t.id === "ref-copy"){ const v = $("#ref-link").value; try { await navigator.clipboard.writeText(v); } catch(e){ $("#ref-link").select(); document.execCommand("copy"); } toast("Lien copié"); return; }
     if (t.id === "et-join"){ const code = $("#et-code").value.trim(); if (!code){ toast("Entre le code donné par ta direction."); $("#et-code").focus(); return; } await api("/api/etab/rejoindre", {method:"POST", body:JSON.stringify({code})}); toast("Établissement rejoint"); return refreshMe(); }
-    if (t.id === "et-new"){ await api("/api/etab/creer", {method:"POST", body:JSON.stringify({nom:$("#et-nom").value, eleves:+$("#et-el").value || 0, payeProfs:$("#et-pay").checked})}); toast("Établissement créé : donne le code à tes professeurs"); return refreshMe(); }
-    if (t.id === "et-save"){ await api("/api/etab/reglages", {method:"POST", body:JSON.stringify({eleves:+$("#et-el").value || 0, payeProfs:$("#et-pay").checked})}); toast("Enregistré"); return refreshMe(); }
+    if (t.id === "et-new"){ await api("/api/etab/creer", {method:"POST", body:JSON.stringify({nom:$("#et-nom").value, eleves:+$("#et-el").value || 0, payeProfs:true})}); toast("Établissement créé : donne le code à tes professeurs"); return refreshMe(); }
+    if (t.id === "et-save"){ await api("/api/etab/reglages", {method:"POST", body:JSON.stringify({eleves:+$("#et-el").value || 0})}); toast("Enregistré"); return refreshMe(); }
     if (d.etout){ if (!confirm("Retirer ce professeur de l'établissement ?")) return; await api("/api/etab/reglages", {method:"POST", body:JSON.stringify({retirer:d.etout})}); return refreshMe(); }
     if (t.id === "et-quit"){ if (!confirm(S.me?.etab?.role === "direction" ? "Supprimer cet établissement ?" : "Quitter l'établissement ?")) return; await api("/api/etab/quitter", {method:"POST"}); return refreshMe(); }
-    if (t.id === "et-pay-go"){ t.disabled = true; await api("/api/etab/reglages", {method:"POST", body:JSON.stringify({eleves:+$("#et-el").value || 0, payeProfs:$("#et-pay").checked})}); const j = await api("/api/billing/etab", {method:"POST"}); location.href = j.url; return; }
+    if (t.id === "et-pay-go"){ t.disabled = true; await api("/api/etab/reglages", {method:"POST", body:JSON.stringify({eleves:+$("#et-el").value || 0})}); const j = await api("/api/billing/etab", {method:"POST"}); location.href = j.url; return; }
     if (d.ugift){ await api("/api/users/" + d.ugift, {method:"PATCH", body:JSON.stringify({offrirMois:1})}); await loadUsers(); toast("1 mois offert"); return render(); }
   } catch(e){ t.disabled = false; say(t.id?.startsWith("et") || d.etout ? "et-st" : "bil-st", e.message || "Erreur"); }
 });
 if (/paiement=ok/.test(location.hash)) setTimeout(() => { toast("Merci ! Ton abonnement est en cours d'activation."); history.replaceState(null, "", "#/compte"); setTimeout(refreshMe, 2500); }, 1500);
-const accesLabel = u => { const a = u.acces || {}; return a.mode === "essai" ? `Essai · ${joursRest(a.fin)} ${JRS}` : a.mode === "abonne" ? `Abonné ${PLAN[a.plan] || ""}` : a.mode === "ecole" ? "Payé par l'école" : a.mode === "expire" ? "Essai terminé" : a.mode === "inclus" ? "Inclus" : "Bêta"; };
+const accesLabel = u => { const a = u.acces || {}; return a.mode === "essai" ? `Essai · ${joursRest(a.fin)} ${JRS}` : a.mode === "abonne" ? `Abonné ${PLAN[a.plan] || ""}` : a.mode === "ecole" ? "Payé par l'établissement" : a.mode === "expire" ? "Essai terminé" : a.mode === "inclus" ? "Inclus" : "Bêta"; };

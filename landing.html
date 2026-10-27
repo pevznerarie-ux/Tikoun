@@ -179,13 +179,14 @@ section{padding:130px 0;position:relative}
 
 /* Forfaits */
 [data-on]{display:none}html.bill [data-on]{display:revert}html.bill [data-off]{display:none}
-.plans{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px}
+.plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:18px}
 .plan{background:#FDFCF8;border:1px solid var(--line);border-radius:18px;padding:38px 34px;display:flex;flex-direction:column;gap:16px;transition:transform .7s var(--ease),box-shadow .7s var(--ease)}
 .plan:hover{transform:translateY(-6px);box-shadow:0 34px 60px -40px rgba(21,35,63,.45)}
 .plan.pro{background:var(--navy);color:var(--paper);border-color:var(--navy)}
 .plan h3{font-size:30px;font-weight:600}
-.price{font-family:var(--serif);font-size:44px;font-weight:600;line-height:1}
-.price small{font-family:var(--sans);font-size:14px;font-weight:500;opacity:.65;margin-left:8px}
+.price{font-family:var(--serif);font-size:clamp(32px,3vw,44px);white-space:nowrap;font-weight:600;line-height:1}
+.price.small-price{font-size:24px;line-height:1.15;white-space:normal}
+.price small{font-family:var(--sans);font-size:14px;font-weight:500;opacity:.65;margin-left:4px}
 .per{font-size:13px;opacity:.7;margin-top:-6px}
 .plan ul{list-style:none;margin:6px 0 10px;padding:0;display:grid;gap:10px;font-size:15px}
 .plan li{display:grid;grid-template-columns:18px 1fr;gap:10px;opacity:.85}
@@ -401,42 +402,55 @@ footer{background:#101828}
 
 <section id="forfaits">
   <div class="wrap">
-    <div class="sec-h"><div class="kicker rv">Forfaits</div><h2 class="rv" data-off style="--d:.1s">Gratuit pendant la bêta</h2><p class="rv" data-off style="--d:.2s">Choisissez votre forfait à l'inscription. Aucun paiement n'est demandé pendant la phase bêta.</p><h2 class="rv" data-on style="--d:.1s">Un mois gratuit, puis un abonnement simple</h2><p class="rv" data-on style="--d:.2s">Tout le forfait Pro est ouvert pendant l'essai, sans carte bancaire. Ensuite, vous choisissez votre forfait, résiliable à tout moment.</p></div>
+    <div class="sec-h"><div class="kicker rv">Forfaits</div><h2 class="rv" data-off style="--d:.1s">Gratuit pendant la bêta</h2><p class="rv" data-off style="--d:.2s">Choisissez votre forfait à l'inscription. Aucun paiement n'est demandé pendant la phase bêta.</p><h2 class="rv" data-on style="--d:.1s">Un mois gratuit, puis le forfait qui vous va</h2><p class="rv" data-on style="--d:.2s">Le forfait Complet est ouvert pendant l'essai, sans carte bancaire. Un contrôle compte quand ses feuilles sont imprimées ; réimpressions et rattrapages ne comptent pas. Résiliable à tout moment.</p></div>
     <div class="plans">
       <div class="plan rv">
-        <h3>Essentiel</h3>
-        <div class="price" data-off>0 €<small>pendant la bêta</small></div><div class="price" data-on data-prix="essentiel"></div><div class="per" data-on>Tarif annuel : <span data-prix="essentielAn"></span></div>
+        <h3>Découverte</h3>
+        <div class="price" data-off>0 €<small>pendant la bêta</small></div><div class="price" data-on data-prix="decouverte"></div>
+        <div class="per">1 classe · 2 contrôles par mois<span data-on> · annuel <span data-prix="decouverteAn"></span></span></div>
         <ul>
           <li>Contrôles générés à partir de vos cours</li>
           <li>Feuilles par élève avec QR code</li>
           <li>Scan, lecture de l'écriture et correction</li>
-          <li>Vue de la classe et suivi des élèves</li>
-          <li>Rattrapages individuels</li>
+          <li>Vue de la classe et rattrapages individuels</li>
         </ul>
-        <a class="btn ghost" href="/app#/inscription/essentiel">Choisir Essentiel</a>
+        <a class="btn ghost" href="/app#/inscription/decouverte">Choisir Découverte</a>
       </div>
       <div class="plan pro rv" style="--d:.1s">
-        <h3>Pro</h3>
-        <div class="price" data-off>0 €<small>pendant la bêta</small></div><div class="price" data-on data-prix="pro"></div><div class="per" data-on>Tarif annuel : <span data-prix="proAn"></span></div>
+        <h3>Essentiel</h3>
+        <div class="price" data-off>0 €<small>pendant la bêta</small></div><div class="price" data-on data-prix="essentiel"></div>
+        <div class="per">Jusqu'à 3 classes · 6 contrôles par mois<span data-on> · annuel <span data-prix="essentielAn"></span></span></div>
         <ul>
-          <li>Tout le forfait Essentiel</li>
+          <li>Tout le forfait Découverte</li>
           <li>Exercices en ligne tirés de vos cours</li>
-          <li>Nouvelles questions à chaque tentative</li>
           <li>Accès élève par code personnel et suivi par notion</li>
         </ul>
-        <a class="btn" href="/app#/inscription/pro">Choisir Pro</a>
+        <a class="btn" href="/app#/inscription/essentiel">Choisir Essentiel</a>
       </div>
       <div class="plan rv" style="--d:.2s">
-        <h3>Établissement</h3>
-        <div class="price" data-off>0 €<small>pendant la bêta</small></div><div class="price" data-on><span data-prix="ecole"></span></div>
+        <h3>Complet</h3>
+        <div class="price" data-off>0 €<small>pendant la bêta</small></div><div class="price" data-on data-prix="complet"></div>
+        <div class="per">Jusqu'à 6 classes · 12 contrôles par mois<span data-on> · annuel <span data-prix="completAn"></span></span></div>
         <ul>
+          <li>Tout le forfait Essentiel</li>
+          <li>Pour les professeurs qui ont plusieurs classes</li>
+          <li>Contrôle supplémentaire à l'unité si besoin</li>
+        </ul>
+        <a class="btn ghost" href="/app#/inscription/complet">Choisir Complet</a>
+      </div>
+      <div class="plan rv" style="--d:.3s">
+        <h3>Établissement</h3>
+        <div class="price" data-off>0 €<small>pendant la bêta</small></div><div class="price small-price" data-on><span data-prix="ecole"></span></div>
+        <div class="per">Tous les professeurs inclus · 100 élèves minimum</div>
+        <ul>
+          <li>2 contrôles par mois et par classe</li>
           <li>Vue direction sur toutes les classes</li>
-          <li>Résultats, rattrapages et élèves en difficulté par matière</li>
           <li>Les professeurs rejoignent l'établissement avec un code</li>
-          <li>Option : l'établissement paie le Pro de tous ses professeurs</li>
+          <li>Facture annuelle</li>
         </ul>
         <a class="btn ghost" href="/app#/inscription">Créer le compte direction</a>
       </div>
+    </div>
     </div>
     <p class="referral rv" data-on><b>Parrainage :</b> invitez un collègue avec votre lien. Il a un mois d'essai en plus, et vous un mois offert dès qu'il s'abonne.</p>
   </div>
@@ -480,7 +494,7 @@ footer{background:#101828}
 </footer>
 <script src="/config.js"></script>
 <script>(function(){ var c = window.TIKOUN_CONFIG || {}; if (!c.billing) return; document.documentElement.classList.add("bill");
-  var p = c.prix || {}; document.querySelectorAll("[data-prix]").forEach(function(e){ var v = p[e.getAttribute("data-prix")]; if (v) e.textContent = v; }); })();</script>
+  var p = c.prix || {}; document.querySelectorAll("[data-prix]").forEach(function(e){ var v = p[e.getAttribute("data-prix")]; if (!v) return; var m = e.closest(".price") && !e.closest(".small-price") && v.match(/^(.*?)(\/.*)$/); if (m){ e.textContent = m[1]; var u = document.createElement("small"); u.textContent = m[2]; e.appendChild(u); } else e.textContent = v; }); })();</script>
 <script>
 (function(){
   var nav = document.getElementById("nav"), prog = document.getElementById("prog");
