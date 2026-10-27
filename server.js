@@ -6,7 +6,7 @@
 //   ANTHROPIC_API_KEY : clé IA de l'école
 //   MASTERY_CODE      : code de l'établissement, demandé UNE fois pour créer le premier compte administrateur
 //                       (l'ancienne variable TIKOUN_CODE reste acceptée)
-//   AI_BUDGET_USER_DAY : budget IA par professeur et par jour, en dollars (défaut 8 ; ×5 pour l'administrateur)
+//   AI_BUDGET_PER_CTRL : filet de sécurité IA par mois, en dollars par contrôle du forfait (défaut 3) ; AI_BUDGET_USER_MONTH pour les comptes sans forfait (défaut 60, ×5 administrateur)
 //   AI_BUDGET_DAY      : budget IA total par jour, en dollars (défaut 150)
 //   AI_MAX_PER_USER_DAY, AI_MAX_PER_DAY : plafonds d'appels (garde-fou supplémentaire)
 //   FILE_RETENTION_DAYS : durée de conservation des images de copies (défaut 400 jours)
@@ -31,7 +31,7 @@ function send(res, status, body, type = "text/plain; charset=utf-8", extra = {})
   res.writeHead(status, {"Content-Type":type, ...SEC_HEADERS, ...extra}); res.end(body);
 }
 /* Langue : cookie « lang » (fr / en), sinon en-tête du navigateur. Messages d'erreur traduits pour l'anglais. */
-const EN_MSG = {"Indique le nom de l'école et sa ville":"Enter the school's name and city", "8 caractères minimum":"8 characters minimum","ANTHROPIC_API_KEY manquante sur le serveur":"ANTHROPIC_API_KEY is missing on the server",
+const EN_MSG = {"Tu as utilisé tous les contrôles de ton forfait ce mois-ci : ajoute un contrôle ou passe au forfait supérieur dans Mon compte.":"You have used all the tests in your plan this month: add a test or upgrade your plan in My account.", "Ton forfait ne permet pas plus de classes : passe au forfait supérieur dans Mon compte.":"Your plan doesn't allow more classes: upgrade your plan in My account.", "Plafond mensuel de l'IA atteint pour ton compte : écris à l'équipe Mastery si tu en as besoin.":"Monthly AI limit reached for your account: contact the Mastery team if you need more.", "Contrôle introuvable":"Test not found", "Indique le nom de l'école et sa ville":"Enter the school's name and city", "8 caractères minimum":"8 characters minimum","ANTHROPIC_API_KEY manquante sur le serveur":"ANTHROPIC_API_KEY is missing on the server",
  "Annuaire officiel injoignable pour le moment : tu peux enregistrer ton école manuellement.":"School directory unavailable right now: you can enter your school manually.",
  "Ce compte existe déjà":"This account already exists","Ce document appartient à un autre professeur":"This document belongs to another teacher","Ce quiz est fermé":"This quiz is closed",
  "Chemin invalide":"Invalid path","Code de l'établissement incorrect":"Incorrect setup code","Code inconnu : vérifie ta carte":"Unknown code: check your card","Compte désactivé":"Account disabled",
@@ -50,7 +50,7 @@ const EN_MSG = {"Indique le nom de l'école et sa ville":"Enter the school's nam
  "Indique le nom de l'école, son code postal (5 chiffres) et sa ville":"Enter the school's name, ZIP code (5 digits) and city",
  "Nom de base invalide (format : auteur/nom)":"Invalid dataset name (format: author/name)","Hugging Face injoignable pour le moment":"Hugging Face is unreachable right now","Cette base n'a pas de colonne image + texte":"This dataset has no image + text columns","Appareil inconnu":"Unknown device","Trop de pages d'un coup : attends une minute":"Too many pages at once: wait a minute","Format accepté : JPEG, PNG ou PDF":"Accepted formats: JPEG, PNG or PDF","Fichier vide":"Empty file","Plafond quotidien d'appels IA atteint.":"Daily AI limit reached.","Plafond quotidien d'appels IA atteint pour ton compte : réessaie demain.":"Your daily AI limit is reached: try again tomorrow.",
  "Trop d'appels IA depuis cet appareil : réessaie dans une heure.":"Too many AI requests from this device: try again in an hour."};
-const PT_MSG = {"Indique le nom de l'école et sa ville": "Informe o nome da escola e a cidade", "Appareil inconnu": "Aparelho desconhecido", "Trop de pages d'un coup : attends une minute": "Páginas demais de uma vez: espere um minuto", "Format accepté : JPEG, PNG ou PDF": "Formatos aceitos: JPEG, PNG ou PDF", "Fichier vide": "Arquivo vazio", "Nom de base invalide (format : auteur/nom)": "Nome de base inválido (formato: autor/nome)", "Hugging Face injoignable pour le moment": "Hugging Face indisponível no momento", "Cette base n'a pas de colonne image + texte": "Esta base não tem colunas de imagem + texto", "8 caractères minimum": "Mínimo de 8 caracteres", "ANTHROPIC_API_KEY manquante sur le serveur": "ANTHROPIC_API_KEY ausente no servidor", "Annuaire officiel injoignable pour le moment : tu peux enregistrer ton école manuellement.": "Diretório oficial de escolas indisponível no momento: você pode cadastrar sua escola manualmente.", "Ce compte existe déjà": "Esta conta já existe", "Ce document appartient à un autre professeur": "Este documento pertence a outro professor", "Ce quiz est fermé": "Este quiz está encerrado", "Chemin invalide": "Caminho inválido", "Code de l'établissement incorrect": "Código da escola incorreto", "Code inconnu : vérifie ta carte": "Código desconhecido: confira o seu cartão", "Compte désactivé": "Conta desativada", "Compte introuvable": "Conta não encontrada", "Connexion requise": "É necessário entrar na sua conta", "Document introuvable": "Documento não encontrado", "Définis la variable MASTERY_CODE sur le serveur": "Defina a variável MASTERY_CODE no servidor", "E-mail invalide": "E-mail inválido", "E-mail ou mot de passe incorrect": "E-mail ou senha incorretos", "E-mail valide et mot de passe de 8 caractères minimum": "Informe um e-mail válido e uma senha com no mínimo 8 caracteres", "Exercices en ligne : forfait Pro avec l'option Exercices": "Exercícios on-line: exigem o plano Pro com o complemento Exercícios", "IA injoignable": "Serviço de IA indisponível", "Impossible sur ton propre compte": "Não é possível na sua própria conta", "Indique ton nom": "Informe o seu nome", "Le compte administrateur existe déjà": "A conta de administrador já existe", "Les inscriptions sont fermées": "As inscrições estão encerradas", "Mot de passe : 8 caractères minimum": "Senha: mínimo de 8 caracteres", "Mot de passe actuel incorrect": "Senha atual incorreta", "Mot de passe provisoire : 8 caractères minimum": "Senha provisória: mínimo de 8 caracteres", "Objet JSON attendu": "Era esperado um objeto JSON", "Option Exercices non activée pour ce compte (abonnement Pro)": "Complemento Exercícios não ativado para esta conta (assinatura Pro)", "Question invalide": "Questão inválida", "Quiz introuvable": "Quiz não encontrado", "Requête invalide": "Requisição inválida", "Route inconnue": "Rota desconhecida", "Réservé à l'administrateur": "Exclusivo para o administrador", "Session de quiz expirée : recommence": "Sessão do quiz expirada: comece de novo", "Ton inscription est en attente de validation par l'équipe Mastery. Tu pourras te connecter dès qu'elle sera acceptée.": "Sua inscrição está aguardando aprovação da equipe Mastery. Você poderá entrar assim que ela for aceita.", "Ton inscription n'a pas été acceptée. Contacte l'équipe Mastery.": "Sua inscrição não foi aceita. Entre em contato com a equipe Mastery.", "Trop d'essais : réessaie dans 15 minutes": "Muitas tentativas: tente novamente em 15 minutos", "Trop d'essais, réessaie dans 15 minutes": "Muitas tentativas: tente novamente em 15 minutos", "Trop de recherches, réessaie dans quelques minutes": "Muitas buscas: tente novamente em alguns minutos", "Tu ne peux pas te retirer tes propres droits": "Você não pode remover os seus próprios direitos de administrador", "Un compte existe déjà avec cet e-mail": "Já existe uma conta com este e-mail", "Indique ton école": "Informe a sua escola", "École invalide": "Escola inválida", "Trop lourd": "Arquivo grande demais", "Ton essai gratuit est terminé : choisis un abonnement dans Mon compte pour continuer.": "Seu teste grátis terminou: escolha uma assinatura em Minha conta para continuar.", "Tu fais déjà partie d'un établissement": "Você já faz parte de uma escola", "Indique le nom de l'établissement": "Informe o nome da escola", "Code d'établissement inconnu": "Código de escola desconhecido", "Résilie d'abord l'abonnement de l'établissement": "Cancele primeiro a assinatura da escola", "Réservé à la direction de l'établissement": "Exclusivo para a direção da escola", "Le paiement n'est pas encore ouvert : la bêta est gratuite": "O pagamento ainda não está disponível: a versão beta é gratuita", "Tarif non configuré sur le serveur": "Preço não configurado no servidor", "Tu as déjà un abonnement : gère-le avec « Gérer mon abonnement »": "Você já tem uma assinatura: gerencie-a em “Gerenciar minha assinatura”", "L'établissement a déjà un abonnement": "A escola já tem uma assinatura", "Indique le nombre d'élèves de l'établissement": "Informe o número de alunos da escola", "Aucun abonnement à gérer": "Nenhuma assinatura para gerenciar", "Paiement indisponible pour le moment : réessaie dans un instant.": "Pagamento indisponível no momento: tente novamente em instantes.", "Accepte les conditions d'utilisation et la politique de confidentialité": "Aceite os termos de uso e a política de privacidade", "Indique le nom de l'école, son code postal (5 chiffres) et sa ville": "Informe o nome da escola, o código postal (5 dígitos) e a cidade", "Plafond quotidien d'appels IA atteint.": "Limite diário de uso da IA atingido.", "Plafond quotidien d'appels IA atteint pour ton compte : réessaie demain.": "Sua conta atingiu o limite diário de uso da IA: tente novamente amanhã.", "Trop d'appels IA depuis cet appareil : réessaie dans une heure.": "Muitas solicitações de IA a partir deste dispositivo: tente novamente em uma hora."};
+const PT_MSG = {"Tu as utilisé tous les contrôles de ton forfait ce mois-ci : ajoute un contrôle ou passe au forfait supérieur dans Mon compte.": "Você usou todas as provas do seu plano neste mês: adicione uma prova ou mude para o plano superior em Minha conta.", "Ton forfait ne permet pas plus de classes : passe au forfait supérieur dans Mon compte.": "Seu plano não permite mais turmas: mude para o plano superior em Minha conta.", "Plafond mensuel de l'IA atteint pour ton compte : écris à l'équipe Mastery si tu en as besoin.": "Limite mensal de IA atingido para sua conta: escreva para a equipe Mastery se precisar.", "Contrôle introuvable": "Prova não encontrada", "Indique le nom de l'école et sa ville": "Informe o nome da escola e a cidade", "Appareil inconnu": "Aparelho desconhecido", "Trop de pages d'un coup : attends une minute": "Páginas demais de uma vez: espere um minuto", "Format accepté : JPEG, PNG ou PDF": "Formatos aceitos: JPEG, PNG ou PDF", "Fichier vide": "Arquivo vazio", "Nom de base invalide (format : auteur/nom)": "Nome de base inválido (formato: autor/nome)", "Hugging Face injoignable pour le moment": "Hugging Face indisponível no momento", "Cette base n'a pas de colonne image + texte": "Esta base não tem colunas de imagem + texto", "8 caractères minimum": "Mínimo de 8 caracteres", "ANTHROPIC_API_KEY manquante sur le serveur": "ANTHROPIC_API_KEY ausente no servidor", "Annuaire officiel injoignable pour le moment : tu peux enregistrer ton école manuellement.": "Diretório oficial de escolas indisponível no momento: você pode cadastrar sua escola manualmente.", "Ce compte existe déjà": "Esta conta já existe", "Ce document appartient à un autre professeur": "Este documento pertence a outro professor", "Ce quiz est fermé": "Este quiz está encerrado", "Chemin invalide": "Caminho inválido", "Code de l'établissement incorrect": "Código da escola incorreto", "Code inconnu : vérifie ta carte": "Código desconhecido: confira o seu cartão", "Compte désactivé": "Conta desativada", "Compte introuvable": "Conta não encontrada", "Connexion requise": "É necessário entrar na sua conta", "Document introuvable": "Documento não encontrado", "Définis la variable MASTERY_CODE sur le serveur": "Defina a variável MASTERY_CODE no servidor", "E-mail invalide": "E-mail inválido", "E-mail ou mot de passe incorrect": "E-mail ou senha incorretos", "E-mail valide et mot de passe de 8 caractères minimum": "Informe um e-mail válido e uma senha com no mínimo 8 caracteres", "Exercices en ligne : forfait Pro avec l'option Exercices": "Exercícios on-line: exigem o plano Pro com o complemento Exercícios", "IA injoignable": "Serviço de IA indisponível", "Impossible sur ton propre compte": "Não é possível na sua própria conta", "Indique ton nom": "Informe o seu nome", "Le compte administrateur existe déjà": "A conta de administrador já existe", "Les inscriptions sont fermées": "As inscrições estão encerradas", "Mot de passe : 8 caractères minimum": "Senha: mínimo de 8 caracteres", "Mot de passe actuel incorrect": "Senha atual incorreta", "Mot de passe provisoire : 8 caractères minimum": "Senha provisória: mínimo de 8 caracteres", "Objet JSON attendu": "Era esperado um objeto JSON", "Option Exercices non activée pour ce compte (abonnement Pro)": "Complemento Exercícios não ativado para esta conta (assinatura Pro)", "Question invalide": "Questão inválida", "Quiz introuvable": "Quiz não encontrado", "Requête invalide": "Requisição inválida", "Route inconnue": "Rota desconhecida", "Réservé à l'administrateur": "Exclusivo para o administrador", "Session de quiz expirée : recommence": "Sessão do quiz expirada: comece de novo", "Ton inscription est en attente de validation par l'équipe Mastery. Tu pourras te connecter dès qu'elle sera acceptée.": "Sua inscrição está aguardando aprovação da equipe Mastery. Você poderá entrar assim que ela for aceita.", "Ton inscription n'a pas été acceptée. Contacte l'équipe Mastery.": "Sua inscrição não foi aceita. Entre em contato com a equipe Mastery.", "Trop d'essais : réessaie dans 15 minutes": "Muitas tentativas: tente novamente em 15 minutos", "Trop d'essais, réessaie dans 15 minutes": "Muitas tentativas: tente novamente em 15 minutos", "Trop de recherches, réessaie dans quelques minutes": "Muitas buscas: tente novamente em alguns minutos", "Tu ne peux pas te retirer tes propres droits": "Você não pode remover os seus próprios direitos de administrador", "Un compte existe déjà avec cet e-mail": "Já existe uma conta com este e-mail", "Indique ton école": "Informe a sua escola", "École invalide": "Escola inválida", "Trop lourd": "Arquivo grande demais", "Ton essai gratuit est terminé : choisis un abonnement dans Mon compte pour continuer.": "Seu teste grátis terminou: escolha uma assinatura em Minha conta para continuar.", "Tu fais déjà partie d'un établissement": "Você já faz parte de uma escola", "Indique le nom de l'établissement": "Informe o nome da escola", "Code d'établissement inconnu": "Código de escola desconhecido", "Résilie d'abord l'abonnement de l'établissement": "Cancele primeiro a assinatura da escola", "Réservé à la direction de l'établissement": "Exclusivo para a direção da escola", "Le paiement n'est pas encore ouvert : la bêta est gratuite": "O pagamento ainda não está disponível: a versão beta é gratuita", "Tarif non configuré sur le serveur": "Preço não configurado no servidor", "Tu as déjà un abonnement : gère-le avec « Gérer mon abonnement »": "Você já tem uma assinatura: gerencie-a em “Gerenciar minha assinatura”", "L'établissement a déjà un abonnement": "A escola já tem uma assinatura", "Indique le nombre d'élèves de l'établissement": "Informe o número de alunos da escola", "Aucun abonnement à gérer": "Nenhuma assinatura para gerenciar", "Paiement indisponible pour le moment : réessaie dans un instant.": "Pagamento indisponível no momento: tente novamente em instantes.", "Accepte les conditions d'utilisation et la politique de confidentialité": "Aceite os termos de uso e a política de privacidade", "Indique le nom de l'école, son code postal (5 chiffres) et sa ville": "Informe o nome da escola, o código postal (5 dígitos) e a cidade", "Plafond quotidien d'appels IA atteint.": "Limite diário de uso da IA atingido.", "Plafond quotidien d'appels IA atteint pour ton compte : réessaie demain.": "Sua conta atingiu o limite diário de uso da IA: tente novamente amanhã.", "Trop d'appels IA depuis cet appareil : réessaie dans une heure.": "Muitas solicitações de IA a partir deste dispositivo: tente novamente em uma hora."};
 const langOf = req => { const c = ((req.headers.cookie || "").match(/(?:^|;\s*)lang=(fr|en|pt)/) || [])[1]; if (c) return c; const h = String(req.headers["x-lang"] || ""); if (/^(fr|en|pt)$/.test(h)) return h; const al = String(req.headers["accept-language"] || ""); return /^en\b/i.test(al) ? "en" : /^pt\b/i.test(al) ? "pt" : "fr"; };
 const sendJ = (res, status, obj, extra) => { const DICT = res._lang === "en" ? EN_MSG : res._lang === "pt" ? PT_MSG : null; if (DICT && obj?.error?.message && DICT[obj.error.message]) obj = {...obj, error:{...obj.error, message:DICT[obj.error.message]}}; return send(res, status, JSON.stringify(obj), TYPES[".json"], extra); };
 const same = (a, b) => { const x = Buffer.from(String(a)), y = Buffer.from(String(b)); return x.length === y.length && crypto.timingSafeEqual(x, y); };
@@ -113,15 +113,15 @@ let sessTimer = null; const saveSess = () => { clearTimeout(sessTimer); sessTime
 const hashPw = (pw, salt = crypto.randomBytes(16).toString("hex")) => salt + ":" + crypto.scryptSync(String(pw), salt, 64).toString("hex");
 const checkPw = (pw, stored) => { const [salt, h] = String(stored || "").split(":"); if (!salt || !h) return false; return same(crypto.scryptSync(String(pw), salt, 64).toString("hex"), h); };
 /* Abonnements : « essentiel » (contrôles, correction, suivi) · « pro » (+ option Exercices, activée par la direction) */
-const PLANS = ["essentiel", "pro"];
-const entitled = u => { if (!u) return false; const a = access(u); if (a.mode === "essai" || a.mode === "ecole") return true; if (a.mode === "abonne") return a.plan === "pro"; if (!a.ok) return false; return u.plan === "pro" && !!u.options?.exercices; };
+const PLANS = ["decouverte", "essentiel", "complet", "pro"];
+const entitled = u => { if (!u) return false; const a = access(u); if (a.mode === "essai" || a.mode === "ecole") return true; if (a.mode === "abonne") return tierOf(a.plan) !== "decouverte"; if (!a.ok) return false; return u.plan === "pro" && !!u.options?.exercices; };
 const AFF = ["ecole", "nom", "les2"];
 /* Préférences du prof : mise en page par défaut des feuilles et style des questions générées */
 const PREF_Q = {format:["redige","mixte","qcm"], profondeur:["simple","standard","exigeant"], longueur:["courte","moyenne","developpee"]};
 const cleanPrefs = p => { const n = (v, a, b, d) => { v = +v; return v >= a && v <= b ? v : d; }, q = isObj(p.q) ? p.q : {};
   return {police:n(p.police, 13, 17, 15), lh:n(p.lh, 26, 38, 30), bareme:p.bareme !== false, consignes:String(p.consignes ?? "Écris uniquement dans les cadres.").slice(0, 400),
     q:Object.fromEntries(Object.entries(PREF_Q).map(([k, l]) => [k, l.includes(q[k]) ? q[k] : l[1]]).concat([["justif", q.justif !== false]]))}; };
-const pub = u => ({id:u.id, email:u.email, nom:u.nom, role:u.role, mustChange:!!u.mustChange, ecole:u.ecole || null, prefs:cleanPrefs(u.prefs || {}), matieres:u.matieres || [], enseigne:u.enseigne || [], affichage:AFF.includes(u.affichage) ? u.affichage : "les2", plan:u.plan || "essentiel", options:{exercices:!!u.options?.exercices}, can:{exercices:entitled(u)}, actif:u.actif !== false, statut:u.statut || "valide", planDemande:u.planDemande || null, createdAt:u.createdAt, bareme:u.bareme || null, partageEcriture:!!u.partageEcriture, espace:u.espace, ref:refCode(u), acces:access(u), billing:BILLING(), parrainage:refStats(u), etab:etabPub(groupOf(u), u), inscription:u.inscription || "admin"});
+const pub = u => ({id:u.id, email:u.email, nom:u.nom, role:u.role, mustChange:!!u.mustChange, ecole:u.ecole || null, prefs:cleanPrefs(u.prefs || {}), quota:quota(u), matieres:u.matieres || [], enseigne:u.enseigne || [], affichage:AFF.includes(u.affichage) ? u.affichage : "les2", plan:u.plan || "essentiel", options:{exercices:!!u.options?.exercices}, can:{exercices:entitled(u)}, actif:u.actif !== false, statut:u.statut || "valide", planDemande:u.planDemande || null, createdAt:u.createdAt, bareme:u.bareme || null, partageEcriture:!!u.partageEcriture, espace:u.espace, ref:refCode(u), acces:access(u), billing:BILLING(), parrainage:refStats(u), etab:etabPub(groupOf(u), u), inscription:u.inscription || "admin"});
 const sidOf = req => ((req.headers.cookie || "").match(/(?:^|;\s*)sid=([a-f0-9]{64})/) || [])[1] || "";
 const SESSION_DAYS = 30;
 function userOf(req){
@@ -155,9 +155,15 @@ const docsFor = u => Object.fromEntries([...DOCS].filter(([k, v]) => visible(u, 
    Les comptes créés par l'administrateur et l'administrateur lui-même restent inclus (établissement fondateur). */
 const BILLING = () => !!env("STRIPE_SECRET_KEY");
 const DAY = 864e5, TRIAL_DAYS = () => Number(env("TRIAL_DAYS")) || 30;
-const PRICE = () => ({essentiel_mois:env("STRIPE_PRICE_ESSENTIEL_MOIS"), essentiel_an:env("STRIPE_PRICE_ESSENTIEL_AN"), pro_mois:env("STRIPE_PRICE_PRO_MOIS"), pro_an:env("STRIPE_PRICE_PRO_AN"),
-  ecole:env("STRIPE_PRICE_ECOLE"), prof_ecole:env("STRIPE_PRICE_PROF_ECOLE") || env("STRIPE_PRICE_PRO_MOIS")});
-const planOfPrice = id => { const P = PRICE(); return id && (id === P.pro_mois || id === P.pro_an || id === P.prof_ecole) ? "pro" : id && (id === P.essentiel_mois || id === P.essentiel_an) ? "essentiel" : null; };
+/* Forfaits du prof par paliers : nombre de classes et de contrôles imprimés par mois.
+   Variables Stripe : STRIPE_PRICE_<DECOUVERTE|ESSENTIEL|COMPLET>_<MOIS|AN>, STRIPE_PRICE_CONTROLE (contrôle supplémentaire), STRIPE_PRICE_ECOLE (par élève et par an) ;
+   suffixe _BRL pour les prix en reais (site en portugais). Les anciens forfaits « essentiel » et « pro » restent reconnus (pro → complet). */
+const TIERS = {decouverte:{classes:1, ctrl:2}, essentiel:{classes:3, ctrl:6}, complet:{classes:6, ctrl:12}};
+const tierOf = plan => TIERS[plan] ? plan : plan === "pro" ? "complet" : "essentiel";
+const PRICE = (lang = "fr") => { const v = k => (lang === "pt" && env(k + "_BRL")) || env(k);
+  return {decouverte_mois:v("STRIPE_PRICE_DECOUVERTE_MOIS"), decouverte_an:v("STRIPE_PRICE_DECOUVERTE_AN"), essentiel_mois:v("STRIPE_PRICE_ESSENTIEL_MOIS"), essentiel_an:v("STRIPE_PRICE_ESSENTIEL_AN"),
+    complet_mois:v("STRIPE_PRICE_COMPLET_MOIS") || v("STRIPE_PRICE_PRO_MOIS"), complet_an:v("STRIPE_PRICE_COMPLET_AN") || v("STRIPE_PRICE_PRO_AN"), controle:v("STRIPE_PRICE_CONTROLE"), ecole:v("STRIPE_PRICE_ECOLE")}; };
+const planOfPrice = id => { if (!id) return null; for (const lang of ["fr", "pt"]){ const P = PRICE(lang); for (const t of Object.keys(TIERS)) if (id === P[t + "_mois"] || id === P[t + "_an"]) return t; } return null; };
 const LIVE = s => !!s && ["active", "trialing", "past_due"].includes(s.status);
 const GROUPES_F = path.join(DATA, "etablissements.json"); let GROUPES = readJ(GROUPES_F, [], true);
 const saveGroupes = () => writeAtomic(GROUPES_F, GROUPES);
@@ -169,13 +175,31 @@ function access(u){
   if (!u) return {ok:false, mode:"aucun"};
   if (!BILLING()) return {ok:true, mode:"beta"};
   if (u.role === "admin" || u.inscription !== "libre") return {ok:true, mode:"inclus"};
-  const g = groupOf(u); if (g && g.payeProfs && LIVE(g.sub)) return {ok:true, mode:"ecole", plan:"pro", ecole:g.nom};
-  if (LIVE(u.sub)) return {ok:true, mode:"abonne", plan:u.sub.plan || "essentiel", status:u.sub.status, fin:u.sub.fin || null, annule:!!u.sub.annule};
+  const g = groupOf(u); if (g && LIVE(g.sub)) return {ok:true, mode:"ecole", plan:"complet", ecole:g.nom};
+  if (LIVE(u.sub)) return {ok:true, mode:"abonne", plan:tierOf(u.sub.plan), status:u.sub.status, fin:u.sub.fin || null, annule:!!u.sub.annule};
   if (!u.trialEnd && (u.statut || "valide") === "valide"){ u.trialEnd = new Date(Date.now() + (TRIAL_DAYS() + (u.referredBy ? 30 : 0)) * DAY).toISOString(); saveUsers(); }
   const fin = Math.max(Date.parse(u.trialEnd || 0) || 0, Date.parse(u.freeUntil || 0) || 0);
-  if (fin > Date.now()) return {ok:true, mode:"essai", plan:"pro", fin:new Date(fin).toISOString()};
+  if (fin > Date.now()) return {ok:true, mode:"essai", plan:"complet", fin:new Date(fin).toISOString()};
   return {ok:false, mode:"expire", fin:new Date(fin).toISOString()};
 }
+/* Prix affichés (site public, inscription, Mon compte), modifiables par PRICE_LABEL_<CLÉ>[_EN|_PT] */
+const PRIX_DEF = {fr:{decouverte:"7 €/mois", essentiel:"12 €/mois", complet:"19 €/mois", decouverteAn:"70 €/an", essentielAn:"120 €/an", completAn:"190 €/an", controle:"2 €", ecole:"6 € HT par élève et par an"},
+  en:{decouverte:"$8/month", essentiel:"$13/month", complet:"$20/month", decouverteAn:"$80/year", essentielAn:"$130/year", completAn:"$200/year", controle:"$2", ecole:"$7 per student per year"},
+  pt:{decouverte:"R$29,90/mês", essentiel:"R$54,90/mês", complet:"R$89,90/mês", decouverteAn:"R$299/ano", essentielAn:"R$549/ano", completAn:"R$899/ano", controle:"R$9,90", ecole:"R$25 por aluno por ano"}};
+const prixLabels = lang => { const L = lang === "pt" || lang === "en" ? lang : "fr", sfx = L === "fr" ? "" : "_" + L.toUpperCase();
+  return Object.fromEntries(Object.entries(PRIX_DEF[L]).map(([k, v]) => [k, env("PRICE_LABEL_" + k.replace(/An$/, "_AN").toUpperCase() + sfx) || v])); };
+const ECOLE_MIN = () => Number(env("ECOLE_MIN_ELEVES")) || 100;
+const MOIS = () => new Date().toISOString().slice(0, 7);
+const classesOf = u => [...DOCS].filter(([k, v]) => k.startsWith("classes/") && isObj(v) && v.createdBy === u.id).length;
+/* Ce que le forfait permet ce mois-ci : null = illimité (bêta, comptes inclus) */
+function quota(u){
+  const a = access(u); if (!BILLING() || a.mode === "inclus" || a.mode === "beta" || !a.ok) return {illimite:true, mode:a.mode};
+  const c = u.credits?.[MOIS()] || {}, used = (c.ids || []).length, extra = c.extra || 0;
+  if (a.mode === "ecole") return {illimite:false, mode:a.mode, plan:"ecole", classes:null, ctrl:2 * Math.max(1, classesOf(u)) + extra, used};
+  const t = TIERS[tierOf(a.plan)]; return {illimite:false, mode:a.mode, plan:tierOf(a.plan), classes:t.classes, ctrl:t.ctrl + extra, used};
+}
+const QUOTA_MSG = "Tu as utilisé tous les contrôles de ton forfait ce mois-ci : ajoute un contrôle ou passe au forfait supérieur dans Mon compte.";
+const CLASSES_MSG = "Ton forfait ne permet pas plus de classes : passe au forfait supérieur dans Mon compte.";
 const refStats = u => { const f = USERS.filter(v => v.referredBy === u.id); return {filleuls:f.length, payants:f.filter(v => v.refRewarded).length, mois:(u.refMonths || []).length}; };
 const NO_ACCESS = "Ton essai gratuit est terminé : choisis un abonnement dans Mon compte pour continuer.";
 
@@ -193,10 +217,10 @@ async function stripe(method, p, body){
 const baseUrl = req => (String(req.headers["x-forwarded-proto"] || "").includes("https") ? "https://" : "http://") + (req.headers["x-forwarded-host"] || req.headers.host);
 function applySub(s){
   const meta = s.metadata || {}, st = {id:s.id, status:s.status, customer:s.customer, fin:s.current_period_end ? new Date(s.current_period_end * 1000).toISOString() : null, annule:!!s.cancel_at_period_end};
-  if (meta.kind === "ecole"){ const g = GROUPES.find(x => x.id === meta.gid || x.sub?.id === s.id); if (!g) return; g.sub = st; saveGroupes(); if (LIVE(st) && g.payeProfs) stopOwnSubs(g); return; }
+  if (meta.kind === "ecole"){ const g = GROUPES.find(x => x.id === meta.gid || x.sub?.id === s.id); if (!g) return; g.sub = st; saveGroupes(); if (LIVE(st)) stopOwnSubs(g); return; }
   const u = USERS.find(x => x.id === meta.uid || x.sub?.id === s.id); if (!u) return;
-  u.sub = {...st, plan:planOfPrice(s.items?.data?.[0]?.price?.id) || meta.plan || "essentiel"};
-  if (LIVE(u.sub)){ u.plan = u.sub.plan; u.options = {...(u.options || {}), exercices:u.plan === "pro"}; }
+  u.sub = {...st, plan:planOfPrice(s.items?.data?.[0]?.price?.id) || tierOf(meta.plan)};
+  if (LIVE(u.sub)){ u.plan = u.sub.plan; u.options = {...(u.options || {}), exercices:u.plan !== "decouverte"}; }
   saveUsers();
 }
 /* L'établissement paie pour tous ses profs : les abonnements personnels s'arrêtent à la fin de la période en cours */
@@ -207,7 +231,7 @@ async function rewardReferral(u){
   if (!u || u.refRewarded || !u.referredBy) return; const par = USERS.find(x => x.id === u.referredBy); u.refRewarded = new Date().toISOString(); saveUsers(); if (!par) return;
   par.refMonths = (par.refMonths || []).filter(t => Date.now() - Date.parse(t) < 365 * DAY); if (par.refMonths.length >= 12) return saveUsers();
   par.refMonths.push(new Date().toISOString());
-  if (LIVE(par.sub) && par.sub.customer){ try { const pr = await stripe("GET", "/prices/" + (par.sub.plan === "pro" ? PRICE().pro_mois : PRICE().essentiel_mois));
+  if (LIVE(par.sub) && par.sub.customer){ try { const pr = await stripe("GET", "/prices/" + (PRICE()[tierOf(par.sub.plan) + "_mois"] || PRICE().essentiel_mois));
       await stripe("POST", `/customers/${par.sub.customer}/balance_transactions`, {amount:-(pr.unit_amount || 0), currency:pr.currency || "eur", description:"Parrainage Mastery : 1 mois offert"}); }
     catch(e){ console.warn("Parrainage (crédit Stripe)", e.message); } }
   else { const base = Math.max(Date.now(), Date.parse(par.trialEnd || 0) || 0, Date.parse(par.freeUntil || 0) || 0); par.freeUntil = new Date(base + 30 * DAY).toISOString(); }
@@ -221,7 +245,11 @@ async function stripeWebhook(req, res){
   let ev; try { ev = JSON.parse(raw.toString("utf8")); } catch(e){ return send(res, 400, "JSON invalide"); }
   const o = ev.data?.object || {};
   try {
-    if (ev.type === "checkout.session.completed" && o.subscription) applySub(await stripe("GET", "/subscriptions/" + o.subscription));
+    if (ev.type === "checkout.session.completed" && o.metadata?.kind === "extra" && o.payment_status === "paid"){
+      const u = USERS.find(x => x.id === o.metadata.uid), m = o.metadata.mois || MOIS(), n = Number(o.metadata.n) || 0;
+      const items = n || (await stripe("GET", `/checkout/sessions/${o.id}/line_items`).catch(() => null))?.data?.[0]?.quantity || 1;
+      if (u && !(u.extraSessions || []).includes(o.id)){ u.credits = u.credits || {}; u.credits[m] = {...(u.credits[m] || {}), extra:(u.credits[m]?.extra || 0) + items}; u.extraSessions = [...(u.extraSessions || []), o.id].slice(-50); saveUsers(); } }
+    else if (ev.type === "checkout.session.completed" && o.subscription) applySub(await stripe("GET", "/subscriptions/" + o.subscription));
     else if (/^customer\.subscription\./.test(ev.type)) applySub(o);
     else if (ev.type === "invoice.paid" && o.amount_paid > 0){ const u = USERS.find(x => x.sub?.customer === o.customer); if (u) await rewardReferral(u); }
   } catch(e){ console.warn("Webhook Stripe", ev.type, e.message); }
@@ -247,7 +275,7 @@ async function billingApi(req, res, url, p, u){
     if (groupOf(u)) return sendJ(res, 409, {error:{message:"Tu fais déjà partie d'un établissement"}});
     if (tooMany("etab:" + u.id)) return sendJ(res, 429, {error:{message:"Trop d'essais, réessaie dans 15 minutes"}});
     const g = GROUPES.find(x => x.code === String(b.code || "").trim().toUpperCase()); if (!g) return sendJ(res, 404, {error:{message:"Code d'établissement inconnu"}});
-    g.membres = [...new Set([...(g.membres || []), u.id])]; saveGroupes(); if (LIVE(g.sub) && g.payeProfs) stopOwnSubs(g);
+    g.membres = [...new Set([...(g.membres || []), u.id])]; saveGroupes(); if (LIVE(g.sub)) stopOwnSubs(g);
     if (BILLING() && LIVE(g.sub)) await syncEtab(g).catch(e => console.warn("Stripe sync", e.message));   // le nouveau prof est ajouté à la facture de l'établissement
     return sendJ(res, 200, {etab:etabPub(g, u)});
   }
@@ -264,9 +292,25 @@ async function billingApi(req, res, url, p, u){
     if (b.retirer) dg.membres = (dg.membres || []).filter(id => id !== b.retirer);
     saveGroupes(); if (BILLING() && LIVE(dg.sub)) await syncEtab(dg).catch(e => console.warn("Stripe sync", e.message)); return sendJ(res, 200, {etab:etabPub(dg, u)});
   }
+  if (p === "/api/billing/use" && req.method === "POST"){
+    const cid = String(b.ctrlId || "").slice(0, 40), c = DOCS.get("controles/" + cid); if (!cid || !c) return sendJ(res, 404, {error:{message:"Contrôle introuvable"}});
+    const q = quota(u); if (q.illimite || c.type === "rattrapage" || (u.printed || []).includes(cid)) return sendJ(res, 200, {quota:q});
+    if (q.used >= q.ctrl) return sendJ(res, 402, {error:{message:QUOTA_MSG, code:"quota"}, quota:q});
+    const m = MOIS(), unAn = (+m.slice(0, 4) - 1) + m.slice(4); u.credits = Object.fromEntries(Object.entries(u.credits || {}).filter(([k]) => k >= unAn));   // on garde un an d'historique
+    u.credits[m] = {...(u.credits[m] || {}), ids:[...(u.credits[m]?.ids || []), cid]}; u.printed = [...(u.printed || []), cid].slice(-500); saveUsers();
+    return sendJ(res, 200, {quota:quota(u)});
+  }
   if (!BILLING()) return sendJ(res, 400, {error:{message:"Le paiement n'est pas encore ouvert : la bêta est gratuite"}});
+  if (p === "/api/billing/extra" && req.method === "POST"){
+    const price = PRICE(res._lang).controle; if (!price) return sendJ(res, 503, {error:{message:"Tarif non configuré sur le serveur"}});
+    const n = Math.max(1, Math.min(10, +b.n || 1));
+    const s = await stripe("POST", "/checkout/sessions", {mode:"payment", client_reference_id:u.id, customer:u.sub?.customer || undefined, customer_email:u.sub?.customer ? undefined : u.email,
+      line_items:[{price, quantity:n}], locale:res._lang === "en" ? "en" : res._lang === "pt" ? "pt-BR" : "fr",
+      metadata:{kind:"extra", uid:u.id, mois:MOIS(), n}, success_url:baseUrl(req) + "/app#/compte?paiement=ok", cancel_url:baseUrl(req) + "/app#/compte"});
+    return sendJ(res, 200, {url:s.url});
+  }
   if (p === "/api/billing/checkout" && req.method === "POST"){
-    const plan = b.plan === "pro" ? "pro" : "essentiel", per = b.periode === "an" ? "an" : "mois", price = PRICE()[plan + "_" + per];
+    const plan = TIERS[b.plan] ? b.plan : "essentiel", per = b.periode === "an" ? "an" : "mois", price = PRICE(res._lang)[plan + "_" + per];
     if (!price) return sendJ(res, 503, {error:{message:"Tarif non configuré sur le serveur"}});
     if (LIVE(u.sub)) return sendJ(res, 409, {error:{message:"Tu as déjà un abonnement : gère-le avec « Gérer mon abonnement »"}});
     const a = access(u), fin = a.mode === "essai" ? Date.parse(a.fin) : 0;
@@ -279,8 +323,8 @@ async function billingApi(req, res, url, p, u){
   if (p === "/api/billing/etab" && req.method === "POST"){
     if (!dg) return sendJ(res, 403, {error:{message:"Réservé à la direction de l'établissement"}});
     if (LIVE(dg.sub)) return sendJ(res, 409, {error:{message:"L'établissement a déjà un abonnement"}});
-    if (!PRICE().ecole || !(dg.eleves > 0)) return sendJ(res, 400, {error:{message:"Indique le nombre d'élèves de l'établissement"}});
-    const items = [{price:PRICE().ecole, quantity:dg.eleves}]; if (dg.payeProfs && PRICE().prof_ecole) items.push({price:PRICE().prof_ecole, quantity:1 + (dg.membres || []).length});
+    if (!PRICE(res._lang).ecole || !(dg.eleves > 0)) return sendJ(res, 400, {error:{message:"Indique le nombre d'élèves de l'établissement"}});
+    const items = [{price:PRICE(res._lang).ecole, quantity:Math.max(ECOLE_MIN(), dg.eleves)}];
     const s = await stripe("POST", "/checkout/sessions", {mode:"subscription", client_reference_id:dg.id, customer_email:u.email, line_items:items, allow_promotion_codes:true, locale:res._lang === "en" ? "en" : res._lang === "pt" ? "pt-BR" : "fr",
       billing_address_collection:"required", tax_id_collection:{enabled:true}, subscription_data:{metadata:{kind:"ecole", gid:dg.id}},
       success_url:baseUrl(req) + "/app#/compte?paiement=ok", cancel_url:baseUrl(req) + "/app#/compte"});
@@ -294,13 +338,9 @@ async function billingApi(req, res, url, p, u){
 }
 /* Met à jour les quantités (élèves, profs) de l'abonnement de l'établissement */
 async function syncEtab(g){
-  const s = await stripe("GET", "/subscriptions/" + g.sub.id), P = PRICE();
-  for (const it of s.items?.data || []){
-    const q = it.price?.id === P.ecole ? g.eleves : it.price?.id === P.prof_ecole ? (g.payeProfs ? 1 + (g.membres || []).length : 0) : null;
-    if (q == null || q === it.quantity) continue;
-    if (q === 0) await stripe("DELETE", "/subscription_items/" + it.id); else await stripe("POST", "/subscription_items/" + it.id, {quantity:q});
-  }
-  if (g.payeProfs && P.prof_ecole && !(s.items?.data || []).some(it => it.price?.id === P.prof_ecole)) await stripe("POST", "/subscription_items", {subscription:s.id, price:P.prof_ecole, quantity:1 + (g.membres || []).length});
+  const s = await stripe("GET", "/subscriptions/" + g.sub.id), ids = [PRICE("fr").ecole, PRICE("pt").ecole].filter(Boolean);
+  for (const it of s.items?.data || []){ if (!ids.includes(it.price?.id)) continue; const q = Math.max(ECOLE_MIN(), g.eleves || 0);
+    if (q !== it.quantity) await stripe("POST", "/subscription_items/" + it.id, {quantity:q}); }
 }
 
 
@@ -461,6 +501,7 @@ async function storage(req, res, url, p, u){
       if (req.method === "DELETE"){ persist(dp, null); return sendJ(res, 200, {seq:SEQ}); }
       const body = await readJSON(req); if (!isObj(body)) return sendJ(res, 400, {error:{message:"Objet JSON attendu"}});
       const col = dp.split("/")[0], cur = DOCS.get(dp);
+      if (req.method === "PUT" && col === "classes" && !cur){ const q = quota(u); if (!q.illimite && q.classes != null && classesOf(u) >= q.classes) return sendJ(res, 402, {error:{message:CLASSES_MSG, code:"quota_classes"}}); }
       if (req.method === "PUT" && col === "quizzes" && !cur && !entitled(u))
         return sendJ(res, 403, {error:{message:"Exercices en ligne : forfait Pro avec l'option Exercices"}});
       if (req.method === "PUT" && col === "controles" && body.type === "exercices" && !cur && !entitled(u))
@@ -612,18 +653,21 @@ const USAGE_F = path.join(DATA, "ia-usage.json"); let USAGE = readJ(USAGE_F, {da
 let usageTimer = null; const saveUsage = () => { clearTimeout(usageTimer); usageTimer = setTimeout(() => writeAtomic(USAGE_F, USAGE), 1000); };
 const PRICES = {quick:[1, 5], default:[1, 5], complex:[3, 15]};   // dollars par million de jetons (entrée, sortie), modifiables par AI_PRICE_<NIVEAU>="entrée,sortie"
 const priceOf = tier => { const e = env("AI_PRICE_" + String(tier).toUpperCase()).split(",").map(Number); return e.length === 2 && e.every(x => x > 0) ? e : PRICES[tier] || PRICES.default; };
-const usageReset = () => { if (USAGE.day !== day()) USAGE = {day:day(), users:{}, total:0}; };
+const usageReset = () => { const m = new Date().toISOString().slice(0, 7), mois = USAGE.mois?.key === m ? USAGE.mois : {key:m, users:{}};
+  if (USAGE.day !== day()) USAGE = {day:day(), users:{}, total:0, mois}; else USAGE.mois = mois; };
 function budgetLeft(u){
   usageReset();
-  const cap = (Number(env("AI_BUDGET_USER_DAY")) || 8) * (u.role === "admin" ? 5 : 1), capAll = Number(env("AI_BUDGET_DAY")) || 150;
+  // Filet de sécurité caché, par mois : environ 3 fois le coût normal des contrôles du forfait (il ne gêne pas un usage normal)
+  const q = quota(u), capAll = Number(env("AI_BUDGET_DAY")) || 150;
+  const capM = q.illimite ? (Number(env("AI_BUDGET_USER_MONTH")) || 60) * (u.role === "admin" ? 5 : 1) : q.ctrl * (Number(env("AI_BUDGET_PER_CTRL")) || 3) + 2;
   if ((USAGE.total || 0) >= capAll) return "Plafond quotidien de l'IA atteint pour la plateforme : réessaie demain.";
-  if ((USAGE.users[u.id] || 0) >= cap) return "Plafond quotidien de l'IA atteint pour ton compte : réessaie demain.";
+  if ((USAGE.mois.users[u.id] || 0) >= capM) return "Plafond mensuel de l'IA atteint pour ton compte : écris à l'équipe Mastery si tu en as besoin.";
   return null;
 }
 function spend(u, tier, usage){
   if (!usage) return; usageReset(); const [pi, po] = priceOf(tier);
   const cost = ((usage.input_tokens || 0) + (usage.cache_creation_input_tokens || 0)) * pi / 1e6 + (usage.output_tokens || 0) * po / 1e6 + (usage.cache_read_input_tokens || 0) * pi * 0.1 / 1e6;
-  USAGE.users[u.id] = (USAGE.users[u.id] || 0) + cost; USAGE.total = (USAGE.total || 0) + cost; saveUsage();
+  USAGE.users[u.id] = (USAGE.users[u.id] || 0) + cost; USAGE.mois.users[u.id] = (USAGE.mois.users[u.id] || 0) + cost; USAGE.total = (USAGE.total || 0) + cost; saveUsage();
 }
 const tierOk = t => ["quick", "default", "complex"].includes(t) ? t : "default";
 const MAXTOK = {quick:2000, default:8000, complex:12000};
@@ -1138,9 +1182,7 @@ http.createServer(async (req, res) => {
     if (req.method !== "GET" && req.method !== "HEAD") return send(res, 405, "Méthode non autorisée");
     if (p === "/config.js")
       return send(res, 200, "window.TIKOUN_CONFIG = " + JSON.stringify({aiEndpoint:env("ANTHROPIC_API_KEY") ? "/api/ai" : "", jobs:!!env("ANTHROPIC_API_KEY"), lots:!!(ENGINE && env("ANTHROPIC_API_KEY")), storage:"server", accounts:true, signup:signupOpen(), persistent:PERSISTENT, billing:BILLING(), trialDays:TRIAL_DAYS(),
-        prix:res._lang === "pt" ? {essentiel:env("PRICE_LABEL_ESSENTIEL_PT") || "US$ 14/mês", pro:env("PRICE_LABEL_PRO_PT") || "US$ 22/mês", essentielAn:env("PRICE_LABEL_ESSENTIEL_AN_PT") || "US$ 119/ano", proAn:env("PRICE_LABEL_PRO_AN_PT") || "US$ 189/ano", ecole:env("PRICE_LABEL_ECOLE_PT") || "Sob consulta"}
-          : res._lang === "en" ? {essentiel:env("PRICE_LABEL_ESSENTIEL_EN") || "$14/month", pro:env("PRICE_LABEL_PRO_EN") || "$22/month", essentielAn:env("PRICE_LABEL_ESSENTIEL_AN_EN") || "$119/year", proAn:env("PRICE_LABEL_PRO_AN_EN") || "$189/year", ecole:env("PRICE_LABEL_ECOLE_EN") || "Custom quote"}
-          : {essentiel:env("PRICE_LABEL_ESSENTIEL") || "12 €/mois", pro:env("PRICE_LABEL_PRO") || "19 €/mois", essentielAn:env("PRICE_LABEL_ESSENTIEL_AN") || "99 €/an", proAn:env("PRICE_LABEL_PRO_AN") || "159 €/an", ecole:env("PRICE_LABEL_ECOLE") || "Sur devis"}}) + ";\n", TYPES[".js"], {"Cache-Control":"no-store"});
+        prix:prixLabels(res._lang)}) + ";\n", TYPES[".js"], {"Cache-Control":"no-store"});
     if (p === "/" || p === "") p = u ? "/index.html" : "/landing.html";
     if (p === "/app" || p === "/app/") p = "/index.html";
     const LEGAL = {"/cgu":"cgu", "/terms":"cgu", "/confidentialite":"confidentialite", "/privacy":"confidentialite", "/mentions-legales":"mentions-legales", "/legal":"mentions-legales"}[p.replace(/\/$/, "").replace(/(\.(en|pt))?\.html$/, "")];

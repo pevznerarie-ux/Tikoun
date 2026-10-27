@@ -285,8 +285,15 @@ function vHome(){
       <div><b class="num"${aValider ? ' style="color:var(--gold-2)"' : ""}>${aValider}</b><span>Copies à valider</span></div>
     </div>
   </section>
+  ${quotaHome()}
   <section class="panel"><h3>En cours</h3><div style="margin-top:4px">${todo.map(line).join("") || `<p class="muted" style="padding:10px 0">Aucun contrôle en cours.</p>`}</div></section>
   ${done.length ? `<section class="panel"><h3>Corrigés</h3><div style="margin-top:4px">${done.map(line).join("")}</div></section>` : ""}`;
+}
+
+function quotaHome(){
+  const q = S.me?.quota; if (!q || q.illimite || typeof quotaHtml !== "function") return "";
+  const left = Math.max(0, q.ctrl - q.used), msg = left === 0 ? "Tu as utilisé tous les contrôles de ton forfait ce mois-ci." : q.used / q.ctrl >= .5 ? (left > 1 ? `Il te reste ${left} contrôles ce mois-ci.` : "Il te reste 1 contrôle ce mois-ci.") : "";
+  return `<section class="panel grid" style="gap:10px">${quotaHtml()}${msg ? `<div class="row between banner${left === 0 ? " bad" : ""}"><span>${msg}</span><a class="btn sm" href="#/compte">${left === 0 ? "Ajouter un contrôle ou changer de forfait" : "Voir mon forfait"}</a></div>` : ""}</section>`;
 }
 
 /* ================= CLASSES ================= */
@@ -532,6 +539,9 @@ async function printSheets(c, list){
   const st = $("#pr-st");
   if (!window.html2canvas || !window.jspdf){ st.textContent = "Bibliothèques PDF non chargées : recharge la page."; return; }
   if (!list.length){ st.textContent = "Aucun élève dans cette classe."; return; }
+  // Forfait : la première impression d'un contrôle utilise un contrôle du mois (réimpression gratuite)
+  if (window.TIKOUN_CONFIG?.accounts && S.me){ try { const j = await api("/api/billing/use", {method:"POST", body:JSON.stringify({ctrlId:c.id})}); if (j.quota) S.me.quota = j.quota; }
+    catch(e){ if (e.status === 402){ st.innerHTML = `${esc(e.message)} <a class="btn sm primary" href="#/compte">Mon abonnement</a>`; return; } } }
   const ov = document.createElement("div"); ov.className = "zoom"; ov.style.alignItems = "center"; ov.style.color = "#fff"; ov.innerHTML = `<div id="ovm" style="font-size:16px">Préparation…</div>`; document.body.append(ov);
   const stage = $("#sheetStage"); stage.style.left = "0"; stage.style.zIndex = "40";
   try{
@@ -1458,6 +1468,8 @@ document.addEventListener("click", async ev => {
   if (d.classe){ S.classeSel = d.classe; S.suggestions = null; return render(); }
   if (t.id === "nc-go"){ const niveau = $("#nc-niv").value, libelle = $("#nc-nom").value.trim(), nom = libelle ? niveau + " " + libelle : niveau;
     if (store.classes.some(c => c.nom === nom)){ toast("Tu as déjà une classe « " + nom + " » : ajoute un libellé (A, B, Bleue…) pour les distinguer."); $("#nc-nom").focus(); return; }
+    const q = S.me?.quota; if (q && !q.illimite && q.classes != null && (store.allClasses || store.classes).filter(c => c.createdBy === S.me.id).length >= q.classes)
+      return toast("Ton forfait ne permet pas plus de classes : passe au forfait supérieur dans Mon compte.");
     const id = uid(10); S.classeSel = id; await write("classes/" + id, {nom, niveau, libelle, eleves:[], createdAt:new Date().toISOString()}); return; }
   if (t.id === "rn-cl"){ const cl = classe(S.classeSel); if (!cl) return;
     const cur = cl.libelle ?? (cl.niveau && cl.nom.startsWith(cl.niveau + " ") ? cl.nom.slice(cl.niveau.length + 1) : cl.nom === cl.niveau ? "" : cl.nom);

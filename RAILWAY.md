@@ -129,34 +129,44 @@ Tant que `STRIPE_SECRET_KEY` n'est pas défini, Mastery reste en **bêta gratuit
 Pour ouvrir le paiement :
 
 1. Crée un compte sur stripe.com (commence en **mode test**).
-2. Produits → crée les prix **récurrents** :
-   - Essentiel : 12 €/mois et 99 €/an
-   - Pro : 19 €/mois et 159 €/an
-   - Établissement : prix **par élève** (quantité = nombre d'élèves), par mois ou par an
-   - (facultatif) Prof payé par l'établissement : prix par professeur ; sinon le Pro mensuel est utilisé
+2. Produits → crée les prix (en euros ; refais-les en reais pour le Brésil) :
+   - Découverte : 7 €/mois et 70 €/an (R$29,90 / R$299)
+   - Essentiel : 12 €/mois et 120 €/an (R$54,90 / R$549)
+   - Complet : 19 €/mois et 190 €/an (R$89,90 / R$899)
+   - Contrôle supplémentaire : 2 € en **paiement unique** (R$9,90)
+   - Établissement : 6 € HT **par élève et par an**, récurrent annuel (R$25)
 3. Développeurs → Webhooks → ajoute l'URL `https://TON-DOMAINE/api/stripe/webhook` avec les événements
    `checkout.session.completed`, `customer.subscription.created`, `customer.subscription.updated`,
    `customer.subscription.deleted`, `invoice.paid`.
-4. Paramètres → Portail client : active-le (changer de carte, factures, résiliation).
+4. Paramètres → Portail client : active-le (changer de carte, factures, résiliation) et autorise le **changement de forfait** entre Découverte, Essentiel et Complet.
 5. Variables Railway :
 
 | Variable | Valeur |
 |---|---|
 | `STRIPE_SECRET_KEY` | `sk_test_…` puis `sk_live_…` |
 | `STRIPE_WEBHOOK_SECRET` | `whsec_…` (page du webhook) |
+| `STRIPE_PRICE_DECOUVERTE_MOIS`, `STRIPE_PRICE_DECOUVERTE_AN` | `price_…` |
 | `STRIPE_PRICE_ESSENTIEL_MOIS`, `STRIPE_PRICE_ESSENTIEL_AN` | `price_…` |
-| `STRIPE_PRICE_PRO_MOIS`, `STRIPE_PRICE_PRO_AN` | `price_…` |
-| `STRIPE_PRICE_ECOLE` | `price_…` (par élève) |
-| `STRIPE_PRICE_PROF_ECOLE` | facultatif |
+| `STRIPE_PRICE_COMPLET_MOIS`, `STRIPE_PRICE_COMPLET_AN` | `price_…` (les anciens `STRIPE_PRICE_PRO_*` marchent encore) |
+| `STRIPE_PRICE_CONTROLE` | `price_…` (paiement unique) |
+| `STRIPE_PRICE_ECOLE` | `price_…` (par élève et par an) |
+| les mêmes avec `_BRL` à la fin | prix en reais, utilisés sur le site en portugais |
 | `TRIAL_DAYS` | facultatif, 30 par défaut |
-| `PRICE_LABEL_ESSENTIEL`, `PRICE_LABEL_PRO`, `PRICE_LABEL_ESSENTIEL_AN`, `PRICE_LABEL_PRO_AN`, `PRICE_LABEL_ECOLE` (+ `_EN`) | textes affichés, ex. `12 €/mois` |
+| `ECOLE_MIN_ELEVES` | facultatif, 100 par défaut |
+| `AI_BUDGET_PER_CTRL` | facultatif : plafond IA en dollars par contrôle du forfait, 3 par défaut |
+| `AI_BUDGET_USER_MONTH` | facultatif : plafond IA mensuel des comptes sans quota, 60 $ par défaut |
+| `PRICE_LABEL_<CLÉ>` (+ `_AN`, `_EN`, `_PT`) | textes affichés si tu changes un prix, ex. `PRICE_LABEL_ESSENTIEL=12 €/mois` |
 
 Règles appliquées :
-- Chaque prof inscrit seul a **30 jours d'essai** avec tout le Pro, sans carte. Venu par un lien de parrainage : **60 jours**.
+- Forfaits : Découverte 1 classe et 2 contrôles par mois, Essentiel 3 classes et 6 contrôles, Complet 6 classes et 12 contrôles. Exercices en ligne à partir d'Essentiel.
+- Un contrôle compte à sa **première impression** ; réimpressions et rattrapages sont gratuits. Le compteur repart à zéro chaque mois.
+- Alerte à la moitié du crédit, puis à la fin : le prof peut acheter un contrôle à l'unité ou changer de forfait.
+- Chaque prof inscrit seul a **30 jours d'essai** sur le forfait Complet, sans carte. Venu par un lien de parrainage : **60 jours**.
 - Essai fini sans abonnement : ses données restent consultables, mais il ne peut plus créer, scanner ni utiliser l'IA.
 - S'il s'abonne pendant l'essai, le premier paiement a lieu à la fin de l'essai.
 - Parrainage : quand le filleul paie sa première facture, le parrain gagne 1 mois (crédit sur sa prochaine facture, ou essai prolongé), 12 mois max par an.
-- Établissement : la direction crée le forfait dans Mon compte, donne le code aux profs, paie par élève. Option « payer le Pro de tous les profs » : leurs abonnements perso s'arrêtent à la fin de la période.
+- Établissement : la direction crée le forfait dans Mon compte, donne le code aux profs, paie par élève et par an (100 élèves minimum). Tous les profs sont inclus avec 2 contrôles par mois et par classe ; leurs abonnements perso s'arrêtent à la fin de la période.
+- Un plafond IA mensuel caché protège contre un usage anormal.
 - Les comptes créés par l'administrateur (ton école) restent inclus, sans paiement.
 - Dans Comptes, le bouton « +1 mois » prolonge l'essai d'un prof.
 

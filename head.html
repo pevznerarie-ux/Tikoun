@@ -458,6 +458,15 @@ input[type=checkbox],input[type=radio]{accent-color:var(--blue)}
 .bk-row.open{background:var(--surface-2);margin:0 -14px;padding:13px 14px;border-radius:12px}
 .bk-more{display:flex;justify-content:center;padding-top:12px;border-top:1px solid var(--line)}
 @media (max-width:600px){.bk-row{flex-wrap:wrap}.bk-main .s{white-space:normal}.bk-act{width:100%;justify-content:flex-end;flex-wrap:wrap}.bk-act select{flex:1 1 100%;max-width:none}}
+/* Forfait : compteur du mois et paliers */
+.quota{display:grid;gap:6px}
+.qbar{height:8px;border-radius:99px;background:var(--surface-2);overflow:hidden}.qbar i{display:block;height:100%;border-radius:99px;background:var(--ok)}.qbar i.half{background:var(--warn)}.qbar i.full{background:var(--bad)}
+.banner.bad{background:var(--bad-soft);color:var(--bad)}
+.tiers{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
+.tier{border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:6px;background:var(--surface)}
+.tier>.btn:first-of-type{margin-top:auto}
+.tier.best,.tier.sel{border-color:var(--blue);box-shadow:0 0 0 1px var(--blue)}
+.tier-p{font-size:22px;font-weight:700;letter-spacing:-.02em}
 /* Menu du compte */
 .brand{position:relative}
 .umenu{position:relative}

@@ -179,13 +179,14 @@ section{padding:130px 0;position:relative}
 
 /* Forfaits */
 [data-on]{display:none}html.bill [data-on]{display:revert}html.bill [data-off]{display:none}
-.plans{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px}
+.plans{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:18px}
 .plan{background:#FDFCF8;border:1px solid var(--line);border-radius:18px;padding:38px 34px;display:flex;flex-direction:column;gap:16px;transition:transform .7s var(--ease),box-shadow .7s var(--ease)}
 .plan:hover{transform:translateY(-6px);box-shadow:0 34px 60px -40px rgba(21,35,63,.45)}
 .plan.pro{background:var(--navy);color:var(--paper);border-color:var(--navy)}
 .plan h3{font-size:30px;font-weight:600}
-.price{font-family:var(--serif);font-size:44px;font-weight:600;line-height:1}
-.price small{font-family:var(--sans);font-size:14px;font-weight:500;opacity:.65;margin-left:8px}
+.price{font-family:var(--serif);font-size:clamp(32px,3vw,44px);white-space:nowrap;font-weight:600;line-height:1}
+.price.small-price{font-size:24px;line-height:1.15;white-space:normal}
+.price small{font-family:var(--sans);font-size:14px;font-weight:500;opacity:.65;margin-left:4px}
 .per{font-size:13px;opacity:.7;margin-top:-6px}
 .plan ul{list-style:none;margin:6px 0 10px;padding:0;display:grid;gap:10px;font-size:15px}
 .plan li{display:grid;grid-template-columns:18px 1fr;gap:10px;opacity:.85}
@@ -401,42 +402,55 @@ footer{background:#101828}
 
 <section id="forfaits">
   <div class="wrap">
-    <div class="sec-h"><div class="kicker rv">Plans</div><h2 class="rv" data-off style="--d:.1s">Free during the beta</h2><p class="rv" data-off style="--d:.2s">Choose your plan when you sign up. No payment is required during the beta phase.</p><h2 class="rv" data-on style="--d:.1s">One month free, then a simple plan</h2><p class="rv" data-on style="--d:.2s">The full Pro plan is open during the trial, no credit card needed. Then you pick your plan, cancel anytime.</p></div>
+    <div class="sec-h"><div class="kicker rv">Plans</div><h2 class="rv" data-off style="--d:.1s">Free during the beta</h2><p class="rv" data-off style="--d:.2s">Choose your plan when you sign up. No payment is required during the beta phase.</p><h2 class="rv" data-on style="--d:.1s">One free month, then the plan that suits you</h2><p class="rv" data-on style="--d:.2s">The Complete plan is open during the trial, no credit card needed. A test counts when its sheets are printed; reprints and make-up sheets don't count. Cancel anytime.</p></div>
     <div class="plans">
       <div class="plan rv">
-        <h3>Essential</h3>
-        <div class="price" data-off>0 €<small>during the beta</small></div><div class="price" data-on data-prix="essentiel"></div><div class="per" data-on>Yearly: <span data-prix="essentielAn"></span></div>
+        <h3>Starter</h3>
+        <div class="price" data-off>0 €<small>during the beta</small></div><div class="price" data-on data-prix="decouverte"></div>
+        <div class="per">1 class · 2 tests per month<span data-on> · yearly <span data-prix="decouverteAn"></span></span></div>
         <ul>
           <li>Tests generated from your lessons</li>
           <li>Sheets per student with QR code</li>
           <li>Scan, handwriting reading, and grading</li>
-          <li>Class view and student progress</li>
-          <li>Individual remediation</li>
+          <li>Class overview and individual make-up work</li>
         </ul>
-        <a class="btn ghost" href="/app#/inscription/essentiel">Choose Essential</a>
+        <a class="btn ghost" href="/app#/inscription/decouverte">Choose Starter</a>
       </div>
       <div class="plan pro rv" style="--d:.1s">
-        <h3>Pro</h3>
-        <div class="price" data-off>0 €<small>during the beta</small></div><div class="price" data-on data-prix="pro"></div><div class="per" data-on>Yearly: <span data-prix="proAn"></span></div>
+        <h3>Essential</h3>
+        <div class="price" data-off>0 €<small>during the beta</small></div><div class="price" data-on data-prix="essentiel"></div>
+        <div class="per">Up to 3 classes · 6 tests per month<span data-on> · yearly <span data-prix="essentielAn"></span></span></div>
         <ul>
-          <li>Everything in Essential</li>
+          <li>Everything in Starter</li>
           <li>Online practice built from your lessons</li>
-          <li>New questions on every attempt</li>
           <li>Student access by personal code, skill-by-skill tracking</li>
         </ul>
-        <a class="btn" href="/app#/inscription/pro">Choose Pro</a>
+        <a class="btn" href="/app#/inscription/essentiel">Choose Essential</a>
       </div>
       <div class="plan rv" style="--d:.2s">
-        <h3>School</h3>
-        <div class="price" data-off>0 €<small>during the beta</small></div><div class="price" data-on><span data-prix="ecole"></span></div>
+        <h3>Complete</h3>
+        <div class="price" data-off>0 €<small>during the beta</small></div><div class="price" data-on data-prix="complet"></div>
+        <div class="per">Up to 6 classes · 12 tests per month<span data-on> · yearly <span data-prix="completAn"></span></span></div>
         <ul>
+          <li>Everything in Essential</li>
+          <li>For teachers with several classes</li>
+          <li>Extra tests one at a time if needed</li>
+        </ul>
+        <a class="btn ghost" href="/app#/inscription/complet">Choose Complete</a>
+      </div>
+      <div class="plan rv" style="--d:.3s">
+        <h3>School</h3>
+        <div class="price" data-off>0 €<small>during the beta</small></div><div class="price small-price" data-on><span data-prix="ecole"></span></div>
+        <div class="per">All teachers included · 100 students minimum</div>
+        <ul>
+          <li>2 tests per month per class</li>
           <li>Leadership view of every class</li>
-          <li>Results, retakes and struggling students by subject</li>
           <li>Teachers join the school with a code</li>
-          <li>Option: the school pays Pro for all its teachers</li>
+          <li>Annual invoice</li>
         </ul>
         <a class="btn ghost" href="/app#/inscription">Create the leadership account</a>
       </div>
+    </div>
     </div>
     <p class="referral rv" data-on><b>Referrals:</b> invite a colleague with your link. They get an extra month of trial, and you get a free month as soon as they subscribe.</p>
   </div>
@@ -480,7 +494,7 @@ footer{background:#101828}
 </footer>
 <script src="/config.js"></script>
 <script>(function(){ var c = window.TIKOUN_CONFIG || {}; if (!c.billing) return; document.documentElement.classList.add("bill");
-  var p = c.prix || {}; document.querySelectorAll("[data-prix]").forEach(function(e){ var v = p[e.getAttribute("data-prix")]; if (v) e.textContent = v; }); })();</script>
+  var p = c.prix || {}; document.querySelectorAll("[data-prix]").forEach(function(e){ var v = p[e.getAttribute("data-prix")]; if (!v) return; var m = e.closest(".price") && !e.closest(".small-price") && v.match(/^(.*?)(\/.*)$/); if (m){ e.textContent = m[1]; var u = document.createElement("small"); u.textContent = m[2]; e.appendChild(u); } else e.textContent = v; }); })();</script>
 <script>
 (function(){
   var nav = document.getElementById("nav"), prog = document.getElementById("prog");
