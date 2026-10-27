@@ -477,6 +477,7 @@ input[type=checkbox],input[type=radio]{accent-color:var(--blue)}
 .banner.bad{background:var(--bad-soft);color:var(--bad)}
 .savest{font-weight:600}.savest.busy{color:var(--muted)}.savest.ok{color:var(--ok,#2f7d4f)}.savest.bad{color:var(--bad)}
 .foldh{all:unset;box-sizing:border-box;width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer}.foldh h3{margin:0}.foldh .chev{color:var(--muted);font-size:14px;padding:4px 8px;border-radius:8px}.foldh:hover .chev{background:var(--soft,rgba(0,0,0,.05))}.foldh:focus-visible{outline:2px solid var(--blue);outline-offset:4px;border-radius:8px}
+.srcs{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin-bottom:14px}.src{all:unset;box-sizing:border-box;cursor:pointer;display:grid;gap:4px;padding:14px 16px;border:1px solid var(--line);border-radius:14px;background:var(--surface)}.src b{font-size:15px}.src span{font-size:13px;color:var(--muted)}.src:hover{border-color:var(--blue)}.src.on{border:2px solid var(--blue);padding:13px 15px;background:color-mix(in srgb,var(--blue) 6%,var(--surface))}.src:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
 .tiers{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
 .tier{border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:6px;background:var(--surface)}
 .tier>.btn:first-of-type{margin-top:auto}
@@ -908,10 +909,16 @@ function vNew(){
   <div class="steps">${st(1)}${st(2)}${st(3)}</div>
   ${S.wizStep === 1 ? wizCours() : wizParams()}`;
 }
+/* Trois façons de partir : un cours, une dictée (questions + réponses du prof), la photo d'un ancien contrôle */
+const SRC = [["cours", "From a lesson", "PDF, photos of the pages, pasted or dictated text: the AI suggests the questions."],
+  ["dicte", "Dictate or type my test", "You say your questions and answers: the AI tidies them up without making anything up."],
+  ["photo", "Photo of an old test", "Your paper sheet becomes an editable test."]];
 function wizCours(){
-  const d = S.coursDraft;
+  const d = S.coursDraft, ctl = S.params.kind !== "quiz" && S.params.kind !== "exercices", src = ctl ? S.src || "cours" : "cours";
+  const cards = ctl ? `<div class="srcs" role="radiogroup" aria-label="Starting point">${SRC.map(([k, t, x]) => `<button class="src${src === k ? " on" : ""}" data-src="${k}" role="radio" aria-checked="${src === k}"><b>${t}</b><span>${x}</span></button>`).join("")}</div>` : "";
+  if (src !== "cours") return cards + wizDicte(src);
   const list = [...store.cours].sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
-  return `
+  return `${cards}
   ${list.length ? `<section class="panel"><h3>Reuse a previously imported lesson</h3>
     <div style="margin-top:4px">${list.map(c => `<div class="item"><div><div class="t">${esc(c.titre)}</div><div class="s">${esc(c.matiere)} · ${esc(c.niveau)} · ${(c.texte || "").length.toLocaleString("en-US")} characters</div></div>
       <div class="row"><button class="btn sm primary" data-usecours="${c.id}">Use</button><button class="btn sm ghost danger" data-delcours="${c.id}">Delete</button></div></div>`).join("")}</div></section>` : ""}
@@ -925,9 +932,52 @@ function wizCours(){
     <label class="drop" for="c-files">Choose files: lesson PDF, or photos/scans of the pages<br><span class="small">Multiple files allowed</span></label>
     <input id="c-files" type="file" accept="application/pdf,image/*" multiple hidden>
     <div class="status" id="c-st"></div>
-    <div class="field"><label for="c-texte">Lesson text (extracted automatically, or pasted here)</label><textarea id="c-texte" data-live style="min-height:200px">${esc(d?.texte || "")}</textarea></div>
+    <div class="field"><div class="row between"><label for="c-texte">Lesson text (extracted automatically, pasted or dictated)</label>${micBtn("c-texte")}</div><textarea id="c-texte" data-live style="min-height:200px" placeholder="You can also dictate your lesson: summarize it out loud and the AI will use it to prepare the questions.">${esc(d?.texte || "")}</textarea></div>
     <div class="row"><button class="btn primary" id="c-save">Save the lesson and continue</button></div>
   </section>`;
+}
+function wizDicte(src){
+  const D = S.dict = S.dict || {}, ph = src === "photo";
+  const cls = store.classes, niv = D.niveau || nivOf(classe(D.classeId)) || "8th grade";
+  return `<section class="panel grid">
+    <h3>${ph ? "Photo of an old test" : "Dictate or type my test"}</h3>
+    <p class="small muted" style="margin:0">${ph ? "Take a photo of your sheet (or import the PDF). If you have the answer key, add it too: photo or dictation. The AI keeps your questions as they are." : "Say your questions in order, with the expected answer and, if you like, the points and what you'll accept. The AI tidies up without making anything up; you check everything afterwards."}</p>
+    ${ph ? "" : `<p class="small" style="margin:0;padding:10px 12px;border-radius:10px;background:var(--soft,rgba(0,0,0,.04))">Example: “Question 1, 4 points: what are the three sounds of the Shofar? Answer: Tekia, Shevarim, Terua. I accept two out of three. Question 2…”</p>`}
+    <div class="form-row">
+      <div class="field"><label for="dc-titre">Title (optional)</label><input id="dc-titre" data-live value="${esc(D.titre || "")}" placeholder="e.g. Shofar and Sukkah"></div>
+      ${matField(D.matiere)}
+      <div class="field"><label for="dc-cl">Class</label><select id="dc-cl">${cls.length ? selOpts(cls, D.classeId || cls[0].id, c => c.nom, c => c.id) : `<option value="">Create a class first</option>`}</select></div>
+      <div class="field"><label for="dc-dur">Duration (min)</label><input id="dc-dur" type="number" min="10" max="240" value="${esc(D.duree || 30)}"></div>
+    </div>
+    ${ph ? `<label class="drop" for="dc-files">Choose the photos or the PDF of the test<br><span class="small">Plusieurs pages possibles</span></label><input id="dc-files" type="file" accept="application/pdf,image/*" multiple hidden>` : ""}
+    <div class="status" id="dc-st"></div>
+    <div class="field"><div class="row between"><label for="dc-texte">${ph ? "Text of the test (read from the photo, editable)" : "Your questions and answers"}</label>${micBtn("dc-texte")}</div>
+      <textarea id="dc-texte" data-live dir="auto" style="min-height:220px" placeholder="${ph ? "The text of the sheet will appear here. You can add the answers by typing or by voice." : "Tap Dictate and speak, or type here."}">${esc(D.texte || "")}</textarea>
+      <span class="small muted">Check before continuing: dictation sometimes mangles Hebrew or technical words.</span></div>
+    <div class="row"><button class="btn primary" id="dc-go">Create the test</button></div>
+    <div class="status" id="dc-st2"></div>
+  </section>`;
+}
+/* Dictée vocale du navigateur (gratuite). Sans elle : micro du clavier du téléphone */
+let REC = null, REC_FOR = "";
+const FR_FR = ["fr", "FR"].join("-");   // écrit ainsi pour que la traduction du site ne remplace pas ce code de langue
+const MIC_LANGS = [[FR_FR, "French"], ["he-IL", "Hebrew"], ["en-US", "English"], ["pt-BR", "Portuguese"]];
+const micLang = () => S.micLang || ({en:"en-US", pt:"pt-BR"}[document.documentElement.lang.slice(0, 2)] || FR_FR);
+const micBtn = id => `<span class="row" style="gap:6px"><select id="mic-lang" aria-label="Dictation language" style="width:auto;padding:4px 8px;min-height:0">${selOpts(MIC_LANGS.map(x => x[0]), micLang(), x => MIC_LANGS.find(y => y[0] === x)[1])}</select><button class="btn sm${REC && REC_FOR === id ? " primary" : ""}" data-mic="${id}" type="button">${REC && REC_FOR === id ? "■ Stop dictation" : "🎙 Dictate"}</button></span>`;
+function micToggle(id){
+  if (REC){ const same = REC_FOR === id; REC.stop(); if (same) return; }
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return toast("Dictation isn't available in this browser: tap the text box, then your keyboard's microphone.", 8000);
+  const r = new SR(); r.lang = micLang(); r.continuous = true; r.interimResults = true;
+  let base = $("#" + id)?.value || ""; if (base && !/\s$/.test(base)) base += " ";
+  r.onresult = ev => { let fin = "", tmp = "";
+    for (let i = ev.resultIndex; i < ev.results.length; i++){ const t = ev.results[i][0].transcript; if (ev.results[i].isFinal) fin += t; else tmp += t; }
+    if (fin) base += fin.trim() + " ";
+    const box = $("#" + id); if (box){ box.value = base + tmp; box.scrollTop = box.scrollHeight; box.dispatchEvent(new Event("input", {bubbles:true})); } };
+  r.onerror = ev => { if (ev.error === "not-allowed" || ev.error === "service-not-allowed") toast("Allow the microphone for this site (browser settings), or use your keyboard's microphone.", 8000);
+    else if (ev.error !== "no-speech" && ev.error !== "aborted") toast("Dictation stopped: try again.", 5000); };
+  r.onend = () => { REC = null; REC_FOR = ""; render(); };
+  try { r.start(); REC = r; REC_FOR = id; render(); } catch(e){ toast("Dictation isn't available right now: try again.", 5000); }
 }
 /* Matière du cours : choisie toute seule si le prof n'enseigne qu'une matière */
 function matField(cur){ const ens = enseigne(); cur = cur || ens[0] || "Math";
@@ -980,8 +1030,9 @@ function vEdit(){
     </div>
     <label class="row small" style="gap:6px"><input type="checkbox" id="e-diff"${c.differencie ? " checked" : ""}> Differentiated sheets based on each student's level</label>
   </section>
+  ${c.remarques?.length ? `<section class="panel grid" style="border-color:var(--warn)"><div class="row between"><h3 style="margin:0">To check</h3><button class="btn sm" id="remOk">Checked</button></div><ul class="small" style="margin:0;padding-left:18px">${c.remarques.map(x => `<li>${esc(x)}</li>`).join("")}</ul></section>` : ""}
   <div class="head"><h3>Questions <span class="muted num" style="font-weight:500">· total ${fmt(tot)} pts${tot !== 20 && bareme() === "20" ? " (scaled to 20)" : ""}</span></h3>
-    <div class="row">${c.type === "exercices" ? (canEx() ? `<button class="btn sm primary" id="regenEx">↻ Regenerate exercises (AI)</button>` : lockChip()) : (!c.type || c.type === "controle") && c.coursId ? `<button class="btn sm primary" id="regenCtrl">↻ Regenerate the test (AI)</button>` + (canEx() ? `<button class="btn sm" data-exfrom="${c.id}">+ Practice quiz on this lesson</button>` : lockChip()) : ""}<button class="btn sm" id="addQ">+ Blank question</button><button class="btn sm" id="addQcm">+ MCQ</button><button class="btn sm" id="addQai">+ Question (AI)</button><button class="btn sm" id="bankOpen">${S.bankOpen ? "Close the question bank" : "+ From the question bank"}</button></div></div>
+    <div class="row">${c.type === "exercices" ? (canEx() ? `<button class="btn sm primary" id="regenEx">↻ Regenerate exercises (AI)</button>` : lockChip()) : (!c.type || c.type === "controle") && c.coursId ? `<button class="btn sm primary" id="regenCtrl">↻ Regenerate the test (AI)</button>` + (canEx() ? `<button class="btn sm" data-exfrom="${c.id}">+ Practice quiz on this lesson</button>` : lockChip()) : ""}${(!c.type || c.type === "controle") && c.questions?.length ? `<button class="btn sm" id="variante" title="Same structure, same concepts and same points, new questions">⧉ Variant (AI)</button>` : ""}<button class="btn sm" id="addQ">+ Blank question</button><button class="btn sm" id="addQcm">+ MCQ</button><button class="btn sm" id="addQai">+ Question (AI)</button><button class="btn sm" id="bankOpen">${S.bankOpen ? "Close the question bank" : "+ From the question bank"}</button></div></div>
   ${S.bankOpen ? bankPanel(c) : ""}
   ${(c.questions || []).map((q, i) => qEditor(c, q, i)).join("") || `<div class="panel empty">No questions.</div>`}`;
   const partLayout = `  <section class="panel grid">
@@ -1905,8 +1956,8 @@ function suggestLevels(cl, mat){
 }
 
 /* ================= Course import ================= */
-async function importCourseFiles(files){
-  const st = $("#c-st"); const parts = [];
+async function importCourseFiles(files, o = {}){
+  const st = $(o.st || "#c-st"); const parts = [];
   const pendingImgs = [];
   for (const f of files){
     if (f.type === "application/pdf" || /\.pdf$/i.test(f.name)){
@@ -1925,13 +1976,14 @@ async function importCourseFiles(files){
       for (let i = 0; i < pendingImgs.length; i += per){
         st.innerHTML = `<span class="thinking">Reading pages ${i + 1} à ${Math.min(i + per, pendingImgs.length)} sur ${pendingImgs.length}…</span>`;
         const blobs = await Promise.all(pendingImgs.slice(i, i + per).map(cv => toBlob(scaled(cv, 1800))));
-        const t = await aiText(`Faithfully transcribe the text of these lesson pages (in order), keeping headings, definitions, examples and formulas. Copy Hebrew in Hebrew characters, in reading order (right to left), without translating or reversing it, with nikud if present. No commentary: only the text.`, {images:blobs});
+        const t = await aiText(o.prompt || `Faithfully transcribe the text of these lesson pages (in order), keeping headings, definitions, examples and formulas. Copy Hebrew in Hebrew characters, in reading order (right to left), without translating or reversing it, with nikud if present. No commentary: only the text.`, {images:blobs});
         parts.push(t.trim());
       }
     }
   }
-  const box = $("#c-texte"); const prev = box.value.trim();
+  const box = $(o.box || "#c-texte"); const prev = box.value.trim();
   box.value = [prev, ...parts].filter(Boolean).join("\n\n").slice(0, 60000);
+  if (o.box){ S.dict = {...(S.dict || {}), texte:box.value}; if (parts.length) st.textContent = "Test read: check the text, fix it if needed, then create the test."; return; }
   S.coursDraft = {...(S.coursDraft || {}), texte:box.value};
   if (parts.length) st.innerHTML = S.hebPdf?.length ? `Hebrew detected: check the text. If words are reversed or scrambled, <button class="btn sm" id="c-heb-ai">Re-read the PDF with AI (reliable for Hebrew)</button>` : "Extracted text: review it, correct if needed, then save.";
 }
@@ -2099,6 +2151,20 @@ document.addEventListener("click", async ev => {
       $("#c-texte").value = out.join("\n\n").slice(0, 60000); S.coursDraft = {...(S.coursDraft || {}), texte:$("#c-texte").value}; S.hebPdf = [];
       st.textContent = "Text re-read by AI: check it, then save."; }
     catch(e){ console.error(e); st.textContent = e?.code ? aiErr(e.code) : "Couldn't read the file."; } return; }
+  if (d.src){ S.src = d.src; return render(); }
+  if (d.mic){ return micToggle(d.mic); }
+  if (t.id === "dc-go"){ const texte = ($("#dc-texte").value || "").trim(); if (texte.length < 30) return toast("Dictate or type at least one question with its answer.");
+    if (REC) REC.stop();
+    const mat = $("#c-mat").value, cl = classe($("#dc-cl").value), niveau = nivOf(cl) || "", langue = langueDef(texte), photo = S.src === "photo", st = $("#dc-st2");
+    t.disabled = true; st.innerHTML = `<span class="thinking">The AI is tidying up your test (about 1 minute)…</span>`;
+    try { const r = await ai(dictPrompt(texte, mat, niveau, langue, photo)), qs = (r?.questions || []).map(mapQ); if (!qs.length) throw {code:"invalid_json"};
+      const id = uid(12);
+      await write("controles/" + id, {type:"controle", titre:$("#dc-titre").value.trim() || r.titre || "Test", gen:{source:photo ? "photo" : "dictee"}, source:texte.slice(0, 20000), remarques:(r.remarques || []).map(String).filter(Boolean).slice(0, 12),
+        matiere:mat, niveau, classeId:cl?.id || "", coursId:null, duree:+$("#dc-dur").value || 30, differencie:false, langue, statut:"brouillon", date:"",
+        mise:{affiche:S.me?.affichage || "les2", police:prefs().police, lh:prefs().lh, bareme:prefs().bareme, consignes:prefs().consignes}, questions:qs, createdAt:new Date().toISOString()});
+      learnMatiere(mat); S.matChg = false; S.dict = null; S.src = "cours"; S.editId = id; S.wizStep = 1; S.step = "preparer"; return go("edit");
+    } catch(e){ console.warn("dictation", e); st.textContent = aiErr(e?.code) + (e?.message ? " (" + e.message + ")" : ""); t.disabled = false; }
+    return; }
   if (t.id === "c-save"){ const texte = $("#c-texte").value.trim(), titre = $("#c-titre").value.trim() || "Untitled lesson";
     if (texte.length < 80) return toast("The lesson text is too short.");
     const id = uid(10); await write("cours/" + id, {titre, matiere:$("#c-mat").value, niveau:$("#c-niv").value, texte:texte.slice(0, 60000), createdAt:new Date().toISOString()});
@@ -2136,6 +2202,11 @@ document.addEventListener("click", async ev => {
     if (d.qdel !== undefined){ const printed = c.statut && c.statut !== "brouillon";
       if (!confirm(printed ? "The sheets are already printed: deleting this question also removes students' answers and grades for it, and changes the totals. Continue?" : "Supprimer cette question ?")) return;
       c.questions.splice(+d.qdel, 1); await saveCtrl(c); return; }
+    if (t.id === "variante"){ t.disabled = true; t.innerHTML = `<span class="thinking">Variante en cours (environ 1 minute)…</span>`;
+      try { const nid = await createVariante(c); toast("Variant created: check it before printing."); S.editId = nid; S.step = "preparer"; return go("edit"); }
+      catch(er){ toast(aiErr(er?.code) + (er?.message ? " (" + er.message + ")" : ""), 7000); t.disabled = false; t.textContent = "⧉ Variant (AI)"; }
+      return; }
+    if (t.id === "remOk"){ c.remarques = []; await saveCtrl(c); return render(); }
     if (t.id === "regenCtrl"){ if (!confirm("Replace all questions with a new AI-generated test?")) return;
       t.disabled = true; t.innerHTML = `<span class="thinking">Regenerating (1 to 2 minutes)…</span>`;
       try { const nid = await regenExercices(c); if (nid !== c.id){ toast("Sheets already printed: a new version of the test was created."); S.editId = nid; S.step = "preparer"; return go("edit"); } toast("New test generated."); render(); }
@@ -2285,6 +2356,7 @@ function applyEdit(el){
 }
 document.addEventListener("input", ev => {
   const el = ev.target, d = el.dataset;
+  if (el.id === "dc-texte" || el.id === "dc-titre"){ S.dict = {...(S.dict || {}), [el.id === "dc-texte" ? "texte" : "titre"]:el.value}; }
   if (el.id === "c-texte" || el.id === "c-titre"){ S.coursDraft = {...(S.coursDraft || {}), texte:$("#c-texte")?.value, titre:$("#c-titre")?.value}; }
   if (d.p){ S.params[d.p] = el.value; }
   if (d.live !== undefined && S.view === "edit" && (d.c || d.q !== undefined)){   // texte : enregistré pendant la frappe, sans attendre la sortie du champ
@@ -2296,6 +2368,12 @@ document.addEventListener("change", async ev => {
     S.coursDraft = {...(S.coursDraft || {}), titre:$("#c-titre").value, matiere:$("#c-mat").value, niveau:$("#c-niv").value, texte:$("#c-texte").value};
     if (!$("#c-titre").value) $("#c-titre").value = fs[0].name.replace(/\.[^.]+$/, "");
     try { await importCourseFiles(fs); } catch(e){ console.error(e); $("#c-st").textContent = e?.code ? aiErr(e.code) : "Unable to read the file."; } return; }
+  if (el.id === "mic-lang"){ S.micLang = el.value; return; }
+  if (el.id === "dc-cl" || el.id === "dc-dur"){ S.dict = {...(S.dict || {}), [el.id === "dc-cl" ? "classeId" : "duree"]:el.value}; return; }
+  if (el.id === "c-mat" && S.src && S.src !== "cours"){ S.dict = {...(S.dict || {}), matiere:el.value}; return; }
+  if (el.id === "dc-files"){ const fs = Array.from(el.files); el.value = ""; if (!fs.length) return;
+    try { await importCourseFiles(fs, {box:"#dc-texte", st:"#dc-st", prompt:"Faithfully transcribe this test (in order): title, instructions, each question with its number and points, the options if any, and any handwritten answers or corrections if present (mark them with “Answer:”). Copy Hebrew in Hebrew characters, in reading order, without translating. No comments: only the text."}); }
+    catch(e){ console.error(e); $("#dc-st").textContent = e?.code ? aiErr(e.code) : "Unable to read the file."; } return; }
   if (el.id === "c-mat" || el.id === "c-niv"){ S.coursDraft = {...(S.coursDraft || {}), matiere:$("#c-mat").value, niveau:$("#c-niv").value}; return; }
   if (d.p){ S.params[d.p] = el.value; if (d.p === "niveau") S.params.classeId = S.params.classeId || ""; if (d.p === "niveau" || d.p === "classeId") render(); return; }
   if (d.type){ const s = new Set(S.params.types); el.checked ? s.add(d.type) : s.delete(d.type); S.params.types = [...s]; return; }
@@ -2320,6 +2398,48 @@ document.addEventListener("change", async ev => {
   editPending = null; clearTimeout(editTimer);
   await saveCtrl(c);
 });
+
+/* Contrôle dicté par le professeur (ou lu sur la photo d'un ancien contrôle) : l'IA met au propre sans rien inventer */
+function dictPrompt(texte, mat, niveau, langue, photo){
+  const qcm = !prefs().q.justif;
+  return `You are the assistant of a teacher of ${mat}${niveau ? " (grade " + niveau + ")" : ""}. ${photo ? "The teacher photographed one of their old tests; here is the transcription of the sheet, sometimes with their answers added." : "The teacher dictated (or typed) their test: the questions, the expected answers and sometimes the points."}
+The text may come from voice dictation: missing punctuation, misrecognized words (especially Hebrew or technical terms), hesitations, repetitions, spoken corrections (“no sorry…”).
+
+TEACHER'S TEXT:
+"""${texte.slice(0, 20000)}"""
+
+Your task: tidy up this test WITHOUT MAKING UP ANY CONTENT.
+- Keep the teacher's questions exactly, in their order. Do not add or remove any question.
+- Only fix spelling, punctuation, clearly misrecognized words and wording, so a student understands the question.
+- Model answer = the answer given by the teacher, tidied up. Never change it, even if you find it debatable: flag it in "remarques".
+- If a question has no answer, write a short model answer and flag it in "remarques" (e.g. “Q3: model answer suggested by the AI, please check”).
+- Points: the teacher's. If none are given, spread 20 points by difficulty. If their total isn't 20, keep their points and flag it.
+- Grading criteria: use what the teacher said (e.g. “I accept two out of three”); otherwise suggest simple criteria adding up to the points.
+${qcm ? `- If the teacher gives options to tick, make it a multiple-choice question: "type":"qcm", and in the version "choix" (the options, without letters) and "bonnes" (indices of the correct answers, starting at 0).` : `- If the teacher gives options, write them in the question (A, B, C…) and ask the student to justify their choice.`}
+- For each question: the concept assessed, 1 or 2 likely typical mistakes, and a suitable number of answer lines (2 to 15).
+- "remarques": a short list of what the teacher should check (empty if everything is clear).
+${langueRule(langue)}
+${NOSRC}
+Reply only in JSON: {"titre":"…","remarques":["…"],"questions":[{"notion":"…","points":4,"lignes":5,"erreurs":["…"],"versions":{"standard":{"enonce":"…","corrige":"…","criteres":"…"}}}]}`;
+}
+/* Variante d'un contrôle : même structure, mêmes notions et mêmes points, nouveaux énoncés */
+async function createVariante(c){
+  const co = c.coursId && (store.allCours || store.cours).find(x => x.id === c.coursId), lv = c.differencie ? LEVELS : ["standard"];
+  const list = c.questions.map((q, i) => { const v = vOf(q, "standard"); return `${i + 1}. [${q.points} pts${q.type === "qcm" ? ", QCM" : ""}] Notion : ${q.notion || "?"}\n   Question: ${v.enonce}\n   Answer: ${v.corrige}`; }).join("\n");
+  const r = await ai(`You are a teacher of ${c.matiere}${c.niveau ? " en " + c.niveau : ""}. Here is a test:
+${list}
+${co?.texte ? `\nLESSON (to find other examples):\n"""${co.texte.slice(0, 12000)}"""\n` : ""}
+Write a VARIANT of this test for another class or another day: exactly ${c.questions.length} questions, in the same order, each on the SAME concept, with the SAME points, the same type and the same difficulty, but with a different wording (other values, other examples, another situation). For a knowledge question, ask for the same knowledge in another way. No question may be identical to the original.
+${lv.length > 1 ? `For each question, 3 versions graded on the same points: "socle" (more guided), "standard", "approfondi" (more demanding).` : `For each question, a single "standard" version.`} Each version: question, model answer, grading criteria adding up to the points.${c.questions.some(q => q.type === "qcm") ? ` For a multiple-choice question: "type":"qcm" and, in each version, "choix" (options without letters) and "bonnes" (indices starting at 0).` : ""}
+${langueRule(c.langue)}
+${NOSRC}
+Reply only in JSON: {"questions":[{"notion":"…","points":4,"lignes":6,"erreurs":["…"],"versions":{${lv.map(l => `"${l}":{"enonce":"…","corrige":"…","criteres":"…"}`).join(",")}}}]}`);
+  const qs = (r?.questions || []).map(mapQ); if (!qs.length) throw {code:"invalid_json"};
+  qs.forEach((q, i) => { const o = c.questions[i]; if (o){ q.points = +o.points; q.lignes = o.lignes || q.lignes; } });
+  const {id:_, ...rest} = c, id = uid(12);
+  await write("controles/" + id, {...rest, titre:c.titre.replace(/ \(variante( \d+)?\)$/, "") + " (variante)", questions:qs, statut:"brouillon", date:"", varianteDe:c.id, remarques:[], createdAt:new Date().toISOString()});
+  return id;
+}
 
 
 /* ================= Standalone mode (GitHub Pages / any web host) =================

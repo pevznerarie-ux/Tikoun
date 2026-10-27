@@ -357,10 +357,16 @@ function vNew(){
   <div class="steps">${st(1)}${st(2)}${st(3)}</div>
   ${S.wizStep === 1 ? wizCours() : wizParams()}`;
 }
+/* Trois façons de partir : un cours, une dictée (questions + réponses du prof), la photo d'un ancien contrôle */
+const SRC = [["cours", "À partir d'un cours", "PDF, photos des pages, texte collé ou dicté : l'IA propose les questions."],
+  ["dicte", "Dicter ou écrire mon contrôle", "Tu dis tes questions et tes réponses : l'IA met au propre, sans rien inventer."],
+  ["photo", "Photo d'un ancien contrôle", "Ta feuille papier devient un contrôle modifiable."]];
 function wizCours(){
-  const d = S.coursDraft;
+  const d = S.coursDraft, ctl = S.params.kind !== "quiz" && S.params.kind !== "exercices", src = ctl ? S.src || "cours" : "cours";
+  const cards = ctl ? `<div class="srcs" role="radiogroup" aria-label="Point de départ">${SRC.map(([k, t, x]) => `<button class="src${src === k ? " on" : ""}" data-src="${k}" role="radio" aria-checked="${src === k}"><b>${t}</b><span>${x}</span></button>`).join("")}</div>` : "";
+  if (src !== "cours") return cards + wizDicte(src);
   const list = [...store.cours].sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
-  return `
+  return `${cards}
   ${list.length ? `<section class="panel"><h3>Reprendre un cours déjà importé</h3>
     <div style="margin-top:4px">${list.map(c => `<div class="item"><div><div class="t">${esc(c.titre)}</div><div class="s">${esc(c.matiere)} · ${esc(c.niveau)} · ${(c.texte || "").length.toLocaleString("fr-FR")} caractères</div></div>
       <div class="row"><button class="btn sm primary" data-usecours="${c.id}">Utiliser</button><button class="btn sm ghost danger" data-delcours="${c.id}">Supprimer</button></div></div>`).join("")}</div></section>` : ""}
@@ -374,9 +380,52 @@ function wizCours(){
     <label class="drop" for="c-files">Choisir des fichiers : PDF du cours, ou photos / scans des pages<br><span class="small">Plusieurs fichiers possibles</span></label>
     <input id="c-files" type="file" accept="application/pdf,image/*" multiple hidden>
     <div class="status" id="c-st"></div>
-    <div class="field"><label for="c-texte">Texte du cours (extrait automatiquement, ou collé ici)</label><textarea id="c-texte" data-live style="min-height:200px">${esc(d?.texte || "")}</textarea></div>
+    <div class="field"><div class="row between"><label for="c-texte">Texte du cours (extrait automatiquement, collé ou dicté)</label>${micBtn("c-texte")}</div><textarea id="c-texte" data-live style="min-height:200px" placeholder="Tu peux aussi dicter ton cours : résume ta leçon à voix haute, l'IA s'en servira pour préparer les questions.">${esc(d?.texte || "")}</textarea></div>
     <div class="row"><button class="btn primary" id="c-save">Enregistrer le cours et continuer</button></div>
   </section>`;
+}
+function wizDicte(src){
+  const D = S.dict = S.dict || {}, ph = src === "photo";
+  const cls = store.classes, niv = D.niveau || nivOf(classe(D.classeId)) || "3e";
+  return `<section class="panel grid">
+    <h3>${ph ? "Photo d'un ancien contrôle" : "Dicter ou écrire mon contrôle"}</h3>
+    <p class="small muted" style="margin:0">${ph ? "Photographie ta feuille (ou importe le PDF). Si tu as le corrigé, ajoute-le aussi : photo ou dictée. L'IA reprend tes questions telles quelles." : "Dis tes questions dans l'ordre, avec la réponse attendue et, si tu veux, les points et ce que tu acceptes. L'IA met au propre sans rien inventer ; tu vérifies tout ensuite."}</p>
+    ${ph ? "" : `<p class="small" style="margin:0;padding:10px 12px;border-radius:10px;background:var(--soft,rgba(0,0,0,.04))">Exemple : « Question 1, sur 4 points : quels sont les trois sons du Choffar ? Réponse : Tekia, Chevarim, Terroua. J'accepte s'il en cite deux sur trois. Question 2… »</p>`}
+    <div class="form-row">
+      <div class="field"><label for="dc-titre">Titre (facultatif)</label><input id="dc-titre" data-live value="${esc(D.titre || "")}" placeholder="ex. Choffar et Souccah"></div>
+      ${matField(D.matiere)}
+      <div class="field"><label for="dc-cl">Classe</label><select id="dc-cl">${cls.length ? selOpts(cls, D.classeId || cls[0].id, c => c.nom, c => c.id) : `<option value="">Crée d'abord une classe</option>`}</select></div>
+      <div class="field"><label for="dc-dur">Durée (min)</label><input id="dc-dur" type="number" min="10" max="240" value="${esc(D.duree || 30)}"></div>
+    </div>
+    ${ph ? `<label class="drop" for="dc-files">Choisir les photos ou le PDF du contrôle<br><span class="small">Plusieurs pages possibles</span></label><input id="dc-files" type="file" accept="application/pdf,image/*" multiple hidden>` : ""}
+    <div class="status" id="dc-st"></div>
+    <div class="field"><div class="row between"><label for="dc-texte">${ph ? "Texte du contrôle (lu sur la photo, modifiable)" : "Tes questions et tes réponses"}</label>${micBtn("dc-texte")}</div>
+      <textarea id="dc-texte" data-live dir="auto" style="min-height:220px" placeholder="${ph ? "Le texte de la feuille apparaîtra ici. Tu peux ajouter les réponses à la main ou à la voix." : "Appuie sur Dicter et parle, ou écris ici."}">${esc(D.texte || "")}</textarea>
+      <span class="small muted">Relis avant de continuer : la dictée écorche parfois les mots en hébreu ou techniques.</span></div>
+    <div class="row"><button class="btn primary" id="dc-go">Créer le contrôle</button></div>
+    <div class="status" id="dc-st2"></div>
+  </section>`;
+}
+/* Dictée vocale du navigateur (gratuite). Sans elle : micro du clavier du téléphone */
+let REC = null, REC_FOR = "";
+const FR_FR = ["fr", "FR"].join("-");   // écrit ainsi pour que la traduction du site ne remplace pas ce code de langue
+const MIC_LANGS = [[FR_FR, "Français"], ["he-IL", "Hébreu"], ["en-US", "Anglais"], ["pt-BR", "Portugais"]];
+const micLang = () => S.micLang || ({en:"en-US", pt:"pt-BR"}[document.documentElement.lang.slice(0, 2)] || FR_FR);
+const micBtn = id => `<span class="row" style="gap:6px"><select id="mic-lang" aria-label="Langue de la dictée" style="width:auto;padding:4px 8px;min-height:0">${selOpts(MIC_LANGS.map(x => x[0]), micLang(), x => MIC_LANGS.find(y => y[0] === x)[1])}</select><button class="btn sm${REC && REC_FOR === id ? " primary" : ""}" data-mic="${id}" type="button">${REC && REC_FOR === id ? "■ Arrêter la dictée" : "🎙 Dicter"}</button></span>`;
+function micToggle(id){
+  if (REC){ const same = REC_FOR === id; REC.stop(); if (same) return; }
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) return toast("Dictée non disponible dans ce navigateur : touche le champ de texte, puis le micro de ton clavier.", 8000);
+  const r = new SR(); r.lang = micLang(); r.continuous = true; r.interimResults = true;
+  let base = $("#" + id)?.value || ""; if (base && !/\s$/.test(base)) base += " ";
+  r.onresult = ev => { let fin = "", tmp = "";
+    for (let i = ev.resultIndex; i < ev.results.length; i++){ const t = ev.results[i][0].transcript; if (ev.results[i].isFinal) fin += t; else tmp += t; }
+    if (fin) base += fin.trim() + " ";
+    const box = $("#" + id); if (box){ box.value = base + tmp; box.scrollTop = box.scrollHeight; box.dispatchEvent(new Event("input", {bubbles:true})); } };
+  r.onerror = ev => { if (ev.error === "not-allowed" || ev.error === "service-not-allowed") toast("Autorise le micro pour ce site (réglages du navigateur), ou utilise le micro de ton clavier.", 8000);
+    else if (ev.error !== "no-speech" && ev.error !== "aborted") toast("Dictée interrompue : réessaie.", 5000); };
+  r.onend = () => { REC = null; REC_FOR = ""; render(); };
+  try { r.start(); REC = r; REC_FOR = id; render(); } catch(e){ toast("Dictée impossible pour le moment : réessaie.", 5000); }
 }
 /* Matière du cours : choisie toute seule si le prof n'enseigne qu'une matière */
 function matField(cur){ const ens = enseigne(); cur = cur || ens[0] || "Mathématiques";
@@ -429,8 +478,9 @@ function vEdit(){
     </div>
     <label class="row small" style="gap:6px"><input type="checkbox" id="e-diff"${c.differencie ? " checked" : ""}> Feuilles différenciées selon le niveau de chaque élève</label>
   </section>
+  ${c.remarques?.length ? `<section class="panel grid" style="border-color:var(--warn)"><div class="row between"><h3 style="margin:0">À vérifier</h3><button class="btn sm" id="remOk">C'est vérifié</button></div><ul class="small" style="margin:0;padding-left:18px">${c.remarques.map(x => `<li>${esc(x)}</li>`).join("")}</ul></section>` : ""}
   <div class="head"><h3>Questions <span class="muted num" style="font-weight:500">· total ${fmt(tot)} pts${tot !== 20 && bareme() === "20" ? " (ramené sur 20)" : ""}</span></h3>
-    <div class="row">${c.type === "exercices" ? (canEx() ? `<button class="btn sm primary" id="regenEx">↻ Régénérer les exercices (IA)</button>` : lockChip()) : (!c.type || c.type === "controle") && c.coursId ? `<button class="btn sm primary" id="regenCtrl">↻ Régénérer le contrôle (IA)</button>` + (canEx() ? `<button class="btn sm" data-exfrom="${c.id}">+ Quiz d'exercices sur ce cours</button>` : lockChip()) : ""}<button class="btn sm" id="addQ">+ Question vide</button><button class="btn sm" id="addQcm">+ QCM</button><button class="btn sm" id="addQai">+ Question (IA)</button><button class="btn sm" id="bankOpen">${S.bankOpen ? "Fermer la banque" : "+ Depuis la banque"}</button></div></div>
+    <div class="row">${c.type === "exercices" ? (canEx() ? `<button class="btn sm primary" id="regenEx">↻ Régénérer les exercices (IA)</button>` : lockChip()) : (!c.type || c.type === "controle") && c.coursId ? `<button class="btn sm primary" id="regenCtrl">↻ Régénérer le contrôle (IA)</button>` + (canEx() ? `<button class="btn sm" data-exfrom="${c.id}">+ Quiz d'exercices sur ce cours</button>` : lockChip()) : ""}${(!c.type || c.type === "controle") && c.questions?.length ? `<button class="btn sm" id="variante" title="Même structure, mêmes notions et mêmes points, nouveaux énoncés">⧉ Variante (IA)</button>` : ""}<button class="btn sm" id="addQ">+ Question vide</button><button class="btn sm" id="addQcm">+ QCM</button><button class="btn sm" id="addQai">+ Question (IA)</button><button class="btn sm" id="bankOpen">${S.bankOpen ? "Fermer la banque" : "+ Depuis la banque"}</button></div></div>
   ${S.bankOpen ? bankPanel(c) : ""}
   ${(c.questions || []).map((q, i) => qEditor(c, q, i)).join("") || `<div class="panel empty">Aucune question.</div>`}`;
   const partLayout = `  <section class="panel grid">
@@ -1349,8 +1399,8 @@ function suggestLevels(cl, mat){
 }
 
 /* ================= Course import ================= */
-async function importCourseFiles(files){
-  const st = $("#c-st"); const parts = [];
+async function importCourseFiles(files, o = {}){
+  const st = $(o.st || "#c-st"); const parts = [];
   const pendingImgs = [];
   for (const f of files){
     if (f.type === "application/pdf" || /\.pdf$/i.test(f.name)){
@@ -1369,13 +1419,14 @@ async function importCourseFiles(files){
       for (let i = 0; i < pendingImgs.length; i += per){
         st.innerHTML = `<span class="thinking">Lecture des pages ${i + 1} à ${Math.min(i + per, pendingImgs.length)} sur ${pendingImgs.length}…</span>`;
         const blobs = await Promise.all(pendingImgs.slice(i, i + per).map(cv => toBlob(scaled(cv, 1800))));
-        const t = await aiText(`Transcris fidèlement le texte de ces pages de cours (dans l'ordre), en gardant titres, définitions, exemples et formules. Recopie l'hébreu en caractères hébreux, dans l'ordre de lecture (droite à gauche), sans traduire ni inverser, avec le nikoud s'il est présent. Pas de commentaire : uniquement le texte.`, {images:blobs});
+        const t = await aiText(o.prompt || `Transcris fidèlement le texte de ces pages de cours (dans l'ordre), en gardant titres, définitions, exemples et formules. Recopie l'hébreu en caractères hébreux, dans l'ordre de lecture (droite à gauche), sans traduire ni inverser, avec le nikoud s'il est présent. Pas de commentaire : uniquement le texte.`, {images:blobs});
         parts.push(t.trim());
       }
     }
   }
-  const box = $("#c-texte"); const prev = box.value.trim();
+  const box = $(o.box || "#c-texte"); const prev = box.value.trim();
   box.value = [prev, ...parts].filter(Boolean).join("\n\n").slice(0, 60000);
+  if (o.box){ S.dict = {...(S.dict || {}), texte:box.value}; if (parts.length) st.textContent = "Contrôle lu : relis le texte, corrige si besoin, puis crée le contrôle."; return; }
   S.coursDraft = {...(S.coursDraft || {}), texte:box.value};
   if (parts.length) st.innerHTML = S.hebPdf?.length ? `Hébreu détecté : vérifie le texte. Si des mots sont à l'envers ou mélangés, <button class="btn sm" id="c-heb-ai">Relire le PDF avec l'IA (fiable pour l'hébreu)</button>` : "Texte extrait : relis-le, corrige si besoin, puis enregistre.";
 }
@@ -1543,6 +1594,20 @@ document.addEventListener("click", async ev => {
       $("#c-texte").value = out.join("\n\n").slice(0, 60000); S.coursDraft = {...(S.coursDraft || {}), texte:$("#c-texte").value}; S.hebPdf = [];
       st.textContent = "Texte relu par l'IA : vérifie-le puis enregistre."; }
     catch(e){ console.error(e); st.textContent = e?.code ? aiErr(e.code) : "Lecture impossible."; } return; }
+  if (d.src){ S.src = d.src; return render(); }
+  if (d.mic){ return micToggle(d.mic); }
+  if (t.id === "dc-go"){ const texte = ($("#dc-texte").value || "").trim(); if (texte.length < 30) return toast("Dicte ou écris au moins une question avec sa réponse.");
+    if (REC) REC.stop();
+    const mat = $("#c-mat").value, cl = classe($("#dc-cl").value), niveau = nivOf(cl) || "", langue = langueDef(texte), photo = S.src === "photo", st = $("#dc-st2");
+    t.disabled = true; st.innerHTML = `<span class="thinking">L'IA met ton contrôle au propre (environ 1 minute)…</span>`;
+    try { const r = await ai(dictPrompt(texte, mat, niveau, langue, photo)), qs = (r?.questions || []).map(mapQ); if (!qs.length) throw {code:"invalid_json"};
+      const id = uid(12);
+      await write("controles/" + id, {type:"controle", titre:$("#dc-titre").value.trim() || r.titre || "Contrôle", gen:{source:photo ? "photo" : "dictee"}, source:texte.slice(0, 20000), remarques:(r.remarques || []).map(String).filter(Boolean).slice(0, 12),
+        matiere:mat, niveau, classeId:cl?.id || "", coursId:null, duree:+$("#dc-dur").value || 30, differencie:false, langue, statut:"brouillon", date:"",
+        mise:{affiche:S.me?.affichage || "les2", police:prefs().police, lh:prefs().lh, bareme:prefs().bareme, consignes:prefs().consignes}, questions:qs, createdAt:new Date().toISOString()});
+      learnMatiere(mat); S.matChg = false; S.dict = null; S.src = "cours"; S.editId = id; S.wizStep = 1; S.step = "preparer"; return go("edit");
+    } catch(e){ console.warn("dictée", e); st.textContent = aiErr(e?.code) + (e?.message ? " (" + e.message + ")" : ""); t.disabled = false; }
+    return; }
   if (t.id === "c-save"){ const texte = $("#c-texte").value.trim(), titre = $("#c-titre").value.trim() || "Cours sans titre";
     if (texte.length < 80) return toast("Le texte du cours est trop court.");
     const id = uid(10); await write("cours/" + id, {titre, matiere:$("#c-mat").value, niveau:$("#c-niv").value, texte:texte.slice(0, 60000), createdAt:new Date().toISOString()});
@@ -1580,6 +1645,11 @@ document.addEventListener("click", async ev => {
     if (d.qdel !== undefined){ const printed = c.statut && c.statut !== "brouillon";
       if (!confirm(printed ? "Les feuilles sont déjà imprimées : supprimer cette question retire aussi les réponses et les notes des élèves pour cette question, et change les totaux. Continuer ?" : "Supprimer cette question ?")) return;
       c.questions.splice(+d.qdel, 1); await saveCtrl(c); return; }
+    if (t.id === "variante"){ t.disabled = true; t.innerHTML = `<span class="thinking">Variante en cours (environ 1 minute)…</span>`;
+      try { const nid = await createVariante(c); toast("Variante créée : relis-la avant d'imprimer."); S.editId = nid; S.step = "preparer"; return go("edit"); }
+      catch(er){ toast(aiErr(er?.code) + (er?.message ? " (" + er.message + ")" : ""), 7000); t.disabled = false; t.textContent = "⧉ Variante (IA)"; }
+      return; }
+    if (t.id === "remOk"){ c.remarques = []; await saveCtrl(c); return render(); }
     if (t.id === "regenCtrl"){ if (!confirm("Remplacer toutes les questions par un nouveau contrôle généré par l'IA ?")) return;
       t.disabled = true; t.innerHTML = `<span class="thinking">Régénération (1 à 2 minutes)…</span>`;
       try { const nid = await regenExercices(c); if (nid !== c.id){ toast("Feuilles déjà imprimées : une nouvelle version du contrôle a été créée."); S.editId = nid; S.step = "preparer"; return go("edit"); } toast("Nouveau contrôle généré."); render(); }
@@ -1729,6 +1799,7 @@ function applyEdit(el){
 }
 document.addEventListener("input", ev => {
   const el = ev.target, d = el.dataset;
+  if (el.id === "dc-texte" || el.id === "dc-titre"){ S.dict = {...(S.dict || {}), [el.id === "dc-texte" ? "texte" : "titre"]:el.value}; }
   if (el.id === "c-texte" || el.id === "c-titre"){ S.coursDraft = {...(S.coursDraft || {}), texte:$("#c-texte")?.value, titre:$("#c-titre")?.value}; }
   if (d.p){ S.params[d.p] = el.value; }
   if (d.live !== undefined && S.view === "edit" && (d.c || d.q !== undefined)){   // texte : enregistré pendant la frappe, sans attendre la sortie du champ
@@ -1740,6 +1811,12 @@ document.addEventListener("change", async ev => {
     S.coursDraft = {...(S.coursDraft || {}), titre:$("#c-titre").value, matiere:$("#c-mat").value, niveau:$("#c-niv").value, texte:$("#c-texte").value};
     if (!$("#c-titre").value) $("#c-titre").value = fs[0].name.replace(/\.[^.]+$/, "");
     try { await importCourseFiles(fs); } catch(e){ console.error(e); $("#c-st").textContent = e?.code ? aiErr(e.code) : "Lecture du fichier impossible."; } return; }
+  if (el.id === "mic-lang"){ S.micLang = el.value; return; }
+  if (el.id === "dc-cl" || el.id === "dc-dur"){ S.dict = {...(S.dict || {}), [el.id === "dc-cl" ? "classeId" : "duree"]:el.value}; return; }
+  if (el.id === "c-mat" && S.src && S.src !== "cours"){ S.dict = {...(S.dict || {}), matiere:el.value}; return; }
+  if (el.id === "dc-files"){ const fs = Array.from(el.files); el.value = ""; if (!fs.length) return;
+    try { await importCourseFiles(fs, {box:"#dc-texte", st:"#dc-st", prompt:"Transcris fidèlement ce contrôle (dans l'ordre) : titre, consignes, chaque question avec son numéro et ses points, les propositions s'il y en a, et les réponses ou corrections écrites à la main si elles sont présentes (indique-les par « Réponse : »). Recopie l'hébreu en caractères hébreux, dans l'ordre de lecture, sans traduire. Pas de commentaire : uniquement le texte."}); }
+    catch(e){ console.error(e); $("#dc-st").textContent = e?.code ? aiErr(e.code) : "Lecture du fichier impossible."; } return; }
   if (el.id === "c-mat" || el.id === "c-niv"){ S.coursDraft = {...(S.coursDraft || {}), matiere:$("#c-mat").value, niveau:$("#c-niv").value}; return; }
   if (d.p){ S.params[d.p] = el.value; if (d.p === "niveau") S.params.classeId = S.params.classeId || ""; if (d.p === "niveau" || d.p === "classeId") render(); return; }
   if (d.type){ const s = new Set(S.params.types); el.checked ? s.add(d.type) : s.delete(d.type); S.params.types = [...s]; return; }
@@ -1764,6 +1841,48 @@ document.addEventListener("change", async ev => {
   editPending = null; clearTimeout(editTimer);
   await saveCtrl(c);
 });
+
+/* Contrôle dicté par le professeur (ou lu sur la photo d'un ancien contrôle) : l'IA met au propre sans rien inventer */
+function dictPrompt(texte, mat, niveau, langue, photo){
+  const qcm = !prefs().q.justif;
+  return `Tu es l'assistant d'un professeur de ${mat}${niveau ? " (classe de " + niveau + ")" : ""}. ${photo ? "Le professeur a photographié un de ses anciens contrôles ; voici la transcription de la feuille, avec parfois ses réponses ajoutées." : "Le professeur a dicté (ou écrit) son contrôle : les questions, les réponses attendues et parfois les points."}
+Le texte peut venir d'une dictée vocale : ponctuation absente, mots mal reconnus (surtout les termes en hébreu ou techniques), hésitations, répétitions, corrections orales (« non pardon… »).
+
+TEXTE DU PROFESSEUR :
+"""${texte.slice(0, 20000)}"""
+
+Ta mission : mettre ce contrôle au propre, SANS RIEN INVENTER sur le fond.
+- Garde exactement les questions du professeur, dans son ordre. N'ajoute aucune question, n'en supprime aucune.
+- Corrige seulement l'orthographe, la ponctuation, les mots visiblement mal reconnus et la formulation, pour qu'un élève comprenne l'énoncé.
+- Corrigé-type = la réponse donnée par le professeur, mise au propre. Ne la change jamais, même si tu la trouves discutable : signale-le dans "remarques".
+- Si une question n'a pas de réponse, rédige un corrigé-type court et signale-le dans "remarques" (ex. « Q3 : corrigé proposé par l'IA, à vérifier »).
+- Points : ceux du professeur. S'il n'en donne pas, répartis 20 points selon la difficulté. Si son total n'est pas 20, garde ses points et signale-le.
+- Critères de notation : reprends ce que le professeur a dit (ex. « j'accepte deux sur trois ») ; sinon propose des critères simples dont la somme fait les points.
+${qcm ? `- Si le professeur donne des propositions à cocher, fais-en un QCM : "type":"qcm", et dans la version "choix" (les propositions, sans lettre) et "bonnes" (indices des bonnes réponses, à partir de 0).` : `- Si le professeur donne des propositions, écris-les dans l'énoncé (A, B, C…) et demande de justifier le choix.`}
+- Pour chaque question : la notion évaluée, 1 ou 2 erreurs types probables, et un nombre de lignes de réponse adapté (2 à 15).
+- "remarques" : liste courte de ce que le professeur doit vérifier (vide si tout est clair).
+${langueRule(langue)}
+${NOSRC}
+Réponds uniquement en JSON : {"titre":"…","remarques":["…"],"questions":[{"notion":"…","points":4,"lignes":5,"erreurs":["…"],"versions":{"standard":{"enonce":"…","corrige":"…","criteres":"…"}}}]}`;
+}
+/* Variante d'un contrôle : même structure, mêmes notions et mêmes points, nouveaux énoncés */
+async function createVariante(c){
+  const co = c.coursId && (store.allCours || store.cours).find(x => x.id === c.coursId), lv = c.differencie ? LEVELS : ["standard"];
+  const list = c.questions.map((q, i) => { const v = vOf(q, "standard"); return `${i + 1}. [${q.points} pts${q.type === "qcm" ? ", QCM" : ""}] Notion : ${q.notion || "?"}\n   Énoncé : ${v.enonce}\n   Corrigé : ${v.corrige}`; }).join("\n");
+  const r = await ai(`Tu es un professeur de ${c.matiere}${c.niveau ? " en " + c.niveau : ""}. Voici un contrôle :
+${list}
+${co?.texte ? `\nCOURS (pour trouver d'autres exemples) :\n"""${co.texte.slice(0, 12000)}"""\n` : ""}
+Rédige une VARIANTE de ce contrôle pour une autre classe ou un autre jour : exactement ${c.questions.length} questions, dans le même ordre, chacune sur la MÊME notion, avec les MÊMES points, le même type et la même difficulté, mais avec un énoncé différent (autres valeurs, autres exemples, autre situation). Pour une question de connaissance, demande la même connaissance autrement. Aucune question ne doit être identique à l'original.
+${lv.length > 1 ? `Pour chaque question, 3 versions notées sur les mêmes points : "socle" (plus guidée), "standard", "approfondi" (plus exigeante).` : `Pour chaque question, une seule version "standard".`} Chaque version : énoncé, corrigé-type, critères de notation dont la somme fait les points.${c.questions.some(q => q.type === "qcm") ? ` Pour un QCM : "type":"qcm" et, dans chaque version, "choix" (propositions sans lettre) et "bonnes" (indices à partir de 0).` : ""}
+${langueRule(c.langue)}
+${NOSRC}
+Réponds uniquement en JSON : {"questions":[{"notion":"…","points":4,"lignes":6,"erreurs":["…"],"versions":{${lv.map(l => `"${l}":{"enonce":"…","corrige":"…","criteres":"…"}`).join(",")}}}]}`);
+  const qs = (r?.questions || []).map(mapQ); if (!qs.length) throw {code:"invalid_json"};
+  qs.forEach((q, i) => { const o = c.questions[i]; if (o){ q.points = +o.points; q.lignes = o.lignes || q.lignes; } });
+  const {id:_, ...rest} = c, id = uid(12);
+  await write("controles/" + id, {...rest, titre:c.titre.replace(/ \(variante( \d+)?\)$/, "") + " (variante)", questions:qs, statut:"brouillon", date:"", varianteDe:c.id, remarques:[], createdAt:new Date().toISOString()});
+  return id;
+}
 
 /* ================= Boot ================= */
 applyRoute(); render();
