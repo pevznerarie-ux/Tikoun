@@ -1684,5 +1684,9 @@
  "À partir d'Essentiel": "From Essential",
  "← Retour à la connexion": "← Back to sign in",
  "⚠ Échec de l'enregistrement : vérifie ta connexion, puis refais la dernière modification": "⚠ Saving failed: check your connection, then redo your last change",
- "✓ Enregistré": "✓ Saved"
+ "✓ Enregistré": "✓ Saved",
+ "Ces questions sont INTERDITES car l'élève les a déjà eues :": "These questions are FORBIDDEN because the student already had them:",
+ "\\nCOURS (pour varier les exemples et les angles) :\\n\"\"\"": "\\nLESSON (to vary the examples and angles):\\n\"\"\"",
+ "du contrôle.\nRÈGLE ABSOLUE : ne reprends jamais une question du contrôle, ni mot pour mot ni reformulée. Change la forme : cas pratique ou mise en situation, vrai/faux à justifier, phrase à compléter, erreur à corriger, comparaison, explication avec ses propres mots, exemple à trouver. Une question qui demande la même chose que celle du contrôle est refusée.\nTotal 20 points (par ex. 5, 7, 8). Chaque exercice : un énoncé autonome (avec un coup de pouce entre parenthèses pour le 1), un corrigé-type, des critères de notation, 2 ou 3 erreurs types, un nombre de lignes de réponse (3 à 12).": "of the test.\nABSOLUTE RULE: never reuse a question from the test, neither word for word nor rephrased. Change the format: practical case or real-life scenario, true/false to justify, sentence to complete, mistake to correct, comparison, explanation in their own words, example to find. A question that asks the same thing as one in the test is rejected.\nTotal 20 points (e.g. 5, 7, 8). Each exercise: a self-contained prompt (with a hint in parentheses for #1), a model answer, grading criteria, 2 or 3 typical mistakes, a number of answer lines (3 to 12).",
+ "Crée exactement 3 exercices NOUVEAUX, de difficulté croissante, qui retravaillent les MÊMES notions sous un AUTRE angle :\n1 = découverte (plus simple que le niveau de l'élève), 2 = application, 3 = retour au niveau": "Create exactly 3 NEW exercises, of increasing difficulty, that work on the SAME concepts from a DIFFERENT angle:\n1 = discovery (easier than the student's level), 2 = application, 3 = back to level"
 }
