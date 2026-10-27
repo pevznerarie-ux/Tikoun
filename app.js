@@ -63,7 +63,7 @@ function applyPrefParams(){ const Q = prefs().q;
   S.params._pref = true; }
 function questionRule(p){ const Q = prefs().q, L = {courte:"3 à 5", moyenne:"5 à 8", developpee:"8 à 14"}[Q.longueur] || "5 à 8";
   return `Réponses attendues : environ ${L} lignes par question (sauf QCM).` + ((p.types || []).includes("qcm") && Q.justif
-    ? `\nQuestions à choix : n'utilise pas le type "qcm". Écris les propositions (A, B, C…) dans l'énoncé, demande à l'élève d'indiquer son choix ET de le justifier, et prévois des lignes de réponse ; le corrigé et les critères notent le choix et la justification.` : ""); }
+    ? `\nQuestions à choix : n'utilise pas le type "qcm". Écris les propositions (A, B, C…) dans l'énoncé, demande à l'élève d'indiquer son choix ET de le justifier, et prévois des lignes de réponse ; le corrigé et les critères notent le choix et la justification. Le contrôle contient au moins une question à choix de ce genre.` : ""); }
 function headerFrom(aff){
   const e = S.me?.ecole, ec = e?.nom ? e.nom + (e.ville ? " · " + e.ville : "") : "", nom = S.me?.nom || "";
   if (aff === "ecole") return ec || nom; if (aff === "nom") return nom || ec; return [ec, nom].filter(Boolean).join(" · ");
@@ -79,7 +79,7 @@ const aiErr = c => ({
   image_rejected:"Image refusée : essaie une photo JPG ou PNG plus nette.", invalid_json:"Réponse de l'IA illisible : relance.",
   refused:"Demande refusée par l'IA : reformule.", prompt_too_large:"Document trop long : raccourcis le cours.",
   images_unavailable:"Cette vue ne peut pas envoyer d'images à l'IA.", no_ai:"IA indisponible pour le moment (serveur non configuré ?).",
-  no_key:"IA non configurée sur le serveur.", bad_key:"Clé IA refusée par le serveur.", need_code:"Code d'accès requis : recharge la page.", no_option:"Option Exercices non activée pour ton compte (abonnement Pro).", no_cours:"Cours d'origine introuvable.", not_failed:"Rattrapage réservé aux élèves sous 10/20 (copie corrigée).", ratt_exists:"Cet élève a déjà un rattrapage pour ce contrôle.", api_400:"Requête refusée par l'API (document trop long ou modèle inconnu : vérifie les Réglages).", no_blob:"Image introuvable.", cloud_write:"Enregistrement en ligne impossible (connexion ?)."
+  no_key:"IA non configurée sur le serveur.", bad_key:"Clé IA refusée par le serveur.", need_code:"Code d'accès requis : recharge la page.", no_option:"Exercices en ligne non activés pour ton compte (à partir du forfait Essentiel).", no_cours:"Cours d'origine introuvable.", not_failed:"Rattrapage réservé aux élèves sous 10/20 (copie corrigée).", ratt_exists:"Cet élève a déjà un rattrapage pour ce contrôle.", api_400:"Requête refusée par l'API (document trop long ou modèle inconnu : vérifie les Réglages).", no_blob:"Image introuvable.", cloud_write:"Enregistrement en ligne impossible (connexion ?)."
 }[c] || "Échec temporaire de l'IA : relance.");
 
 /* ================= Capabilities ================= */
@@ -115,6 +115,7 @@ const S = {
 
 
 const classe = id => store.classes.find(c => c.id === id);
+const nivOf = cl => cl ? cl.niveau || NIVEAUX.find(n => (cl.nom || "").split(" ")[0] === n) || "" : "";
 const ctrl = id => (store.allCtrl || store.controles).find(c => c.id === id);
 const feuille = id => store.feuilles[id];
 const eleveOf = (c, eid) => (classe(c.classeId)?.eleves || []).find(e => e.id === eid);
@@ -152,10 +153,21 @@ let wq = Promise.resolve();
 function write(path, data, mode = "set"){
   const run = () => mode === "update" ? DB.doc(path).update(data) : mode === "delete" ? DB.doc(path).delete() : DB.doc(path).set(data);
   const retry = (n) => run().catch(e => { if (n > 0 && e?.code !== "no_access" && e?.code !== "quota_exceeded" && !/403/.test(e?.message || "")) return new Promise(r => setTimeout(r, n === 2 ? 1500 : 4000)).then(() => retry(n - 1)); throw e; });
-  wq = wq.then(() => retry(2))
-    .catch(e => { console.error(e); toast(e?.code === "no_access" ? aiErr("no_access") : e?.code === "quota_exceeded" ? "Base pleine : supprime d'anciens contrôles." : "⚠ Pas enregistré : la connexion au serveur a échoué. Vérifie le réseau puis refais la dernière modification.", 9000); });
+  SAVE.n++; saveState();
+  wq = wq.then(() => retry(2)).then(() => { SAVE.err = false; SAVE.at = Date.now(); })
+    .catch(e => { SAVE.err = true; console.error(e); toast(e?.code === "no_access" ? aiErr("no_access") : e?.code === "quota_exceeded" ? "Base pleine : supprime d'anciens contrôles." : "⚠ Pas enregistré : la connexion au serveur a échoué. Vérifie le réseau puis refais la dernière modification.", 9000); })
+    .finally(() => { SAVE.n--; saveState(); });
   return wq;
 }
+/* État de l'enregistrement, affiché dans l'éditeur : Enregistrement… / Enregistré / Échec */
+const SAVE = {n:0, err:false, at:0, dirty:false};
+let editPending = null, editTimer = null;
+function flushEdit(){ clearTimeout(editTimer); editTimer = null; const c = editPending; editPending = null; SAVE.dirty = false; return c ? saveCtrl(c) : Promise.resolve(); }
+function saveState(){ const e = document.getElementById("savest"); if (!e) return;
+  const busy = SAVE.n > 0 || SAVE.dirty;
+  e.className = "savest " + (SAVE.err && !busy ? "bad" : busy ? "busy" : SAVE.at ? "ok" : "");
+  e.textContent = SAVE.err && !busy ? "⚠ Échec de l'enregistrement : vérifie ta connexion, puis refais la dernière modification" : busy ? "Enregistrement…" : SAVE.at ? "✓ Enregistré" : "Enregistrement automatique"; }
+window.addEventListener("beforeunload", ev => { if (editPending || SAVE.n > 0){ flushEdit(); ev.preventDefault(); ev.returnValue = ""; } });
 const saveCtrl = c => { const {id, ...d} = c; return write("controles/" + id, d); };
 /* Relecture d'une page : les notes posées par le professeur et les copies validées ne sont jamais écrasées */
 function keepTeacherNotes(cp, out){
@@ -244,7 +256,7 @@ function render(){
     if ((S.view === "correct" || S.view === "scan") && fc.statut === "brouillon") html = `<section class="panel empty">Les feuilles ne sont pas encore imprimées. Passe par l'étape « Imprimer ».</section>`;
     html = ctrlFrame(fc, html.replace(/<select id="(corrSel|anSel)"[\s\S]*?<\/select>/, "").replace(/<h2>(Correction|Classe & rattrapage|Scanner les copies)<\/h2>/, "<h3>$1</h3>"));
   }
-  $("#view").innerHTML = `<div class="view">${LOCAL ? `<p class="banner">Base de données indisponible : rien n'est sauvegardé. Recharge la page.</p>` : ""}${typeof billBanner === "function" ? billBanner() : ""}${html}</div>`;
+  $("#view").innerHTML = `<div class="view">${LOCAL ? `<p class="banner">Base de données indisponible : rien n'est sauvegardé. Recharge la page.</p>` : ""}${typeof billBanner === "function" ? billBanner() : ""}${html}</div>`; saveState();
   if (keep){ const el = document.getElementById(keep.id); if (el){ if (keep.typing && el.tagName === keep.tag && el.value !== keep.v) el.value = keep.v; el.focus(); try { el.setSelectionRange(keep.s, keep.e); } catch(e){} } }
   if (S.view === "edit" && S.step === "mise-en-page") drawPreview();
   { const sp = $(".stepper"), on = $(".st.on"); if (sp && on) sp.scrollLeft = on.offsetLeft - sp.clientWidth / 2 + on.clientWidth / 2; }
@@ -261,7 +273,7 @@ function vHome(){
   <section class="panel grid">
     <div class="grid g3">
       <div><div class="label">1 · Classe</div><p>Crée ta classe et colle la liste des élèves.</p></div>
-      <div><div class="label">2 · Contrôle</div><p>Importe le cours (PDF, photo ou texte). L'IA propose un contrôle en 3 niveaux. Tu modifies, puis tu imprimes : une feuille par élève, avec son QR code.</p></div>
+      <div><div class="label">2 · Contrôle</div><p>Importe le cours (PDF, photo ou texte). L'IA propose un contrôle, en 3 niveaux si tu le souhaites. Tu modifies, puis tu imprimes : une feuille par élève, avec son QR code.</p></div>
       <div><div class="label">3 · Copies</div><p>Photographie ou scanne les copies. Le QR code identifie l'élève. L'IA lit l'écriture et corrige. Tu valides, puis tu vois la classe et crées les rattrapages.</p></div>
     </div>
     <div class="row"><button class="btn primary" data-go="classes">Créer une classe</button><button class="btn" id="demo">Charger une classe de démonstration</button></div>
@@ -376,7 +388,7 @@ function wizParams(){
   if (!p.classeId && store.classes[0]) p.classeId = (store.classes.find(c => c.niveau === p.niveau) || store.classes[0]).id;
   if (p.kind !== "controle") p.kind = "controle";
   const EXO = p.kind === "exercices";
-  const T = [["cours","Questions de cours"],["application","Exercices d'application"],["probleme","Problème / rédaction"],["texte","Lecture / explication de texte"],["traduction","Traduction"],["qcm","QCM (corrigés sans IA, gratuit)"]];
+  const T = [["cours","Questions de cours"],["application","Exercices d'application"],["probleme","Problème / rédaction"],["texte","Lecture / explication de texte"],["traduction","Traduction"],["qcm", prefs().q.justif ? "Questions à choix avec justification" : "QCM (corrigés sans IA, gratuit)"]];
   return `
   <section class="panel grid">
     <div class="row between"><div><div class="label">Cours</div><b>${esc(co?.titre || "?")}</b> <span class="muted small">· ${esc(co?.matiere)} · ${esc(co?.niveau)}</span></div><button class="btn sm" id="back1">Changer de cours</button></div>
@@ -388,7 +400,8 @@ function wizParams(){
       <div class="field"><label for="p-lang">Langue du contrôle</label><select id="p-lang" data-p="langue">${selOpts(LANGUES, p.langue || langueDef(co?.texte))}</select></div>
       <div class="field"><label for="p-dif">Difficulté</label><select id="p-dif" data-p="difficulte">${selOpts(["facile","moyen","exigeant"], p.difficulte)}</select></div>
     </div>
-    <div class="field"><label>Types de questions</label><div class="row">${T.map(([k, l]) => `<label class="row small" style="gap:6px"><input type="checkbox" data-type="${k}"${p.types.includes(k) ? " checked" : ""}> ${l}</label>`).join("")}</div></div>
+    ${(() => { const cl = classe(p.classeId), nv = nivOf(cl); return cl && nv && p.niveau && nv !== p.niveau ? `<p class="banner">Attention : le niveau choisi (${esc(p.niveau)}) ne correspond pas à la classe ${esc(cl.nom)}. <button class="btn sm" id="p-niv-cl" data-niv="${esc(nv)}">Utiliser ${esc(nv)}</button></p>` : ""; })()}
+    <div class="field"><label>Types de questions</label><div class="row">${T.map(([k, l]) => `<label class="row small" style="gap:6px"><input type="checkbox" data-type="${k}"${p.types.includes(k) ? " checked" : ""}> ${l}</label>`).join("")}</div>${prefs().q.justif ? `<p class="small muted" style="margin:6px 0 0">Questions à choix : les propositions sont dans l'énoncé, avec un cadre pour justifier (corrigé par l'IA). Pour de vrais QCM à cocher, corrigés sans IA, décoche « toujours laisser un cadre pour justifier » dans Mon compte.</p>` : ""}</div>
     <label class="row small" style="gap:6px"><input type="checkbox" id="p-diff"${p.differencie ? " checked" : ""}> Feuilles différenciées : chaque question en 3 niveaux (socle, standard, approfondi), selon le niveau de chaque élève</label>
     <div class="field"><label for="p-cons">Tes consignes à l'IA (facultatif)</label><textarea id="p-cons" data-p="consignes" data-live placeholder="ex. Insister sur la notion d'antécédent. Une question de rédaction à la fin.">${esc(p.consignes)}</textarea></div>
     <div class="row"><button class="btn primary" id="gen" ${store.classes.length ? "" : "disabled"}>${EXO ? "Générer les exercices (IA)" : "Générer le contrôle (IA)"}</button><button class="btn" id="genBlank" ${store.classes.length ? "" : "disabled"}>Partir d'un contrôle vide</button><span class="status" id="gen-st"></span></div>
@@ -1353,7 +1366,7 @@ function genPrompt(co, p, n, extra){
   const T = {cours:"questions de cours", application:"exercices d'application", probleme:"problème ou rédaction", texte:"lecture / explication de texte", traduction:"traduction", qcm:"QCM"};
   return `Tu es un professeur expérimenté de ${p.matiere} en France. Prépare ${n === 1 ? "UNE question" : "un contrôle"} pour une classe de ${p.niveau}, à partir du cours ci-dessous.
 
-Durée : ${p.duree} minutes · Difficulté : ${p.difficulte} · Types : ${(p.types || []).map(t => T[t]).join(", ") || "variés"}
+Durée : ${p.duree} minutes · Difficulté : ${p.difficulte} · Types : ${(p.types || []).map(t => T[t]).join(", ") || "variés"}${(p.types || []).length > 1 && n > 1 ? " (chaque type demandé apparaît au moins une fois si le nombre de questions le permet)" : ""}
 ${n > 1 ? `Nombre de questions : ${n}. Total des points : 20 exactement.` : ""}
 ${p.consignes ? "Consignes du professeur : " + p.consignes : ""}
 ${langueRule(p.langue)}
@@ -1364,7 +1377,7 @@ Pour chaque question, rédige 3 versions de la même question, portant sur la m�
 - "standard" : niveau attendu de la classe ;
 - "approfondi" : plus exigeante (justification, cas général, extension).
 Chaque version a son énoncé, son corrigé-type détaillé et des critères de notation dont la somme fait les points de la question.
-${(p.types || []).includes("qcm") ? `Tu peux inclure des QCM (corrigés automatiquement, sans IA) : pour eux "type":"qcm", et dans chaque version "choix" (3 à 5 propositions courtes, sans lettre) et "bonnes" (indices des bonnes réponses, à partir de 0) ; "lignes" inutile.\n` : ""}Ajoute pour chaque question : la notion évaluée, 2 à 4 erreurs types fréquentes (étiquettes de 2 à 5 mots), et le nombre de lignes de réponse nécessaires (3 à 14).
+${(p.types || []).includes("qcm") && !prefs().q.justif ? `Inclus au moins un QCM (corrigé automatiquement, sans IA) : pour lui "type":"qcm", et dans chaque version "choix" (3 à 5 propositions courtes, sans lettre) et "bonnes" (indices des bonnes réponses, à partir de 0) ; "lignes" inutile.\n` : ""}Ajoute pour chaque question : la notion évaluée, 2 à 4 erreurs types fréquentes (étiquettes de 2 à 5 mots), et le nombre de lignes de réponse nécessaires (3 à 14).
 ${NOSRC}
 
 COURS :
@@ -1521,6 +1534,7 @@ document.addEventListener("click", async ev => {
   if (d.usecours){ const co = store.cours.find(c => c.id === d.usecours); S.coursId = co.id; S.params.matiere = co.matiere; S.params.niveau = co.niveau; S.params.classeId = ""; S.wizStep = 2; return render(); }
   if (d.delcours){ if (!confirm("Supprimer ce cours ? Les contrôles déjà créés à partir de lui restent.")) return; await write("cours/" + d.delcours, null, "delete"); toast("Cours supprimé."); return; }
   if (t.id === "back1"){ S.wizStep = 1; return render(); }
+  if (t.id === "p-niv-cl"){ S.params.niveau = t.dataset.niv; return render(); }
   if (t.id === "gen" || t.id === "genBlank"){
     if (!S.params.langue) S.params.langue = langueDef(store.cours.find(c => c.id === S.coursId)?.texte);
     const p = S.params, co = store.cours.find(c => c.id === S.coursId), st = $("#gen-st");
@@ -1528,7 +1542,7 @@ document.addEventListener("click", async ev => {
     const id = uid(12); const base = {type:EXO ? "exercices" : "controle", titre:p.titre || (EXO ? "Exercices · " : "") + (co?.titre || "Contrôle"), gen:{types:p.types, difficulte:p.difficulte, consignes:p.consignes || ""}, matiere:p.matiere, niveau:p.niveau, classeId:p.classeId, coursId:S.coursId, duree:+p.duree || 55,
       differencie:!!p.differencie, langue:p.langue || "", statut:"brouillon", date:"", mise:{affiche:S.me?.affichage || "les2", police:prefs().police, lh:prefs().lh, bareme:prefs().bareme, consignes:EXO ? "Feuille d'exercices d'entraînement. Écris uniquement dans les cadres." : prefs().consignes}, questions:[], createdAt:new Date().toISOString()};
     if (t.id === "genBlank"){ base.questions = [mapQ({points:4, lignes:6})]; await write("controles/" + id, base); S.editId = id; S.wizStep = 1; S.step = "preparer"; return go("edit"); }
-    t.disabled = true; st.innerHTML = `<span class="thinking">L'IA rédige ${EXO ? "les exercices" : "le contrôle"} en 3 niveaux (1 à 2 minutes)…</span>`;
+    t.disabled = true; st.innerHTML = `<span class="thinking">${p.differencie ? `L'IA rédige ${EXO ? "les exercices" : "le contrôle"} en 3 niveaux (1 à 2 minutes)…` : `L'IA rédige ${EXO ? "les exercices" : "le contrôle"} (1 à 2 minutes)…`}</span>`;
     try{
       const r = await genQuestions(co, p, clamp(+p.nbq || 5, 1, 10), EXO ? EXO_TXT : "", EXO ? {feature:"exercices"} : {}), qs = r.questions;
       base.titre = p.titre || (EXO && r.titre ? "Exercices · " + r.titre : r.titre) || base.titre; base.questions = qs;
@@ -1673,10 +1687,32 @@ document.addEventListener("click", async ev => {
   }
 });
 
+/* Champs de l'éditeur de contrôle : applique la saisie au contrôle et le renvoie (null si ce n'est pas un champ de l'éditeur) */
+function applyEdit(el){
+  const d = el.dataset, c = S.view === "edit" ? ctrl(S.editId) : null; if (!c) return null;
+  if (editPending && editPending.id === c.id && editPending !== c) Object.assign(c, structuredClone(editPending));   // le magasin a été rechargé entre-temps : on garde la saisie en attente
+  if (d.c){ c[d.c] = el.type === "number" ? +el.value : el.value; }
+  else if (el.id === "e-diff"){ c.differencie = el.checked; }
+  else if (d.m){ c.mise = {...(c.mise || {}), [d.m]: ["police","lh"].includes(d.m) ? +el.value : el.value}; }
+  else if (d.bo){ c.bonus = {...(c.bonus || {}), [d.bo]:+el.value}; }
+  else if (el.id === "m-bar"){ c.mise = {...(c.mise || {}), bareme:el.checked}; }
+  else if (d.q !== undefined){ const q = c.questions[+d.q]; if (!q) return null;
+    if (d.vk === "choixRaw"){ const lines = el.value.split("\n").map(x => x.trim()).filter(Boolean); q.v = q.v || {};
+      const o = {...(q.v[d.lv] || {enonce:""}), choix:lines.map(x => x.replace(/^\*\s*/, "")), bonnes:lines.map((x, j) => x.startsWith("*") ? j : -1).filter(j => j >= 0)};
+      o.corrige = "Bonne(s) réponse(s) : " + o.bonnes.map(n => "ABCDEF"[n]).join(", "); o.criteres = "Tout ou rien."; q.v[d.lv] = o; }
+    else if (d.vk){ q.v = q.v || {}; q.v[d.lv] = {...(q.v[d.lv] || {enonce:"", corrige:"", criteres:""}), [d.vk]:el.value}; }
+    else if (d.k === "erreurs") q.erreurs = el.value.split(";").map(s => s.trim()).filter(Boolean);
+    else if (d.k === "type"){ if (el.value) q.type = "qcm"; else delete q.type; }
+    else q[d.k] = ["points","lignes"].includes(d.k) ? +el.value : el.value; }
+  else return null;
+  return c;
+}
 document.addEventListener("input", ev => {
   const el = ev.target, d = el.dataset;
   if (el.id === "c-texte" || el.id === "c-titre"){ S.coursDraft = {...(S.coursDraft || {}), texte:$("#c-texte")?.value, titre:$("#c-titre")?.value}; }
   if (d.p){ S.params[d.p] = el.value; }
+  if (d.live !== undefined && S.view === "edit" && (d.c || d.q !== undefined)){   // texte : enregistré pendant la frappe, sans attendre la sortie du champ
+    const c = applyEdit(el); if (!c) return; editPending = c; SAVE.dirty = true; saveState(); clearTimeout(editTimer); editTimer = setTimeout(flushEdit, 700); }
 });
 document.addEventListener("change", async ev => {
   const el = ev.target, d = el.dataset;
@@ -1685,7 +1721,7 @@ document.addEventListener("change", async ev => {
     if (!$("#c-titre").value) $("#c-titre").value = fs[0].name.replace(/\.[^.]+$/, "");
     try { await importCourseFiles(fs); } catch(e){ console.error(e); $("#c-st").textContent = e?.code ? aiErr(e.code) : "Lecture du fichier impossible."; } return; }
   if (el.id === "c-mat" || el.id === "c-niv"){ S.coursDraft = {...(S.coursDraft || {}), matiere:$("#c-mat").value, niveau:$("#c-niv").value}; return; }
-  if (d.p){ S.params[d.p] = el.value; if (d.p === "niveau") S.params.classeId = S.params.classeId || ""; return; }
+  if (d.p){ S.params[d.p] = el.value; if (d.p === "niveau") S.params.classeId = S.params.classeId || ""; if (d.p === "niveau" || d.p === "classeId") render(); return; }
   if (d.type){ const s = new Set(S.params.types); el.checked ? s.add(d.type) : s.delete(d.type); S.params.types = [...s]; return; }
   if (el.id === "p-diff"){ S.params.differencie = el.checked; return; }
   if (d.kind){ S.params.kind = d.kind; return render(); }
@@ -1703,22 +1739,9 @@ document.addEventListener("change", async ev => {
   if (d.score){ const C = ctrl(S.corrCtrl), q = C.questions.find(x => x.id === d.score); const v = el.value === "" ? null : clamp(half(+el.value), 0, +q.points);
     await write("feuilles/" + C.id, {copies:{[d.eid || S.corrEleve]:{validee:false, answers:{[d.score]:{note:v, valide:false}}}}}, "update"); return; }
   /* editor fields */
-  const c = S.view === "edit" ? ctrl(S.editId) : null; if (!c) return;
   if (el.id === "prevEl"){ S.previewEleve = el.value; return drawPreview(); }
-  if (d.c){ c[d.c] = el.type === "number" ? +el.value : el.value; }
-  else if (el.id === "e-diff"){ c.differencie = el.checked; }
-  else if (d.m){ c.mise = {...(c.mise || {}), [d.m]: ["police","lh"].includes(d.m) ? +el.value : el.value}; }
-  else if (d.bo){ c.bonus = {...(c.bonus || {}), [d.bo]:+el.value}; }
-  else if (el.id === "m-bar"){ c.mise = {...(c.mise || {}), bareme:el.checked}; }
-  else if (d.q !== undefined){ const q = c.questions[+d.q]; if (!q) return;
-    if (d.vk === "choixRaw"){ const lines = el.value.split("\n").map(x => x.trim()).filter(Boolean); q.v = q.v || {};
-      const o = {...(q.v[d.lv] || {enonce:""}), choix:lines.map(x => x.replace(/^\*\s*/, "")), bonnes:lines.map((x, j) => x.startsWith("*") ? j : -1).filter(j => j >= 0)};
-      o.corrige = "Bonne(s) réponse(s) : " + o.bonnes.map(n => "ABCDEF"[n]).join(", "); o.criteres = "Tout ou rien."; q.v[d.lv] = o; }
-    else if (d.vk){ q.v = q.v || {}; q.v[d.lv] = {...(q.v[d.lv] || {enonce:"", corrige:"", criteres:""}), [d.vk]:el.value}; }
-    else if (d.k === "erreurs") q.erreurs = el.value.split(";").map(s => s.trim()).filter(Boolean);
-    else if (d.k === "type"){ if (el.value) q.type = "qcm"; else delete q.type; }
-    else q[d.k] = ["points","lignes"].includes(d.k) ? +el.value : el.value; }
-  else return;
+  const c = applyEdit(el); if (!c) return;
+  editPending = null; clearTimeout(editTimer);
   await saveCtrl(c);
 });
 

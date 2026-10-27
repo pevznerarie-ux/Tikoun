@@ -472,6 +472,7 @@ input[type=checkbox],input[type=radio]{accent-color:var(--blue)}
 .quota{display:grid;gap:6px}
 .qbar{height:8px;border-radius:99px;background:var(--surface-2);overflow:hidden}.qbar i{display:block;height:100%;border-radius:99px;background:var(--ok)}.qbar i.half{background:var(--warn)}.qbar i.full{background:var(--bad)}
 .banner.bad{background:var(--bad-soft);color:var(--bad)}
+.savest{font-weight:600}.savest.busy{color:var(--muted)}.savest.ok{color:var(--ok,#2f7d4f)}.savest.bad{color:var(--bad)}
 .tiers{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
 .tier{border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:6px;background:var(--surface)}
 .tier>.btn:first-of-type{margin-top:auto}
@@ -609,7 +610,7 @@ function applyPrefParams(){ const Q = prefs().q;
   S.params._pref = true; }
 function questionRule(p){ const Q = prefs().q, L = {courte:"3 to 5", moyenne:"5 to 8", developpee:"8 to 14"}[Q.longueur] || "5 to 8";
   return `Expected answers: about ${L} lines per question (except multiple choice).` + ((p.types || []).includes("qcm") && Q.justif
-    ? `\nMultiple-choice questions: do not use the "qcm" type. Write the options (A, B, C…) in the question text, ask the student to state their choice AND justify it, and provide answer lines; the answer key and criteria grade both the choice and the justification.` : ""); }
+    ? `\nQuestions à choix : n'utilise pas le type "qcm". Écris les propositions (A, B, C…) dans l'énoncé, demande à l'élève d'indiquer son choix ET de le justifier, et prévois des lignes de réponse ; le corrigé et les critères notent le choix et la justification. Le contrôle contient au moins une question à choix de ce genre.` : ""); }
 function headerFrom(aff){
   const e = S.me?.ecole, ec = e?.nom ? e.nom + (e.ville ? " · " + e.ville : "") : "", nom = S.me?.nom || "";
   if (aff === "ecole") return ec || nom; if (aff === "nom") return nom || ec; return [ec, nom].filter(Boolean).join(" · ");
@@ -625,7 +626,7 @@ const aiErr = c => ({
   image_rejected:"Image rejected: try a clearer JPG or PNG photo.", invalid_json:"AI response unreadable: try again.",
   refused:"Request declined by the AI: rephrase it.", prompt_too_large:"Document too long: shorten the lesson.",
   images_unavailable:"This view can't send images to the AI.", no_ai:"AI unavailable right now (server not configured?).",
-  no_key:"AI not configured on the server.", bad_key:"AI key rejected by the server.", need_code:"Access code required: reload the page.", no_option:"Practice add-on not enabled for your account (Pro plan).", no_cours:"Original lesson not found.", not_failed:"Remediation is only for students scoring below 10/20 (graded paper).", ratt_exists:"This student already has a remediation sheet for this test.", api_400:"Request rejected by the API (document too long or unknown model: check Settings).", no_blob:"Image not found.", cloud_write:"Couldn't save online (connection issue?)."
+  no_key:"AI not configured on the server.", bad_key:"AI key rejected by the server.", need_code:"Access code required: reload the page.", no_option:"Online practice isn't enabled for your account (available from the Essential plan).", no_cours:"Original lesson not found.", not_failed:"Remediation is only for students scoring below 10/20 (graded paper).", ratt_exists:"This student already has a remediation sheet for this test.", api_400:"Request rejected by the API (document too long or unknown model: check Settings).", no_blob:"Image not found.", cloud_write:"Couldn't save online (connection issue?)."
 }[c] || "Temporary AI failure: try again.");
 
 /* ================= Capabilities ================= */
@@ -661,6 +662,7 @@ const S = {
 
 
 const classe = id => store.classes.find(c => c.id === id);
+const nivOf = cl => cl ? cl.niveau || NIVEAUX.find(n => (cl.nom || "").split(" ")[0] === n) || "" : "";
 const ctrl = id => (store.allCtrl || store.controles).find(c => c.id === id);
 const feuille = id => store.feuilles[id];
 const eleveOf = (c, eid) => (classe(c.classeId)?.eleves || []).find(e => e.id === eid);
@@ -698,10 +700,21 @@ let wq = Promise.resolve();
 function write(path, data, mode = "set"){
   const run = () => mode === "update" ? DB.doc(path).update(data) : mode === "delete" ? DB.doc(path).delete() : DB.doc(path).set(data);
   const retry = (n) => run().catch(e => { if (n > 0 && e?.code !== "no_access" && e?.code !== "quota_exceeded" && !/403/.test(e?.message || "")) return new Promise(r => setTimeout(r, n === 2 ? 1500 : 4000)).then(() => retry(n - 1)); throw e; });
-  wq = wq.then(() => retry(2))
-    .catch(e => { console.error(e); toast(e?.code === "no_access" ? aiErr("no_access") : e?.code === "quota_exceeded" ? "Database full: delete some old tests." : "⚠ Not saved: the connection to the server failed. Check the network, then redo your last change.", 9000); });
+  SAVE.n++; saveState();
+  wq = wq.then(() => retry(2)).then(() => { SAVE.err = false; SAVE.at = Date.now(); })
+    .catch(e => { SAVE.err = true; console.error(e); toast(e?.code === "no_access" ? aiErr("no_access") : e?.code === "quota_exceeded" ? "Database full: delete some old tests." : "⚠ Not saved: the connection to the server failed. Check the network, then redo your last change.", 9000); })
+    .finally(() => { SAVE.n--; saveState(); });
   return wq;
 }
+/* État de l'enregistrement, affiché dans l'éditeur : Enregistrement… / Enregistré / Échec */
+const SAVE = {n:0, err:false, at:0, dirty:false};
+let editPending = null, editTimer = null;
+function flushEdit(){ clearTimeout(editTimer); editTimer = null; const c = editPending; editPending = null; SAVE.dirty = false; return c ? saveCtrl(c) : Promise.resolve(); }
+function saveState(){ const e = document.getElementById("savest"); if (!e) return;
+  const busy = SAVE.n > 0 || SAVE.dirty;
+  e.className = "savest " + (SAVE.err && !busy ? "bad" : busy ? "busy" : SAVE.at ? "ok" : "");
+  e.textContent = SAVE.err && !busy ? "⚠ Saving failed: check your connection, then redo your last change" : busy ? "Enregistrement…" : SAVE.at ? "✓ Saved" : "Enregistrement automatique"; }
+window.addEventListener("beforeunload", ev => { if (editPending || SAVE.n > 0){ flushEdit(); ev.preventDefault(); ev.returnValue = ""; } });
 const saveCtrl = c => { const {id, ...d} = c; return write("controles/" + id, d); };
 /* Relecture d'une page : les notes posées par le professeur et les copies validées ne sont jamais écrasées */
 function keepTeacherNotes(cp, out){
@@ -790,7 +803,7 @@ function render(){
     if ((S.view === "correct" || S.view === "scan") && fc.statut === "brouillon") html = `<section class="panel empty">The sheets haven't been printed yet. Go through the "Print" step.</section>`;
     html = ctrlFrame(fc, html.replace(/<select id="(corrSel|anSel)"[\s\S]*?<\/select>/, "").replace(/<h2>(Correction|Classe & rattrapage|Scanner les copies)<\/h2>/, "<h3>$1</h3>"));
   }
-  $("#view").innerHTML = `<div class="view">${LOCAL ? `<p class="banner">Database unavailable: nothing is being saved. Reload the page.</p>` : ""}${typeof billBanner === "function" ? billBanner() : ""}${html}</div>`;
+  $("#view").innerHTML = `<div class="view">${LOCAL ? `<p class="banner">Database unavailable: nothing is being saved. Reload the page.</p>` : ""}${typeof billBanner === "function" ? billBanner() : ""}${html}</div>`; saveState();
   if (keep){ const el = document.getElementById(keep.id); if (el){ if (keep.typing && el.tagName === keep.tag && el.value !== keep.v) el.value = keep.v; el.focus(); try { el.setSelectionRange(keep.s, keep.e); } catch(e){} } }
   if (S.view === "edit" && S.step === "mise-en-page") drawPreview();
   { const sp = $(".stepper"), on = $(".st.on"); if (sp && on) sp.scrollLeft = on.offsetLeft - sp.clientWidth / 2 + on.clientWidth / 2; }
@@ -807,7 +820,7 @@ function vHome(){
   <section class="panel grid">
     <div class="grid g3">
       <div><div class="label">1 · Class</div><p>Create your class and paste the student list.</p></div>
-      <div><div class="label">2 · Test</div><p>Import the lesson (PDF, photo, or text). The AI proposes a test in 3 levels. You edit it, then print: one sheet per student, with their QR code.</p></div>
+      <div><div class="label">2 · Test</div><p>Import the lesson (PDF, photo or text). The AI drafts a test, in 3 levels if you want. You edit it, then print: one sheet per student, with its QR code.</p></div>
       <div><div class="label">3 · Papers</div><p>Photograph or scan the papers. The QR code identifies the student. The AI reads the handwriting and grades. You approve, then see the class results and create remediation sheets.</p></div>
     </div>
     <div class="row"><button class="btn primary" data-go="classes">Create a class</button><button class="btn" id="demo">Load a demo class</button></div>
@@ -922,7 +935,7 @@ function wizParams(){
   if (!p.classeId && store.classes[0]) p.classeId = (store.classes.find(c => c.niveau === p.niveau) || store.classes[0]).id;
   if (p.kind !== "controle") p.kind = "controle";
   const EXO = p.kind === "exercices";
-  const T = [["cours","Lesson questions"],["application","Application exercises"],["probleme","Problem / essay"],["texte","Reading / text analysis"],["traduction","Translation"],["qcm","MCQ (graded without AI, free)"]];
+  const T = [["cours","Lesson questions"],["application","Application exercises"],["probleme","Problem / essay"],["texte","Reading / text analysis"],["traduction","Translation"],["qcm", prefs().q.justif ? "Choice questions with justification" : "MCQ (graded without AI, free)"]];
   return `
   <section class="panel grid">
     <div class="row between"><div><div class="label">Lessons</div><b>${esc(co?.titre || "?")}</b> <span class="muted small">· ${esc(co?.matiere)} · ${esc(co?.niveau)}</span></div><button class="btn sm" id="back1">Change lesson</button></div>
@@ -934,7 +947,8 @@ function wizParams(){
       <div class="field"><label for="p-lang">Test language</label><select id="p-lang" data-p="langue">${selOpts(LANGUES, p.langue || langueDef(co?.texte))}</select></div>
       <div class="field"><label for="p-dif">Difficulty</label><select id="p-dif" data-p="difficulte">${selOpts(["facile","moyen","exigeant"], p.difficulte)}</select></div>
     </div>
-    <div class="field"><label>Question types</label><div class="row">${T.map(([k, l]) => `<label class="row small" style="gap:6px"><input type="checkbox" data-type="${k}"${p.types.includes(k) ? " checked" : ""}> ${l}</label>`).join("")}</div></div>
+    ${(() => { const cl = classe(p.classeId), nv = nivOf(cl); return cl && nv && p.niveau && nv !== p.niveau ? `<p class="banner">Warning: the selected level (${esc(p.niveau)}) doesn't match the class ${esc(cl.nom)}. <button class="btn sm" id="p-niv-cl" data-niv="${esc(nv)}">Use ${esc(nv)}</button></p>` : ""; })()}
+    <div class="field"><label>Question types</label><div class="row">${T.map(([k, l]) => `<label class="row small" style="gap:6px"><input type="checkbox" data-type="${k}"${p.types.includes(k) ? " checked" : ""}> ${l}</label>`).join("")}</div>${prefs().q.justif ? `<p class="small muted" style="margin:6px 0 0">Choice questions: options are written in the question, with a box to justify (graded by AI). For real tick-box multiple choice graded without AI, untick “always leave a box to justify” in My account.</p>` : ""}</div>
     <label class="row small" style="gap:6px"><input type="checkbox" id="p-diff"${p.differencie ? " checked" : ""}> Differentiated sheets: each question in 3 levels (foundational, standard, advanced), based on each student's level</label>
     <div class="field"><label for="p-cons">Your instructions to the AI (optional)</label><textarea id="p-cons" data-p="consignes" data-live placeholder="e.g. Emphasize the concept of antecedents. One essay question at the end.">${esc(p.consignes)}</textarea></div>
     <div class="row"><button class="btn primary" id="gen" ${store.classes.length ? "" : "disabled"}>${EXO ? "Generate exercises (AI)" : "Generate the test (AI)"}</button><button class="btn" id="genBlank" ${store.classes.length ? "" : "disabled"}>Start from a blank test</button><span class="status" id="gen-st"></span></div>
@@ -1904,7 +1918,7 @@ function genPrompt(co, p, n, extra){
   const T = {cours:"lesson questions", application:"application exercises", probleme:"problem or essay", texte:"reading / text analysis", traduction:"traduction", qcm:"QCM"};
   return `You are an experienced teacher of ${p.matiere} in the US. Prepare ${n === 1 ? "ONE question" : "a test"} for a class of ${p.niveau}, based on the lesson below.
 
-Duration: ${p.duree} minutes · Difficulty: ${p.difficulte} · Types: ${(p.types || []).map(t => T[t]).join(", ") || "varied"}
+Duration: ${p.duree} minutes · Difficulty: ${p.difficulte} · Types: ${(p.types || []).map(t => T[t]).join(", ") || "varied"}${(p.types || []).length > 1 && n > 1 ? " (each requested type appears at least once if the number of questions allows)" : ""}
 ${n > 1 ? `Number of questions: ${n}. Total points: exactly 20.` : ""}
 ${p.consignes ? "Teacher's instructions: " + p.consignes : ""}
 ${langueRule(p.langue)}
@@ -1915,7 +1929,7 @@ For each question, write 3 versions of the same question, covering the same skil
 - "standard" (Standard): the level expected of the class;
 - "approfondi" (Advanced): more demanding (justification, general case, extension).
 Each version has its own prompt, a detailed model answer, and grading criteria whose points add up to the question's total.
-${(p.types || []).includes("qcm") ? `You can include MCQs (graded automatically, without AI): for those, use "type":"qcm", and in each version "choix" (3 to 5 short options, without a letter) and "bonnes" (indices of correct answers, starting at 0); "lignes" is not needed.\n` : ""}For each question, add: the skill being assessed, 2 to 4 common error types (2- to 5-word labels), and the number of answer lines needed (3 to 14).
+${(p.types || []).includes("qcm") && !prefs().q.justif ? `Inclus au moins un QCM (corrigé automatiquement, sans IA) : pour lui "type":"qcm", et dans chaque version "choix" (3 à 5 propositions courtes, sans lettre) et "bonnes" (indices des bonnes réponses, à partir de 0) ; "lignes" inutile.\n` : ""}For each question, add: the skill being assessed, 2 to 4 common error types (2- to 5-word labels), and the number of answer lines needed (3 to 14).
 ${NOSRC}
 
 LESSON:
@@ -2072,6 +2086,7 @@ document.addEventListener("click", async ev => {
   if (d.usecours){ const co = store.cours.find(c => c.id === d.usecours); S.coursId = co.id; S.params.matiere = co.matiere; S.params.niveau = co.niveau; S.params.classeId = ""; S.wizStep = 2; return render(); }
   if (d.delcours){ if (!confirm("Delete this lesson? Tests already created from it are kept.")) return; await write("cours/" + d.delcours, null, "delete"); toast("Lesson deleted."); return; }
   if (t.id === "back1"){ S.wizStep = 1; return render(); }
+  if (t.id === "p-niv-cl"){ S.params.niveau = t.dataset.niv; return render(); }
   if (t.id === "gen" || t.id === "genBlank"){
     if (!S.params.langue) S.params.langue = langueDef(store.cours.find(c => c.id === S.coursId)?.texte);
     const p = S.params, co = store.cours.find(c => c.id === S.coursId), st = $("#gen-st");
@@ -2079,7 +2094,7 @@ document.addEventListener("click", async ev => {
     const id = uid(12); const base = {type:EXO ? "exercices" : "controle", titre:p.titre || (EXO ? "Practice · " : "") + (co?.titre || "Test"), gen:{types:p.types, difficulte:p.difficulte, consignes:p.consignes || ""}, matiere:p.matiere, niveau:p.niveau, classeId:p.classeId, coursId:S.coursId, duree:+p.duree || 55,
       differencie:!!p.differencie, langue:p.langue || "", statut:"brouillon", date:"", mise:{affiche:S.me?.affichage || "les2", police:prefs().police, lh:prefs().lh, bareme:prefs().bareme, consignes:EXO ? "Practice exercise sheet. Write only inside the boxes." : prefs().consignes}, questions:[], createdAt:new Date().toISOString()};
     if (t.id === "genBlank"){ base.questions = [mapQ({points:4, lignes:6})]; await write("controles/" + id, base); S.editId = id; S.wizStep = 1; S.step = "preparer"; return go("edit"); }
-    t.disabled = true; st.innerHTML = `<span class="thinking">AI is writing ${EXO ? "the exercises" : "the test"} in 3 levels (1 to 2 minutes)…</span>`;
+    t.disabled = true; st.innerHTML = `<span class="thinking">${p.differencie ? `AI is writing ${EXO ? "the exercises" : "the test"} in 3 levels (1 to 2 minutes)…` : `AI is writing ${EXO ? "the exercises" : "the test"} (1 to 2 minutes)…`}</span>`;
     try{
       const r = await genQuestions(co, p, clamp(+p.nbq || 5, 1, 10), EXO ? EXO_TXT : "", EXO ? {feature:"exercices"} : {}), qs = r.questions;
       base.titre = p.titre || (EXO && r.titre ? "Practice · " + r.titre : r.titre) || base.titre; base.questions = qs;
@@ -2224,10 +2239,32 @@ document.addEventListener("click", async ev => {
   }
 });
 
+/* Champs de l'éditeur de contrôle : applique la saisie au contrôle et le renvoie (null si ce n'est pas un champ de l'éditeur) */
+function applyEdit(el){
+  const d = el.dataset, c = S.view === "edit" ? ctrl(S.editId) : null; if (!c) return null;
+  if (editPending && editPending.id === c.id && editPending !== c) Object.assign(c, structuredClone(editPending));   // le magasin a été rechargé entre-temps : on garde la saisie en attente
+  if (d.c){ c[d.c] = el.type === "number" ? +el.value : el.value; }
+  else if (el.id === "e-diff"){ c.differencie = el.checked; }
+  else if (d.m){ c.mise = {...(c.mise || {}), [d.m]: ["police","lh"].includes(d.m) ? +el.value : el.value}; }
+  else if (d.bo){ c.bonus = {...(c.bonus || {}), [d.bo]:+el.value}; }
+  else if (el.id === "m-bar"){ c.mise = {...(c.mise || {}), bareme:el.checked}; }
+  else if (d.q !== undefined){ const q = c.questions[+d.q]; if (!q) return null;
+    if (d.vk === "choixRaw"){ const lines = el.value.split("\n").map(x => x.trim()).filter(Boolean); q.v = q.v || {};
+      const o = {...(q.v[d.lv] || {enonce:""}), choix:lines.map(x => x.replace(/^\*\s*/, "")), bonnes:lines.map((x, j) => x.startsWith("*") ? j : -1).filter(j => j >= 0)};
+      o.corrige = "Correct answer(s): " + o.bonnes.map(n => "ABCDEF"[n]).join(", "); o.criteres = "All or nothing."; q.v[d.lv] = o; }
+    else if (d.vk){ q.v = q.v || {}; q.v[d.lv] = {...(q.v[d.lv] || {enonce:"", corrige:"", criteres:""}), [d.vk]:el.value}; }
+    else if (d.k === "erreurs") q.erreurs = el.value.split(";").map(s => s.trim()).filter(Boolean);
+    else if (d.k === "type"){ if (el.value) q.type = "qcm"; else delete q.type; }
+    else q[d.k] = ["points","lignes"].includes(d.k) ? +el.value : el.value; }
+  else return null;
+  return c;
+}
 document.addEventListener("input", ev => {
   const el = ev.target, d = el.dataset;
   if (el.id === "c-texte" || el.id === "c-titre"){ S.coursDraft = {...(S.coursDraft || {}), texte:$("#c-texte")?.value, titre:$("#c-titre")?.value}; }
   if (d.p){ S.params[d.p] = el.value; }
+  if (d.live !== undefined && S.view === "edit" && (d.c || d.q !== undefined)){   // texte : enregistré pendant la frappe, sans attendre la sortie du champ
+    const c = applyEdit(el); if (!c) return; editPending = c; SAVE.dirty = true; saveState(); clearTimeout(editTimer); editTimer = setTimeout(flushEdit, 700); }
 });
 document.addEventListener("change", async ev => {
   const el = ev.target, d = el.dataset;
@@ -2236,7 +2273,7 @@ document.addEventListener("change", async ev => {
     if (!$("#c-titre").value) $("#c-titre").value = fs[0].name.replace(/\.[^.]+$/, "");
     try { await importCourseFiles(fs); } catch(e){ console.error(e); $("#c-st").textContent = e?.code ? aiErr(e.code) : "Unable to read the file."; } return; }
   if (el.id === "c-mat" || el.id === "c-niv"){ S.coursDraft = {...(S.coursDraft || {}), matiere:$("#c-mat").value, niveau:$("#c-niv").value}; return; }
-  if (d.p){ S.params[d.p] = el.value; if (d.p === "niveau") S.params.classeId = S.params.classeId || ""; return; }
+  if (d.p){ S.params[d.p] = el.value; if (d.p === "niveau") S.params.classeId = S.params.classeId || ""; if (d.p === "niveau" || d.p === "classeId") render(); return; }
   if (d.type){ const s = new Set(S.params.types); el.checked ? s.add(d.type) : s.delete(d.type); S.params.types = [...s]; return; }
   if (el.id === "p-diff"){ S.params.differencie = el.checked; return; }
   if (d.kind){ S.params.kind = d.kind; return render(); }
@@ -2254,22 +2291,9 @@ document.addEventListener("change", async ev => {
   if (d.score){ const C = ctrl(S.corrCtrl), q = C.questions.find(x => x.id === d.score); const v = el.value === "" ? null : clamp(half(+el.value), 0, +q.points);
     await write("feuilles/" + C.id, {copies:{[d.eid || S.corrEleve]:{validee:false, answers:{[d.score]:{note:v, valide:false}}}}}, "update"); return; }
   /* editor fields */
-  const c = S.view === "edit" ? ctrl(S.editId) : null; if (!c) return;
   if (el.id === "prevEl"){ S.previewEleve = el.value; return drawPreview(); }
-  if (d.c){ c[d.c] = el.type === "number" ? +el.value : el.value; }
-  else if (el.id === "e-diff"){ c.differencie = el.checked; }
-  else if (d.m){ c.mise = {...(c.mise || {}), [d.m]: ["police","lh"].includes(d.m) ? +el.value : el.value}; }
-  else if (d.bo){ c.bonus = {...(c.bonus || {}), [d.bo]:+el.value}; }
-  else if (el.id === "m-bar"){ c.mise = {...(c.mise || {}), bareme:el.checked}; }
-  else if (d.q !== undefined){ const q = c.questions[+d.q]; if (!q) return;
-    if (d.vk === "choixRaw"){ const lines = el.value.split("\n").map(x => x.trim()).filter(Boolean); q.v = q.v || {};
-      const o = {...(q.v[d.lv] || {enonce:""}), choix:lines.map(x => x.replace(/^\*\s*/, "")), bonnes:lines.map((x, j) => x.startsWith("*") ? j : -1).filter(j => j >= 0)};
-      o.corrige = "Correct answer(s): " + o.bonnes.map(n => "ABCDEF"[n]).join(", "); o.criteres = "All or nothing."; q.v[d.lv] = o; }
-    else if (d.vk){ q.v = q.v || {}; q.v[d.lv] = {...(q.v[d.lv] || {enonce:"", corrige:"", criteres:""}), [d.vk]:el.value}; }
-    else if (d.k === "erreurs") q.erreurs = el.value.split(";").map(s => s.trim()).filter(Boolean);
-    else if (d.k === "type"){ if (el.value) q.type = "qcm"; else delete q.type; }
-    else q[d.k] = ["points","lignes"].includes(d.k) ? +el.value : el.value; }
-  else return;
+  const c = applyEdit(el); if (!c) return;
+  editPending = null; clearTimeout(editTimer);
   await saveCtrl(c);
 });
 
@@ -2512,20 +2536,28 @@ async function serverDB(){
   if (r.status === 401){ NEED_CODE = true; throw {code:"need_code"}; }
   if (!r.ok) throw {code:"cloud_write", message:"serveur " + r.status};
   const j = await r.json(); let epoch = j.epoch, seq = j.seq; SRV_PERSIST = j.persistent !== false;
+  /* Écritures locales en cours : une synchronisation lancée avant elles ne doit pas remettre l'ancienne version */
+  const pend = {}, touched = {}; let gen = 0;
   const db = memDB(j.docs || {}, async (p, val, op, patch) => {
+    pend[p] = (pend[p] || 0) + 1; touched[p] = ++gen;
+    try { await sendDoc(p, val, op, patch); } finally { pend[p]--; touched[p] = ++gen; }
+  });
+  async function sendDoc(p, val, op, patch){
     const u = "/api/db/doc?path=" + encodeURIComponent(p);
     const res = op === "delete" ? await fetch(u, {method:"DELETE", credentials:"same-origin"})
       : await fetch(u, {method:op === "update" ? "PATCH" : "PUT", credentials:"same-origin", headers:{"content-type":"application/json"}, body:JSON.stringify(op === "update" ? patch : val)});
     if (!res.ok) throw {code:res.status === 401 ? "need_code" : res.status === 402 ? "no_access" : "cloud_write", message:"serveur " + res.status};
-  });
+  }
   let busy = false;
   const pull = async () => {
-    if (busy || document.visibilityState === "hidden") return; busy = true;
+    if (busy || document.visibilityState === "hidden") return; busy = true; const g0 = gen;
+    const fresh = p => !pend[p] && !(touched[p] > g0);
     try {
       const r2 = await fetch(`/api/db/changes?since=${seq}&epoch=${encodeURIComponent(epoch)}`, {credentials:"same-origin"}); if (!r2.ok) return;
-      const k = await r2.json(); epoch = k.epoch; seq = k.seq;
-      if (k.reset){ const cur = db._all(); for (const p of Object.keys(cur)) if (!(p in k.docs)) db._remote(p, null); for (const [p, v] of Object.entries(k.docs)) if (JSON.stringify(cur[p]) !== JSON.stringify(v)) db._remote(p, v); }
-      else for (const c of k.changes || []){ if (JSON.stringify(db._all()[c.path]) !== JSON.stringify(c.data)) db._remote(c.path, c.data); }
+      const k = await r2.json(); let skip = false; const ok = p => fresh(p) || (skip = true, false);
+      if (k.reset){ const cur = db._all(); for (const p of Object.keys(cur)) if (!(p in k.docs) && ok(p)) db._remote(p, null); for (const [p, v] of Object.entries(k.docs)) if (ok(p) && JSON.stringify(cur[p]) !== JSON.stringify(v)) db._remote(p, v); }
+      else for (const c of k.changes || []){ if (ok(c.path) && JSON.stringify(db._all()[c.path]) !== JSON.stringify(c.data)) db._remote(c.path, c.data); }
+      if (!skip){ epoch = k.epoch; seq = k.seq; }   // un document ignoré sera relu à la prochaine synchronisation
     } catch(e){} finally { busy = false; }
   };
   setInterval(pull, 8000); document.addEventListener("visibilitychange", pull);
@@ -2613,7 +2645,7 @@ function go(v){
   if (location.hash !== h) location.hash = h; else { render(); window.scrollTo({top:0}); }
 }
 function openCtrl(id, step){ const c = ctrl(id); location.hash = `#/controle/${id}/${step || defaultStep(c)}`; }
-window.addEventListener("hashchange", () => { applyRoute(); render(); window.scrollTo({top:0}); });
+window.addEventListener("hashchange", () => { const a = document.activeElement; if (a && a !== document.body && $("#view")?.contains(a)) a.blur(); flushEdit(); applyRoute(); render(); window.scrollTo({top:0}); });
 
 function navKey(){ if (S.inCtrl || S.view === "edit" || S.view === "new") return "controles"; return {home:"accueil", quiznew:"exercices", quiz:"exercices", scan:"scanner", reglages:"sauvegarde", correct:"controles", analyse:"controles"}[S.view] || S.view; }
 
@@ -2631,7 +2663,7 @@ function ctrlFrame(c, inner){
   <div class="head"><div><div class="label">${c.type === "rattrapage" ? "Remediation" : c.type === "exercices" ? "Practice" : "Test"} · ${esc(c.matiere)} · ${esc(cl?.nom || "?")}${c.date ? " · " + esc(frDate(c.date)) : ""}</div><h2>${esc(c.titre)}</h2></div>
     <div class="row">${chipStatut(c)}${pr.printed ? `<span class="chip">${pr.sc}/${pr.n} scanned · ${pr.va}/${pr.n} approved</span>` : ""}</div></div>
   <nav class="stepper" aria-label="Steps">${STEPS.map(([k, l], j) => `<a href="#/controle/${c.id}/${k}" class="st ${j === i ? "on" : j <= doneUpTo ? "done" : ""}" ${j === i ? 'aria-current="step"' : ""}><b>${j + 1}</b><span>${l}</span></a>`).join("")}</nav>
-  ${i <= 2 && c.statut === "brouillon" ? `<p class="small muted">Draft · every change is saved automatically.</p>` : ""}
+  <p class="small muted" style="margin:0">${i <= 2 && c.statut === "brouillon" ? "Brouillon · " : ""}<span id="savest" class="savest"></span></p>
   ${inner}
   <div class="stepnav">${prev ? `<a class="btn" href="#/controle/${c.id}/${prev[0]}">← ${prev[1]}</a>` : "<span></span>"}${next ? `<a class="btn primary" href="#/controle/${c.id}/${next[0]}">${next[1]} →</a>` : `<a class="btn" href="#/controles">Finish</a>`}</div>`;
 }
@@ -2711,7 +2743,7 @@ document.addEventListener("keydown", ev => { if (ev.key === "Escape") umenu(fals
 S.auth = null; S.me = null; S.scope = "moi"; S.users = [];
 const isAdmin = () => S.me?.role === "admin";
 const canEx = () => !window.TIKOUN_CONFIG?.accounts || !!S.me?.can?.exercices;
-const lockChip = () => `<span class="chip" title="Regenerable, scannable practice sheets: Pro plan + add-on enabled by administration">🔒 Practice add-on</span>`;
+const lockChip = () => `<span class="chip" title="Online practice: available from the Essential plan">🔒 Practice add-on</span>`;
 const PLAN = {decouverte:"Starter", essentiel:"Essential", complet:"Complete", pro:"Complete"};
 const isBoss = () => isAdmin() || (S.me?.etab?.role === "direction" && S.me?.etab?.actif);
 function scopeCtrls(all){ if (!S.me || (isBoss() && S.scope === "ecole")) return all; return all.filter(c => !c.owner || c.owner === S.me.id); }
@@ -2748,6 +2780,17 @@ function vAuth(){
     <div class="field"><label for="su-mail">E-mail</label><input id="su-mail" type="email" autocomplete="username"></div>
     <div class="field"><label for="su-pw">Password (8 characters minimum)</label><input id="su-pw" type="password" autocomplete="new-password"></div>
     <div class="row"><button class="btn primary" id="su-go">Create account</button></div><div class="status" id="au-st"></div></section>`;
+  if (S.auth === "forgot") return `<div class="auth"><section class="auth-card">
+    <div class="auth-h"><h2>Forgot password</h2><p>Enter your account email.</p></div>
+    ${S.forgot ? `<p class="banner">${S.forgot.mail ? "If an account exists with this email, you'll receive a link to choose a new password. Check your spam folder too." : "Your request has been sent to the Mastery team, who will reset your password and reply by email."}${S.forgot.contact ? ` Questions: <a href="mailto:${esc(S.forgot.contact)}">${esc(S.forgot.contact)}</a>` : ""}</p>`
+      : `<div class="field"><label for="fg-mail">E-mail</label><input id="fg-mail" type="email" autocomplete="username" value="${esc(S.fgMail || "")}"></div><button class="btn primary auth-go" id="fg-go">Send me a link</button>`}
+    <div class="status" id="au-st"></div>
+    <p class="small auth-note"><button class="btn ghost sm" id="fg-back">← Back to sign in</button></p></section></div>`;
+  if (S.auth === "reset") return `<div class="auth"><section class="auth-card">
+    <div class="auth-h"><h2>New password</h2><p>Choose your new Mastery password.</p></div>
+    <div class="field"><label for="npw-pw">New password (8 characters minimum)</label><input id="npw-pw" type="password" autocomplete="new-password"></div>
+    <div class="field"><label for="npw-pw2">Confirm</label><input id="npw-pw2" type="password" autocomplete="new-password"></div>
+    <button class="btn primary auth-go" id="npw-go">Save and sign in</button><div class="status" id="au-st"></div></section></div>`;
   if (S.auth === "change") return `<div class="head"><div><h2>Choose your password</h2><p>Welcome ${esc(S.me?.nom || "")} : replace the temporary password.</p></div></div>
   <section class="panel grid" style="max-width:440px">
     <div class="field"><label for="ch-pw">New password (8 characters minimum)</label><input id="ch-pw" type="password" autocomplete="new-password"></div>
@@ -2758,7 +2801,7 @@ function vAuth(){
     <div>${S.pend?.ecole ? ecLine(S.pend.ecole) + `<div style="margin-top:6px">${ecBadge(S.pend.ecole)} <span class="chip">Plan ${PLAN[S.pend.planDemande] || "Essential"} · free beta</span></div>` : ""}</div>
     <p style="margin:0">Once your account is approved, log in with <b>${esc(S.pend?.email || "")}</b> and your password.</p>
     <div class="row"><button class="btn primary" id="rg-back">Go to login</button><a class="btn ghost" href="/">Back to home</a></div></section>`;
-  if (S.auth === "register") return `<div class="head"><div><h2>Create my teacher account</h2><p>Your space is private: your classes, students, and tests are only visible to you.</p></div></div>
+  if (S.auth === "register") return `<div class="head"><div><h2>Create my teacher account</h2><p>Your space is private: other teachers can't see your classes, students or tests. Your school's leadership can see them if you join your school in Mastery, and the Mastery team can for support and registration approval. <a href="/confidentialite" target="_blank" rel="noopener" style="color:var(--gold)">Learn more</a></p></div></div>
   <section class="panel grid" style="max-width:560px">
     <div class="field"><label for="rg-nom">Your name (shown on sheets if you choose)</label><input id="rg-nom" placeholder="e.g. Mr. Cohen" value="${esc(S.form["rg-nom"] || "")}"></div>
     <div class="field"><label for="rg-mail">E-mail</label><input id="rg-mail" type="email" autocomplete="username" value="${esc(S.form["rg-mail"] || "")}"></div>
@@ -2776,7 +2819,7 @@ function vAuth(){
     <div class="field"><label for="lg-mail2">E-mail</label><input id="lg-mail2" type="email" autocomplete="username" placeholder="firstname.lastname@school.edu"></div>
     <div class="field"><label for="lg-pw2">Password</label><input id="lg-pw2" type="password" autocomplete="current-password"></div>
     <button class="btn primary auth-go" id="lg-go2">Sign in</button><div class="status" id="au-st"></div>
-    <p class="small muted auth-note">Forgot your password: email the Mastery administrator to reset it.</p>
+    <p class="small auth-note"><button class="btn ghost sm" id="pw-forgot">Forgot your password?</button></p>
     ${window.TIKOUN_CONFIG?.signup ? `<div class="auth-alt"><span class="small muted">Don't have an account yet?</span><button class="btn" id="rg-open">Create my teacher account</button></div>` : ""}
   </section>
   <p class="small muted auth-foot"><a href="/">← Back to website</a> · <a href="?lang=fr">French</a> · <a href="?lang=en">English</a> · <a href="?lang=pt">Português</a></p></div>`;
@@ -2794,7 +2837,8 @@ async function afterLogin(user, mustChange){
 }
 async function bootAccounts(){
   try { const j = await api("/api/me"); await afterLogin(j.user, !!j.user?.mustChange); }
-  catch(e){ S.auth = e.status === 401 && e.setup ? "setup" : /^#\/inscription/.test(location.hash) && window.TIKOUN_CONFIG?.signup ? "register" : "login"; if (S.auth === "register"){ const pl = location.hash.split("/")[2]; if (["decouverte", "essentiel", "complet"].includes(pl)) S.regPlan = pl; else if (pl === "pro") S.regPlan = "complet"; S.ecFor = "reg"; S.ec = {q:"", cp:"", res:null, sel:null, manual:false, busy:false, err:""}; } refreshCaps(); render(); }
+  catch(e){ S.auth = e.status === 401 && e.setup ? "setup" : /^#\/reset\/[a-f0-9]{48}$/.test(location.hash) ? "reset" : /^#\/inscription/.test(location.hash) && window.TIKOUN_CONFIG?.signup ? "register" : "login";
+    if (S.auth === "reset") S.resetTok = location.hash.split("/")[2]; if (S.auth === "register"){ const pl = location.hash.split("/")[2]; if (["decouverte", "essentiel", "complet"].includes(pl)) S.regPlan = pl; else if (pl === "pro") S.regPlan = "complet"; S.ecFor = "reg"; S.ec = {q:"", cp:"", res:null, sel:null, manual:false, busy:false, err:""}; } refreshCaps(); render(); }
 }
 
 /* Mon compte */
@@ -2860,12 +2904,12 @@ function vComptes(){
   return `<div class="head"><div><h2>Teacher accounts</h2><p>Teachers who register themselves have a private space. Those you create here share your classes.</p></div></div>
   ${pendHtml}
   <section class="panel"><div class="tbl-wrap"><table><thead><tr><th>Name</th><th>E-mail</th><th>School</th><th>Role</th><th>Access</th><th>Plan</th><th>Practice add-on</th><th class="c">Tests</th><th></th></tr></thead><tbody>
-  ${ok.map(u => `<tr><td><b>${esc(u.nom)}</b>${u.statut === "refuse" ? ' <span class="chip bad">declined</span>' : u.actif ? "" : ' <span class="chip bad">disabled</span>'}</td><td>${esc(u.email)}</td>
+  ${ok.map(u => `<tr><td><b>${esc(u.nom)}</b>${u.statut === "refuse" ? ' <span class="chip bad">declined</span>' : u.actif ? "" : ' <span class="chip bad">disabled</span>'}${u.resetDemande ? ' <span class="chip warn">Forgot password</span>' : ""}</td><td>${esc(u.email)}</td>
     <td>${u.ecole ? `<div class="small"><b>${esc(u.ecole.nom)}</b> ${ecBadge(u.ecole)}<div class="muted">${esc([u.ecole.cp, u.ecole.ville].filter(Boolean).join(" "))}${u.ecole.uai ? " · school ID " + esc(u.ecole.uai) : ""}</div></div>` : `<span class="muted small">—</span>`}</td>
     <td><select data-urole="${u.id}" style="width:auto" aria-label="Role">${selOpts(["prof","admin"], u.role, x => x === "admin" ? "Administrator" : "Teacher")}</select></td>
     <td class="small">${esc(accesLabel(u))}${S.me?.billing && u.inscription === "libre" && u.acces?.mode !== "abonne" ? ` <button class="btn sm ghost" data-ugift="${u.id}" title="Extend the trial by one month">+1 month</button>` : ""}</td>
-    <td><select data-uplan="${u.id}" style="width:auto" aria-label="Plan">${selOpts(["essentiel","pro"], u.plan || "essentiel", x => PLAN[x])}</select></td>
-    <td>${(u.plan || "essentiel") === "pro" ? `<label class="row small" style="gap:6px"><input type="checkbox" data-uex="${u.id}"${u.options?.exercices ? " checked" : ""}> ${u.options?.exercices ? "Enabled" : "Disabled"}</label>` : `<span class="muted small">Pro required</span>`}</td>
+    <td><select data-uplan="${u.id}" style="width:auto" aria-label="Plan">${selOpts(["decouverte","essentiel","complet"], u.plan === "pro" ? "complet" : u.plan || "essentiel", x => PLAN[x])}</select></td>
+    <td>${u.plan !== "decouverte" ? `<label class="row small" style="gap:6px"><input type="checkbox" data-uex="${u.id}"${u.options?.exercices ? " checked" : ""}> ${u.options?.exercices ? "Enabled" : "Disabled"}</label>` : `<span class="muted small">From Essential</span>`}</td>
     <td class="c num">${nb(u.id)}</td>
     <td><div class="row">${u.id !== S.me.id ? `<button class="btn sm" data-ureset="${u.id}">New password</button><button class="btn sm ghost" data-uact="${u.id}" data-v="${u.actif ? 0 : 1}">${u.actif ? "Disable" : "Re-enable"}</button><button class="btn sm ghost danger" data-udel="${u.id}">Delete</button>` : ""}</div></td></tr>`).join("")}
   </tbody></table></div><div class="status" id="us-st"></div></section>
@@ -2874,8 +2918,8 @@ function vComptes(){
       <div class="field"><label for="nu-mail">E-mail</label><input id="nu-mail" type="email"></div></div>
     <div class="form-row"><div class="field"><label for="nu-pw">Temporary password</label><input id="nu-pw" value="${genPw()}"></div>
       <div class="field"><label for="nu-role">Role</label><select id="nu-role">${selOpts(["prof","admin"], "prof", x => x === "admin" ? "Administrator" : "Teacher")}</select></div></div>
-    <div class="form-row"><div class="field"><label for="nu-plan">Plan</label><select id="nu-plan">${selOpts(["essentiel","pro"], "essentiel", x => PLAN[x])}</select></div>
-      <label class="row small" style="gap:6px;align-self:end"><input type="checkbox" id="nu-ex"> Enable the Practice add-on (Pro)</label></div>
+    <div class="form-row"><div class="field"><label for="nu-plan">Plan</label><select id="nu-plan">${selOpts(["decouverte","essentiel","complet"], "complet", x => PLAN[x])}</select></div>
+      <label class="row small" style="gap:6px;align-self:end"><input type="checkbox" id="nu-ex" checked> Enable online practice (from Essential)</label></div>
     <p class="small muted">Give the email and temporary password to the teacher: they'll need to change it on first login.</p>
     <div class="row"><button class="btn primary" id="nu-go">Create account</button></div><div class="status" id="nu-st"></div></section>`;
 }
@@ -2892,6 +2936,12 @@ document.addEventListener("click", async ev => {
     if (d.ensdel){ await saveEnseigne(enseigne().filter(m => m !== d.ensdel)); return render(); }
     if (t.id === "rg-open"){ S.auth = "register"; S.ecFor = "reg"; S.ec = {q:"", cp:"", res:null, sel:null, manual:false, busy:false, err:""}; return render(); }
     if (t.id === "rg-back"){ S.auth = "login"; return render(); }
+    if (t.id === "pw-forgot"){ S.auth = "forgot"; S.forgot = null; S.fgMail = $("#lg-mail2")?.value || ""; return render(); }
+    if (t.id === "fg-back"){ S.auth = "login"; return render(); }
+    if (t.id === "fg-go"){ st().innerHTML = `<span class="thinking">Uploading…</span>`;
+      S.forgot = await api("/api/password/forgot", {method:"POST", body:JSON.stringify({email:$("#fg-mail").value})}); return render(); }
+    if (t.id === "npw-go"){ if ($("#npw-pw").value !== $("#npw-pw2").value){ st().textContent = "The two passwords don't match."; return; }
+      const j = await api("/api/password/reset", {method:"POST", body:JSON.stringify({token:S.resetTok, password:$("#npw-pw").value})}); history.replaceState(null, "", "#/accueil"); return afterLogin(j.user, false); }
     if (t.id === "rg-go"){ S.ec.sel = ecoleVal(); if (!S.ec.sel.nom || !S.ec.sel.ville){ st().textContent = "Enter your school's name and city."; return; }
       if (!$("#rg-cgu")?.checked){ st().textContent = "Check the box to accept the terms of use."; return; }
       st().innerHTML = `<span class="thinking">Creating…</span>`;

@@ -85,20 +85,28 @@ async function serverDB(){
   if (r.status === 401){ NEED_CODE = true; throw {code:"need_code"}; }
   if (!r.ok) throw {code:"cloud_write", message:"serveur " + r.status};
   const j = await r.json(); let epoch = j.epoch, seq = j.seq; SRV_PERSIST = j.persistent !== false;
+  /* Écritures locales en cours : une synchronisation lancée avant elles ne doit pas remettre l'ancienne version */
+  const pend = {}, touched = {}; let gen = 0;
   const db = memDB(j.docs || {}, async (p, val, op, patch) => {
+    pend[p] = (pend[p] || 0) + 1; touched[p] = ++gen;
+    try { await sendDoc(p, val, op, patch); } finally { pend[p]--; touched[p] = ++gen; }
+  });
+  async function sendDoc(p, val, op, patch){
     const u = "/api/db/doc?path=" + encodeURIComponent(p);
     const res = op === "delete" ? await fetch(u, {method:"DELETE", credentials:"same-origin"})
       : await fetch(u, {method:op === "update" ? "PATCH" : "PUT", credentials:"same-origin", headers:{"content-type":"application/json"}, body:JSON.stringify(op === "update" ? patch : val)});
     if (!res.ok) throw {code:res.status === 401 ? "need_code" : res.status === 402 ? "no_access" : "cloud_write", message:"serveur " + res.status};
-  });
+  }
   let busy = false;
   const pull = async () => {
-    if (busy || document.visibilityState === "hidden") return; busy = true;
+    if (busy || document.visibilityState === "hidden") return; busy = true; const g0 = gen;
+    const fresh = p => !pend[p] && !(touched[p] > g0);
     try {
       const r2 = await fetch(`/api/db/changes?since=${seq}&epoch=${encodeURIComponent(epoch)}`, {credentials:"same-origin"}); if (!r2.ok) return;
-      const k = await r2.json(); epoch = k.epoch; seq = k.seq;
-      if (k.reset){ const cur = db._all(); for (const p of Object.keys(cur)) if (!(p in k.docs)) db._remote(p, null); for (const [p, v] of Object.entries(k.docs)) if (JSON.stringify(cur[p]) !== JSON.stringify(v)) db._remote(p, v); }
-      else for (const c of k.changes || []){ if (JSON.stringify(db._all()[c.path]) !== JSON.stringify(c.data)) db._remote(c.path, c.data); }
+      const k = await r2.json(); let skip = false; const ok = p => fresh(p) || (skip = true, false);
+      if (k.reset){ const cur = db._all(); for (const p of Object.keys(cur)) if (!(p in k.docs) && ok(p)) db._remote(p, null); for (const [p, v] of Object.entries(k.docs)) if (ok(p) && JSON.stringify(cur[p]) !== JSON.stringify(v)) db._remote(p, v); }
+      else for (const c of k.changes || []){ if (ok(c.path) && JSON.stringify(db._all()[c.path]) !== JSON.stringify(c.data)) db._remote(c.path, c.data); }
+      if (!skip){ epoch = k.epoch; seq = k.seq; }   // un document ignoré sera relu à la prochaine synchronisation
     } catch(e){} finally { busy = false; }
   };
   setInterval(pull, 8000); document.addEventListener("visibilitychange", pull);

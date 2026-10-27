@@ -114,6 +114,13 @@ Variables à ajouter (Railway → service → Variables) :
 | `LEGAL_NAME` | `Mastery SAS` (ou ton nom en entreprise individuelle) | Éditeur affiché dans les CGU et la politique de confidentialité |
 | `LEGAL_ADDRESS` | `12 rue …, 92300 Levallois-Perret` | Adresse de l'éditeur (obligatoire en France) |
 | `LEGAL_EMAIL` | `contact@…` | E-mail de contact RGPD |
+| `LEGAL_FORM` | `SAS au capital de 1 000 €` ou `Entrepreneur individuel` | Forme juridique (mentions légales) |
+| `LEGAL_SIREN` | `RCS Nanterre 123 456 789` | Immatriculation (mentions légales) |
+| `LEGAL_DIRECTOR` | ton nom | Directeur de la publication |
+| `LEGAL_PHONE` | *(facultatif)* | Téléphone affiché dans les mentions légales |
+| `RESEND_API_KEY` | `re_…` (compte gratuit sur resend.com) | Facultatif : envoie le lien « mot de passe oublié » par e-mail. Sans cette variable, la demande apparaît dans Comptes |
+| `MAIL_FROM` | `Mastery <noreply@ton-domaine.fr>` | Expéditeur des e-mails (domaine vérifié dans Resend) |
+| `APP_URL` | `https://ton-domaine.fr` | Facultatif : adresse du site utilisée dans les liens envoyés par e-mail |
 | `LEGAL_HOST` | *(facultatif)* | Hébergeur, par défaut Railway Corporation |
 | `BACKUP_KEEP` | `14` *(facultatif)* | Nombre de sauvegardes quotidiennes gardées |
 
