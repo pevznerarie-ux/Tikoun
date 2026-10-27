@@ -19,9 +19,9 @@ window.addEventListener("error", ev => { if (!ev.error || /ResizeObserver|Script
 window.addEventListener("unhandledrejection", ev => { console.error(ev.reason); try { const c = ev.reason?.code; toast(c ? aiErr(c) : "Un problème est survenu. Réessaie, ou recharge la page.", 6000); } catch(e){} });
 function toast(msg, ms = 3500){ const t = document.createElement("div"); t.className = "toast"; t.textContent = msg; document.body.append(t); setTimeout(() => t.remove(), ms); }
 
-const MATIERES = ["Mathématiques","Français","Histoire-Géographie","SVT","Physique-Chimie","Anglais","Espagnol","Allemand","Hébreu","Philosophie","SES","Technologie","NSI","Arts plastiques","Éducation musicale"];
-const MAT_SUGG = ["Guémara","Michna","Houmach","Navi","Halakha","Hassidout","Pensée juive"];
-/* Matières : liste de base + matières personnelles du prof (kodesh ou autres), + celles déjà utilisées */
+const MATIERES = ["Mathématiques","Français","Histoire-Géographie","SVT","Physique-Chimie","Anglais","Espagnol","Allemand","Philosophie","SES","Technologie","NSI","Arts plastiques","Éducation musicale"];
+const MAT_SUGG = [];
+/* Matières : liste de base + matières ajoutées par le prof, + celles déjà utilisées */
 const lsGet = k => { try { return JSON.parse(localStorage.getItem(k) || "[]"); } catch(e){ return []; } };
 /* Les matières que le prof enseigne (Mon compte) : seules celles-ci sont proposées. Vide = toute la liste. */
 const enseigne = () => (window.TIKOUN_CONFIG?.accounts && S.me ? S.me.enseigne : lsGet("mastery.enseigne")) || [];
@@ -49,6 +49,21 @@ const LVL = {socle:"Socle", standard:"Standard", approfondi:"Approfondi"};
 const OLD_ENTETE = "Collège-Lycée Beth Mena'hem · Levallois-Perret";
 /* En-tête des feuilles : choisi par le prof (école, son nom, ou les deux) ; un texte libre saisi dans la mise en page reste prioritaire. */
 const AFFICHE = {les2:"École et mon nom", ecole:"École seulement", nom:"Mon nom seulement"};
+/* Préférences du prof (Mon compte) : mise en page par défaut des feuilles et style des questions */
+const PREF_DEF = {police:15, lh:30, bareme:true, consignes:"Écris uniquement dans les cadres.", q:{format:"mixte", justif:true, profondeur:"standard", longueur:"moyenne"}};
+function prefs(){ let p = S.me?.prefs; if (!p){ try { p = JSON.parse(localStorage.getItem("mastery.prefs") || "null"); } catch(e){} }
+  return {...PREF_DEF, ...(p || {}), q:{...PREF_DEF.q, ...(p?.q || {})}}; }
+async function savePrefs(patch){ const cur = prefs(), next = {...cur, ...patch, q:{...cur.q, ...(patch.q || {})}};
+  if (window.TIKOUN_CONFIG?.accounts && S.me){ const j = await api("/api/me", {method:"PATCH", body:JSON.stringify({prefs:next})}); S.me = j.user; }
+  else { try { localStorage.setItem("mastery.prefs", JSON.stringify(next)); } catch(e){} } }
+/* Les réglages d'un nouveau contrôle partent des préférences */
+function applyPrefParams(){ const Q = prefs().q;
+  S.params.difficulte = {simple:"facile", standard:"moyen", exigeant:"exigeant"}[Q.profondeur] || "moyen";
+  S.params.types = Q.format === "redige" ? ["cours","application"] : Q.format === "qcm" ? ["qcm","application"] : ["cours","application","qcm"];
+  S.params._pref = true; }
+function questionRule(p){ const Q = prefs().q, L = {courte:"3 à 5", moyenne:"5 à 8", developpee:"8 à 14"}[Q.longueur] || "5 à 8";
+  return `Réponses attendues : environ ${L} lignes par question (sauf QCM).` + ((p.types || []).includes("qcm") && Q.justif
+    ? `\nQuestions à choix : n'utilise pas le type "qcm". Écris les propositions (A, B, C…) dans l'énoncé, demande à l'élève d'indiquer son choix ET de le justifier, et prévois des lignes de réponse ; le corrigé et les critères notent le choix et la justification.` : ""); }
 function headerFrom(aff){
   const e = S.me?.ecole, ec = e?.nom ? e.nom + (e.ville ? " · " + e.ville : "") : "", nom = S.me?.nom || "";
   if (aff === "ecole") return ec || nom; if (aff === "nom") return nom || ec; return [ec, nom].filter(Boolean).join(" · ");
@@ -286,13 +301,13 @@ function vClasses(){
       ${store.classes.map(c => `<button class="stu" data-classe="${c.id}" aria-current="${c.id === cl?.id}"><span>${esc(c.nom)}</span><span class="chip">${(c.eleves || []).length}</span></button>`).join("")}
       <div class="grid" style="padding:10px 8px 6px;gap:8px;border-top:1px solid var(--line);margin-top:6px">
         <div class="label">Nouvelle classe</div>
-        <input id="nc-nom" placeholder="ex. 3e A">
         <select id="nc-niv" aria-label="Niveau">${selOpts(NIVEAUX, "3e")}</select>
+        <input id="nc-nom" placeholder="Libellé (facultatif) : A, Bleue…" aria-label="Libellé de la classe (facultatif)">
         <button class="btn sm primary" id="nc-go">Créer</button>
       </div>
     </aside>
     ${cl ? `<div class="grid" style="gap:22px;align-content:start"><section class="panel grid">
-      <div class="row between"><h3 style="font-size:20px">${esc(cl.nom)} <span class="muted small">· ${esc(cl.niveau)}</span></h3>
+      <div class="row between"><h3 style="font-size:20px">${esc(cl.nom)} <button class="btn sm ghost" id="rn-cl" style="vertical-align:middle">Renommer</button></h3>
         <div class="row"><select id="lvlMat" style="width:auto" aria-label="Matière">${matOpts(S.levelMat)}</select>
         <button class="btn sm" id="sugg">Suggérer les niveaux</button><button class="btn sm ghost danger" id="del-cl" title="Supprimer cette classe">Supprimer la classe</button></div></div>
       ${sug ? `<div class="banner">Suggestions calculées sur les 3 derniers contrôles validés en ${esc(S.levelMat)} (socle : moins de ${noteS(10)} · standard : ${nv(10)}–${noteS(15)} · approfondi : plus de ${noteS(15)}). <button class="btn sm" id="applySug">Appliquer</button></div>` : ""}
@@ -346,6 +361,7 @@ function matField(cur){ const ens = enseigne(); cur = cur || ens[0] || "Mathéma
   return `<div class="field"><label for="c-mat">Matière</label><select id="c-mat">${matOpts(cur, S.matChg)}</select></div>`; }
 document.addEventListener("click", ev => { if (ev.target.id === "c-matchg"){ S.coursDraft = {...(S.coursDraft || {}), titre:$("#c-titre")?.value, texte:$("#c-texte")?.value}; S.matChg = true; render(); } });
 function wizParams(){
+  if (!S.params._pref) applyPrefParams();
   const co = store.cours.find(c => c.id === S.coursId);
   const p = S.params;
   p.matiere = co?.matiere || p.matiere || enseigne()[0] || "Mathématiques";
@@ -1331,6 +1347,7 @@ Durée : ${p.duree} minutes · Difficulté : ${p.difficulte} · Types : ${(p.typ
 ${n > 1 ? `Nombre de questions : ${n}. Total des points : 20 exactement.` : ""}
 ${p.consignes ? "Consignes du professeur : " + p.consignes : ""}
 ${langueRule(p.langue)}
+${questionRule(p)}
 ${extra || ""}
 Pour chaque question, rédige 3 versions de la même question, portant sur la même notion et notées sur les mêmes points :
 - "socle" : plus guidée (étapes, données simplifiées, coup de pouce), pour un élève en difficulté ;
@@ -1427,7 +1444,7 @@ document.addEventListener("click", async ev => {
   const d = t.dataset;
   if (d.zoom){ const z = document.createElement("div"); z.className = "zoom"; z.innerHTML = `<img alt="" src="${esc(d.zoom)}">`; z.onclick = () => z.remove(); document.body.append(z); return; }
   if (t.classList.contains("tab")){ if (d.v === "new"){ S.wizStep = S.coursId ? S.wizStep : 1; if (S.view === "edit") S.wizStep = 1; } return go(d.v); }
-  if (d.newctrl){ S.params.kind = "controle"; S.wizStep = 1; return go("new"); }
+  if (d.newctrl){ S.params.kind = "controle"; S.wizStep = 1; S.params._pref = false; return go("new"); }
   if (d.newex){ location.hash = canEx() ? "#/exercices/nouveau" : "#/exercices"; return; }
   if (d.exfrom){ if (!canEx()) return toast(aiErr("no_option")); const C = ctrl(d.exfrom);
     S.qn = {...S.qn, coursId:C.coursId, classeId:C.classeId, titre:"Entraînement · " + C.titre, consignes:"Cible surtout ces notions du contrôle : " + (C.questions || []).map(q => q.notion).filter(Boolean).join(", ")}; location.hash = "#/exercices/nouveau"; return; }
@@ -1439,8 +1456,15 @@ document.addEventListener("click", async ev => {
 
   /* classes */
   if (d.classe){ S.classeSel = d.classe; S.suggestions = null; return render(); }
-  if (t.id === "nc-go"){ const nom = $("#nc-nom").value.trim(); if (!nom) return toast("Donne un nom à la classe.");
-    const id = uid(10); S.classeSel = id; await write("classes/" + id, {nom, niveau:$("#nc-niv").value, eleves:[], createdAt:new Date().toISOString()}); return; }
+  if (t.id === "nc-go"){ const niveau = $("#nc-niv").value, libelle = $("#nc-nom").value.trim(), nom = libelle ? niveau + " " + libelle : niveau;
+    if (store.classes.some(c => c.nom === nom)){ toast("Tu as déjà une classe « " + nom + " » : ajoute un libellé (A, B, Bleue…) pour les distinguer."); $("#nc-nom").focus(); return; }
+    const id = uid(10); S.classeSel = id; await write("classes/" + id, {nom, niveau, libelle, eleves:[], createdAt:new Date().toISOString()}); return; }
+  if (t.id === "rn-cl"){ const cl = classe(S.classeSel); if (!cl) return;
+    const cur = cl.libelle ?? (cl.niveau && cl.nom.startsWith(cl.niveau + " ") ? cl.nom.slice(cl.niveau.length + 1) : cl.nom === cl.niveau ? "" : cl.nom);
+    const v = prompt("Libellé de la classe (facultatif) : A, Bleue, Groupe 2…", cur); if (v === null) return;
+    const libelle = v.trim(), nom = [cl.niveau, libelle].filter(Boolean).join(" ") || cl.nom;
+    if (store.classes.some(c => c.id !== cl.id && c.nom === nom)) return toast("Tu as déjà une classe « " + nom + " » : choisis un autre libellé.");
+    await write("classes/" + cl.id, {nom, libelle}, "update"); return; }
   if (t.id === "add-go"){ const cl = classe(S.classeSel); const lines = $("#add-el").value.split("\n").map(s => s.trim()).filter(Boolean);
     if (!lines.length){ toast("Écris un élève par ligne : « Prénom Nom »."); $("#add-el").focus(); return; } const add = lines.map(l => { const [p, ...n] = l.split(/\s+/); return {id:uid(8), prenom:p, nom:n.join(" "), niveaux:{}}; });
     $("#add-el").value = ""; await write("classes/" + cl.id, {eleves:[...(cl.eleves || []), ...add]}, "update"); toast(add.length + " élève(s) ajouté(s)."); return; }
@@ -1490,13 +1514,13 @@ document.addEventListener("click", async ev => {
     const p = S.params, co = store.cours.find(c => c.id === S.coursId), st = $("#gen-st");
     const EXO = p.kind === "exercices" && canEx();
     const id = uid(12); const base = {type:EXO ? "exercices" : "controle", titre:p.titre || (EXO ? "Exercices · " : "") + (co?.titre || "Contrôle"), gen:{types:p.types, difficulte:p.difficulte, consignes:p.consignes || ""}, matiere:p.matiere, niveau:p.niveau, classeId:p.classeId, coursId:S.coursId, duree:+p.duree || 55,
-      differencie:!!p.differencie, langue:p.langue || "", statut:"brouillon", date:"", mise:{affiche:S.me?.affichage || "les2", police:15, lh:30, bareme:true, consignes:EXO ? "Feuille d'exercices d'entraînement. Écris uniquement dans les cadres." : "Écris uniquement dans les cadres."}, questions:[], createdAt:new Date().toISOString()};
+      differencie:!!p.differencie, langue:p.langue || "", statut:"brouillon", date:"", mise:{affiche:S.me?.affichage || "les2", police:prefs().police, lh:prefs().lh, bareme:prefs().bareme, consignes:EXO ? "Feuille d'exercices d'entraînement. Écris uniquement dans les cadres." : prefs().consignes}, questions:[], createdAt:new Date().toISOString()};
     if (t.id === "genBlank"){ base.questions = [mapQ({points:4, lignes:6})]; await write("controles/" + id, base); S.editId = id; S.wizStep = 1; S.step = "preparer"; return go("edit"); }
     t.disabled = true; st.innerHTML = `<span class="thinking">L'IA rédige ${EXO ? "les exercices" : "le contrôle"} en 3 niveaux (1 à 2 minutes)…</span>`;
     try{
       const r = await genQuestions(co, p, clamp(+p.nbq || 5, 1, 10), EXO ? EXO_TXT : "", EXO ? {feature:"exercices"} : {}), qs = r.questions;
       base.titre = p.titre || (EXO && r.titre ? "Exercices · " + r.titre : r.titre) || base.titre; base.questions = qs;
-      await write("controles/" + id, base); S.editId = id; S.wizStep = 1; S.params.titre = ""; S.step = "preparer"; return go("edit");
+      await write("controles/" + id, base); S.editId = id; S.wizStep = 1; S.params.titre = ""; S.params._pref = false; S.step = "preparer"; return go("edit");
     }catch(e){ console.warn("gen", e); st.textContent = aiErr(e?.code) + (e?.message ? " (" + e.message + ")" : ""); t.disabled = false; }
     return;
   }

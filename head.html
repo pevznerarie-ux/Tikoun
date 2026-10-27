@@ -326,6 +326,7 @@ input::placeholder{text-transform:none}
 /* Case à cocher et son texte restent sur la même ligne */
 label.row:has(>input[type=checkbox]),label.row:has(>input[type=radio]){flex-wrap:nowrap;align-items:flex-start}
 label.row>input[type=checkbox],label.row>input[type=radio]{flex:none;margin-top:3px}
+label>input[type=checkbox],label>input[type=radio]{flex:none}
 /* Liens dans le texte : couleur de l'application, pas le bleu du navigateur */
 .view a:not([class]),.view .small a,.view p a{color:var(--ink);text-underline-offset:2px;text-decoration-color:var(--gold)}
 /* Le titre de section garde la police des titres */

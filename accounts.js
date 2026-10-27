@@ -18,28 +18,16 @@ async function api(path, opts = {}){
     throw {status:r.status, message:j?.error?.message || (r.status >= 500 ? "Serveur momentanément indisponible : réessaie dans un instant." : "Erreur " + r.status), setup:j?.setup}; }
   return j;
 }
-/* Établissement : recherche dans l'annuaire officiel de l'Éducation nationale, ou saisie manuelle (non vérifiée) */
+/* Établissement : nom et ville, saisis librement (l'équipe valide chaque inscription) */
 S.ec = {q:"", cp:"", res:null, sel:null, manual:false, busy:false, err:""};
 const ecLine = e => `${esc(e.nom)}<div class="small muted">${esc([e.adresse, [e.cp, e.ville].filter(Boolean).join(" ")].filter(Boolean).join(" · "))}${e.type ? " · " + esc(e.type) + (e.statut ? " " + esc(e.statut.toLowerCase()) : "") : ""}</div>`;
-const ecBadge = e => !e ? `<span class="chip">aucune école</span>` : e.verifiee ? `<span class="chip ok" title="Retrouvée dans l'annuaire officiel de l'Éducation nationale${e.uai ? " (UAI " + esc(e.uai) + ")" : ""}">✓ vérifiée</span>` : `<span class="chip warn" title="Saisie manuellement : non retrouvée dans l'annuaire officiel">non vérifiée</span>`;
+const ecBadge = e => !e ? `<span class="chip">aucune école</span>` : "";
 function ecoleWidget(){
-  const E = S.ec, EN_UI = document.documentElement.lang !== "fr";
-  if (EN_UI && !E.sel) E.manual = true;
-  if (E.sel) return `<div class="panel" style="padding:12px;background:var(--surface-2)"><div class="row between"><div>${ecLine(E.sel)}<div style="margin-top:6px">${ecBadge(E.sel)}</div></div><button class="btn sm" id="ec-change">Changer</button></div></div>`;
-  if (E.manual) return `<div class="grid" style="gap:10px">
-    <p class="small muted" style="margin:0">Ton école sera enregistrée comme <b>non vérifiée</b>. Tu peux utiliser Mastery normalement.</p>
-    <div class="field"><label for="ec-nom">Nom de l'école</label><input id="ec-nom" value="${esc(E.q)}"></div>
-    <div class="field"><label for="ec-adr">Adresse postale</label><input id="ec-adr" placeholder="ex. 12 rue de la Paix" value="${esc(S.form["ec-adr"] || "")}"></div>
-    <div class="form-row"><div class="field"><label for="ec-cp2">Code postal</label><input id="ec-cp2" maxlength="10" value="${esc(E.cp)}"></div><div class="field"><label for="ec-ville">Ville</label><input id="ec-ville" value="${esc(S.form["ec-ville"] || "")}"></div></div>
-    <div class="row"><button class="btn sm primary" id="ec-mok">Valider cette école</button>${EN_UI ? "" : `<button class="btn sm ghost" id="ec-back">← Revenir à la recherche</button>`}</div></div>`;
-  return `<div class="grid" style="gap:10px">
-    <div class="form-row"><div class="field"><label for="ec-q">Nom de l'école</label><input id="ec-q" value="${esc(E.q)}" placeholder="ex. Lycée Victor Hugo"></div>
-      <div class="field"><label for="ec-cp">Code postal</label><input id="ec-cp" inputmode="numeric" maxlength="5" value="${esc(E.cp)}" placeholder="ex. 75003"></div></div>
-    <div class="row"><button class="btn sm primary" id="ec-find" ${E.busy ? "disabled" : ""}>${E.busy ? "Recherche…" : "Rechercher dans l'annuaire officiel"}</button></div>
-    ${E.err ? `<div class="small" style="color:var(--warn)">${esc(E.err)}</div>` : ""}
-    ${E.res ? (E.res.length ? `<div>${E.res.map((e, i) => `<button class="item link" style="width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--line);cursor:pointer" data-ecpick="${i}"><div>${ecLine(e)}</div></button>`).join("")}</div>` : `<p class="small muted" style="margin:0">Aucun établissement trouvé. Vérifie le code postal ou essaie un autre mot du nom.</p>`) : ""}
-    <button class="btn sm ghost" id="ec-manual" style="justify-self:start">Mon école n'est pas dans la liste</button></div>`;
+  const v = S.ec.sel || {};
+  return `<div class="form-row"><div class="field"><label for="ec-nom">Nom de l'école</label><input id="ec-nom" value="${esc(S.form["ec-nom"] ?? v.nom ?? "")}" placeholder="ex. Lycée Victor Hugo"></div>
+    <div class="field"><label for="ec-ville">Ville</label><input id="ec-ville" value="${esc(S.form["ec-ville"] ?? v.ville ?? "")}" placeholder="ex. Lyon"></div></div>`;
 }
+const ecoleVal = () => ({nom:($("#ec-nom")?.value || "").trim(), ville:($("#ec-ville")?.value || "").trim()});
 const affRadios = cur => `<div class="row">${Object.entries(AFFICHE).map(([k, l]) => `<label class="row small" style="gap:6px"><input type="radio" style="width:auto" name="aff" data-aff="${k}"${(cur || "les2") === k ? " checked" : ""}> ${l}</label>`).join("")}</div>`;
 const affValue = () => document.querySelector('input[name="aff"]:checked')?.dataset.aff || "les2";
 async function loadUsers(){ if (!isAdmin()) return; try { S.users = (await api("/api/users")).users; } catch(e){} }
@@ -85,11 +73,11 @@ function vAuth(){
   </section>
   <p class="small muted auth-foot"><a href="/">← Retour au site</a> · <a href="?lang=fr">Français</a> · <a href="?lang=en">English</a> · <a href="?lang=pt">Português</a></p></div>`;
 }
-const KEEP = ["rg-nom","rg-mail","rg-pw","me-nom","ec-adr","ec-ville","ec-q","ec-cp"]; let kept = {}; S.form = {};
+const KEEP = ["rg-nom","rg-mail","rg-pw","me-nom","ec-nom","ec-ville"]; let kept = {}; S.form = {};
 document.addEventListener("change", async ev => { if (ev.target.id === "rg-cgu") S.regCgu = ev.target.checked;
   if (ev.target.id === "me-partage"){ try { const j = await api("/api/me", {method:"PATCH", body:JSON.stringify({partageEcriture:ev.target.checked})}); S.me = j.user; toast("Enregistré"); } catch(e){ toast(e.message); } }
   if (ev.target.id === "me-bareme"){ try { const j = await api("/api/me", {method:"PATCH", body:JSON.stringify({bareme:ev.target.value})}); S.me = j.user; toast("Enregistré"); render(); } catch(e){ toast(e.message); } } });
-document.addEventListener("input", ev => { const el = ev.target; if (KEEP.includes(el.id)) S.form[el.id] = el.value; if (el.id === "ec-q") S.ec.q = el.value; if (el.id === "ec-cp") S.ec.cp = el.value; });
+document.addEventListener("input", ev => { const el = ev.target; if (KEEP.includes(el.id)) S.form[el.id] = el.value; });
 const keepForm = () => { kept = {}; for (const id of KEEP){ const el = $("#" + id); if (el) kept[id] = el.value; } const a = document.querySelector('input[name="aff"]:checked'); if (a) kept.aff = a.dataset.aff; };
 const restoreForm = () => { for (const [id, v] of Object.entries(kept)){ if (id === "aff"){ const r = document.querySelector(`input[data-aff="${v}"]`); if (r) r.checked = true; continue; } const el = $("#" + id); if (el) el.value = v; } };
 async function afterLogin(user, mustChange){
@@ -106,18 +94,32 @@ function vCompte(){
   if (S.ecFor !== "me"){ S.ec = {q:"", cp:"", res:null, sel:S.me?.ecole || null, manual:false, busy:false, err:""}; S.ecFor = "me"; }
   return `<div class="head"><div><h2>Mon compte</h2><p>${esc(S.me?.nom || "")} · ${esc(S.me?.email || "")} · ${isAdmin() ? "Administrateur" : isDir() ? "Direction" : "Professeur"} · ${S.me?.billing && S.me?.acces?.mode !== "inclus" ? esc(accesLabel(S.me)) : `Abonnement ${PLAN[S.me?.plan] || "Essentiel"} · Option Exercices ${S.me?.can?.exercices ? "✓" : "✗"}`}</p></div>
     <button class="btn" id="out-go">Se déconnecter</button></div>
-  ${abonnementPanel()}${etabPanel()}${devicesPanel()}${parrainagePanel()}
-  <section class="panel grid" style="max-width:640px"><h3>Mon établissement et en-tête des feuilles</h3>
+  <section class="panel grid" style="max-width:640px"><h3>Mon profil</h3>
     <div class="field"><label for="me-nom">Mon nom</label><input id="me-nom" value="${esc(S.form["me-nom"] ?? S.me?.nom ?? "")}"></div>
     ${ecoleWidget()}
-    <div class="field"><label>Afficher en haut des contrôles et exercices</label>${affRadios(S.me?.affichage)}</div>
-    <p class="small muted" style="margin:0">Aperçu : <b id="me-prev">${esc(headerFrom(S.me?.affichage || "les2"))}</b></p>
     <div class="row"><button class="btn primary" id="me-save">Enregistrer</button></div><div class="status" id="me-st"></div></section>
+  ${(() => { const P = prefs(), Q = P.q; return `<section class="panel grid" style="max-width:640px"><h3>Mise en page des feuilles</h3>
+    <p class="small muted" style="margin:0">Chaque nouveau contrôle part de ces réglages. Tu peux toujours les ajuster dans son étape « Mise en page ».</p>
+    <div class="field"><label>En-tête des feuilles</label>${affRadios(S.me?.affichage)}</div>
+    <p class="small muted" style="margin:0">Aperçu : <b id="me-prev">${esc(headerFrom(S.me?.affichage || "les2"))}</b></p>
+    <div class="form-row"><div class="field"><label for="mp-pol">Taille du texte</label><select id="mp-pol">${selOpts(["13","14","15","16","17"], String(P.police), x => x + " pt")}</select></div>
+      <div class="field"><label for="mp-lh">Interligne des cadres</label><select id="mp-lh">${selOpts(["26","30","34","38"], String(P.lh), x => ({26:"Serré",30:"Normal",34:"Large",38:"Très large"}[x]))}</select></div></div>
+    <div class="field"><label for="mp-cons">Consignes imprimées en haut de la feuille</label><textarea id="mp-cons">${esc(P.consignes)}</textarea></div>
+    <label class="row small" style="gap:6px"><input type="checkbox" id="mp-bar"${P.bareme ? " checked" : ""}> Afficher le barème de chaque question</label>
+    <div class="row"><button class="btn primary" id="mp-save">Enregistrer</button></div></section>
+  <section class="panel grid" style="max-width:640px"><h3>Questions</h3>
+    <p class="small muted" style="margin:0">Le style des questions que l'IA te propose. Le niveau de la classe est toujours pris en compte, et tu peux tout modifier contrôle par contrôle.</p>
+    <div class="form-row"><div class="field"><label for="qp-fmt">Format</label><select id="qp-fmt">${selOpts(["redige","mixte","qcm"], Q.format, x => ({redige:"Réponses rédigées", mixte:"Rédigé et questions à choix", qcm:"Surtout des questions à choix"}[x]))}</select></div>
+      <div class="field"><label for="qp-prof">Profondeur</label><select id="qp-prof">${selOpts(["simple","standard","exigeant"], Q.profondeur, x => ({simple:"Simple : appliquer le cours", standard:"Standard : comprendre et expliquer", exigeant:"Exigeant : raisonner et argumenter"}[x]))}</select></div></div>
+    <div class="field"><label for="qp-long">Longueur des réponses</label><select id="qp-long">${selOpts(["courte","moyenne","developpee"], Q.longueur, x => ({courte:"Courtes (3 à 5 lignes)", moyenne:"Moyennes (5 à 8 lignes)", developpee:"Développées (8 à 14 lignes)"}[x]))}</select></div>
+    <label class="row small" style="gap:6px"><input type="checkbox" id="qp-just"${Q.justif ? " checked" : ""}> <span>Questions à choix : toujours laisser un cadre pour justifier la réponse (corrigé par l'IA)</span></label>
+    <div class="row"><button class="btn primary" id="qp-save">Enregistrer</button></div></section>`; })()}
   <section class="panel grid" style="max-width:640px"><h3>Les matières que j'enseigne</h3>
     <p class="small muted" style="margin:0">Seules ces matières te seront proposées. Si tu n'en enseignes qu'une, elle est choisie toute seule quand tu prépares un contrôle.</p>
     <div class="row">${enseigne().map(m => `<span class="chip">${esc(m)} <button class="btn sm ghost" style="padding:0 4px" data-ensdel="${esc(m)}" aria-label="Retirer">×</button></span>`).join("") || `<span class="small muted">Aucune matière choisie : toute la liste est proposée.</span>`}</div>
     <div class="row"><select id="ens-sel" style="max-width:260px" aria-label="Matière à ajouter"><option value="">Choisir une matière…</option>${selOpts(myMatieres(true).filter(m => !enseigne().includes(m)), "")}</select><button class="btn sm primary" id="ens-go">Ajouter</button></div>
     <div class="row"><input id="mat-new" placeholder="Matière absente de la liste" style="max-width:260px"><button class="btn sm" id="mat-go">Ajouter</button></div></section>
+  ${abonnementPanel()}${etabPanel()}${devicesPanel()}${parrainagePanel()}
   <section class="panel grid" style="max-width:640px"><h3>Amélioration de la lecture</h3>
     <label class="row small" style="gap:8px;align-items:flex-start"><input type="checkbox" id="me-partage" style="width:auto;margin-top:3px"${S.me?.partageEcriture ? " checked" : ""}${isAdmin() ? " disabled" : ""}><span>Partager anonymement mes corrections de lecture (image du cadre de réponse et texte corrigé, jamais le nom de l'élève) pour améliorer la lecture de l'écriture manuscrite.</span></label></section>
   <section class="panel grid" style="max-width:640px"><h3>Notes affichées</h3>
@@ -182,25 +184,18 @@ document.addEventListener("click", async ev => {
     if (d.ensdel){ await saveEnseigne(enseigne().filter(m => m !== d.ensdel)); return render(); }
     if (t.id === "rg-open"){ S.auth = "register"; S.ecFor = "reg"; S.ec = {q:"", cp:"", res:null, sel:null, manual:false, busy:false, err:""}; return render(); }
     if (t.id === "rg-back"){ S.auth = "login"; return render(); }
-    if (t.id === "ec-find"){ S.ec.q = $("#ec-q").value.trim(); S.ec.cp = $("#ec-cp").value.trim(); keepForm();
-      if (!S.ec.q && !S.ec.cp){ S.ec.err = "Indique au moins le nom ou le code postal."; return render(); }
-      S.ec.busy = true; S.ec.err = ""; render();
-      try { S.ec.res = (await api(`/api/ecoles?q=${encodeURIComponent(S.ec.q)}&cp=${encodeURIComponent(S.ec.cp)}`)).ecoles; } catch(e){ S.ec.err = e.message; S.ec.res = null; }
-      S.ec.busy = false; render(); restoreForm(); return; }
-    if (d.ecpick !== undefined){ keepForm(); S.ec.sel = {...S.ec.res[+d.ecpick], verifiee:true}; render(); restoreForm(); return; }
-    if (t.id === "ec-change"){ keepForm(); S.ec.sel = null; S.ec.manual = false; render(); restoreForm(); return; }
-    if (t.id === "ec-manual"){ keepForm(); S.ec.q = $("#ec-q")?.value.trim() || S.ec.q; S.ec.cp = $("#ec-cp")?.value.trim() || S.ec.cp; S.ec.manual = true; render(); restoreForm(); return; }
-    if (t.id === "ec-back"){ keepForm(); S.ec.manual = false; render(); restoreForm(); return; }
-    if (t.id === "ec-mok"){ const e = {nom:$("#ec-nom").value.trim(), adresse:$("#ec-adr").value.trim(), cp:$("#ec-cp2").value.trim(), ville:$("#ec-ville").value.trim(), verifiee:false};
-      if (!e.nom || !/^[0-9A-Za-z][0-9A-Za-z\- ]{2,9}$/.test(e.cp) || !e.ville){ toast("Nom, code postal (5 chiffres) et ville sont nécessaires."); return; }
-      keepForm(); S.ec.sel = e; S.ec.manual = false; render(); restoreForm(); return; }
-    if (t.id === "rg-go"){ if (!S.ec.sel){ st().textContent = "Choisis ton établissement (ou saisis-le manuellement)."; return; }
+    if (t.id === "rg-go"){ S.ec.sel = ecoleVal(); if (!S.ec.sel.nom || !S.ec.sel.ville){ st().textContent = "Indique le nom de ton école et sa ville."; return; }
       if (!$("#rg-cgu")?.checked){ st().textContent = "Coche la case pour accepter les conditions d'utilisation."; return; }
       st().innerHTML = `<span class="thinking">Création…</span>`;
       const j = await api("/api/register", {method:"POST", body:JSON.stringify({nom:$("#rg-nom").value, email:$("#rg-mail").value, password:$("#rg-pw").value, affichage:affValue(), plan:document.querySelector('input[name="plan"]:checked')?.dataset.plan || "essentiel", ecole:S.ec.sel, cgu:true})});
       S.pend = j.user; S.auth = "pending"; history.replaceState(null, "", "#/connexion"); return render(); }
-    if (t.id === "me-save"){ const body = {nom:$("#me-nom").value, affichage:affValue()}; if (S.ec.sel && JSON.stringify(S.ec.sel) !== JSON.stringify(S.me.ecole)) body.ecole = S.ec.sel;
-      const j = await api("/api/me", {method:"PATCH", body:JSON.stringify(body)}); S.me = j.user; S.ec.sel = j.user.ecole; render(); toast(j.user.ecole?.verifiee === false && body.ecole ? "Enregistré · école non vérifiée" : "Enregistré"); return; }
+    if (t.id === "mp-save"){ const j = await api("/api/me", {method:"PATCH", body:JSON.stringify({affichage:affValue()})}); S.me = j.user;
+      await savePrefs({police:+$("#mp-pol").value, lh:+$("#mp-lh").value, consignes:$("#mp-cons").value.trim(), bareme:$("#mp-bar").checked}); render(); toast("Enregistré"); return; }
+    if (t.id === "qp-save"){ await savePrefs({q:{format:$("#qp-fmt").value, profondeur:$("#qp-prof").value, longueur:$("#qp-long").value, justif:$("#qp-just").checked}}); S.params._pref = false; render(); toast("Enregistré"); return; }
+    if (t.id === "me-save"){ const body = {nom:$("#me-nom").value}, e = ecoleVal();
+      if (e.nom && e.ville && (e.nom !== S.me.ecole?.nom || e.ville !== S.me.ecole?.ville)) body.ecole = e;
+      else if (e.nom || e.ville){ if (!e.nom || !e.ville) return toast("Indique le nom de l'école et sa ville."); }
+      const j = await api("/api/me", {method:"PATCH", body:JSON.stringify(body)}); S.me = j.user; S.ec.sel = j.user.ecole; delete S.form["ec-nom"]; delete S.form["ec-ville"]; render(); toast("Enregistré"); return; }
     if (t.id === "lg-go2"){ st().innerHTML = `<span class="thinking">Connexion…</span>`;
       const j = await api("/api/login", {method:"POST", body:JSON.stringify({email:$("#lg-mail2").value, password:$("#lg-pw2").value})}); return afterLogin(j.user, j.mustChange); }
     if (t.id === "su-go"){ st().innerHTML = `<span class="thinking">Création…</span>`;
