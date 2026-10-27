@@ -267,6 +267,10 @@ const chipStatut = c => { const [l, t] = STATUT[c.statut] || STATUT.brouillon; r
 const selOpts = (arr, cur, lab = x => x, val = x => x) => arr.map(x => `<option value="${esc(val(x))}"${val(x) === cur ? " selected" : ""}>${esc(lab(x))}</option>`).join("");
 
 /* ================= HOME ================= */
+/* Sections repliables de l'accueil (état gardé sur cet appareil) */
+const foldGet = () => { try { return JSON.parse(localStorage.getItem("mastery.fold") || "{}"); } catch(e){ return {}; } };
+const foldSec = (k, titre, n, body) => { const f = !!foldGet()[k];
+  return `<section class="panel"><button class="foldh" data-fold="${k}" aria-expanded="${!f}"><h3>${titre} <span class="muted small">${n}</span></h3><span class="chev" aria-hidden="true">${f ? "▸" : "▾"}</span></button>${f ? "" : `<div style="margin-top:4px">${body}</div>`}</section>`; };
 function vHome(){
   if (!store.classes.length) return `
   <div class="head"><div><h2>Bienvenue sur Mastery</h2><p>Du cours au rattrapage : l'IA prépare et corrige, le professeur décide.</p></div></div>
@@ -298,8 +302,8 @@ function vHome(){
     </div>
   </section>
   ${quotaHome()}
-  <section class="panel"><h3>En cours</h3><div style="margin-top:4px">${todo.map(line).join("") || `<p class="muted" style="padding:10px 0">Aucun contrôle en cours.</p>`}</div></section>
-  ${done.length ? `<section class="panel"><h3>Corrigés</h3><div style="margin-top:4px">${done.map(line).join("")}</div></section>` : ""}`;
+  ${foldSec("encours", "En cours", todo.length, todo.map(line).join("") || `<p class="muted" style="padding:10px 0">Aucun contrôle en cours.</p>`)}
+  ${done.length ? foldSec("corriges", "Corrigés", done.length, done.map(line).join("")) : ""}`;
 }
 
 function quotaHome(){
@@ -419,7 +423,7 @@ function vEdit(){
   const scanned = printed && Object.values(f.copies).some(cp => Object.keys(cp.scans || {}).length);
   const partPrep = `  <section class="panel grid">
     <div class="form-row">
-      <div class="field"><label for="e-titre">Nom du contrôle (imprimé en haut de la feuille)</label><input id="e-titre" data-c="titre" data-live value="${esc(c.titre)}"></div>
+      <div class="field" style="grid-column:1/-1"><label for="e-titre">Nom du contrôle (imprimé en haut de la feuille)</label><input id="e-titre" data-c="titre" data-live value="${esc(c.titre)}"></div>
       <div class="field"><label for="e-date">Date</label><input id="e-date" type="date" data-c="date" value="${esc(c.date || "")}"></div>
       <div class="field"><label for="e-dur">Durée (min)</label><input id="e-dur" type="number" data-c="duree" value="${esc(c.duree || "")}"></div>
     </div>
@@ -1284,6 +1288,13 @@ function vAnalyse(){
       <td>${r ? `<button class="btn sm" data-edit="${r.id}">${STATUT[r.statut]?.[0] || "Voir"}</button>` : ok && final20(c, cp) < SEUIL ? `<button class="btn sm" data-ratt="${e.id}">Créer</button>` : ok ? `<span class="small muted">—</span>` : ""}</td></tr>`; }).join("")}
     </tbody></table></div></section>`;
 }
+const rTitre = t => String(t).replace(/^(feuille de |fiche de )?rattrapage\s*[-:·–]?\s*/i, "").replace(/^contr[ôo]le de /i, "") || String(t);
+/* Deux énoncés trop proches : l'un contient l'autre, ou ils partagent la plupart de leurs mots significatifs */
+function tooClose(a, b){
+  const w = t => new Set(t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9\u0590-\u05ff ]+/g, " ").split(/\s+/).filter(x => x.length > 3).map(x => x.slice(0, 5)));
+  const A = w(a), B = w(b); if (!A.size || !B.size) return false;
+  const inter = [...A].filter(x => B.has(x)).length; return inter / Math.min(A.size, B.size) >= 0.6;
+}
 async function createRattrapage(c, e, replaceId){
   const f = feuille(c.id), cp = f?.copies?.[e.id]; if (!cp) throw {code:"no_copy"};
   if (!copyDone(c, cp) || final20(c, cp) >= SEUIL) throw {code:"not_failed"};
@@ -1294,25 +1305,33 @@ async function createRattrapage(c, e, replaceId){
   const lvl = levelOf(e, c.matiere);
   const ctx = target.map(({q, a}) => { const v = vOf(q, cp.version?.[q.id] || "standard");
     return `- Notion : ${q.notion || "?"}\n  Question : ${v.enonce}\n  Corrigé-type : ${v.corrige}\n  Réponse de l'élève (${fmt(noteOf(a))}/${q.points}) : ${a?.transcription || "(vide)"}\n  Erreurs relevées : ${(a?.erreurs || []).join(", ") || "?"}\n  Commentaire : ${a?.commentaire || ""}`; }).join("\n");
-  const r = await ai(`Tu prépares une feuille de rattrapage individuelle pour un élève de ${c.niveau || ""} en ${c.matiere} .
+  const co = c.coursId && (store.allCours || store.cours).find(x => x.id === c.coursId);
+  /* Énoncés déjà vus par l'élève (contrôle, toutes versions, et rattrapages précédents) : le rattrapage ne doit pas les reprendre */
+  const seen = [c, ...store.controles.filter(x => x.type === "rattrapage" && x.parentId === c.id)].flatMap(x => (x.questions || []).flatMap(q => Object.values(q.v || {}).map(v => v?.enonce || ""))).filter(Boolean);
+  const prompt = (refus) => `Tu prépares une feuille de rattrapage individuelle pour un élève de ${c.niveau || ""} en ${c.matiere}.
 Niveau habituel de l'élève dans cette matière : ${LVL[lvl]}.
 Ses difficultés au contrôle « ${c.titre} » :
 ${ctx}
-
+${co?.texte ? `\nCOURS (pour varier les exemples et les angles) :\n"""${co.texte.slice(0, 12000)}"""\n` : ""}
 ${langueRule(c.langue)}
-Crée exactement 3 exercices NOUVEAUX, de difficulté croissante, qui ciblent précisément ces erreurs :
+Crée exactement 3 exercices NOUVEAUX, de difficulté croissante, qui retravaillent les MÊMES notions sous un AUTRE angle :
 1 = découverte (plus simple que le niveau de l'élève), 2 = application, 3 = retour au niveau ${LVL[lvl].toLowerCase()} du contrôle.
+RÈGLE ABSOLUE : ne reprends jamais une question du contrôle, ni mot pour mot ni reformulée. Change la forme : cas pratique ou mise en situation, vrai/faux à justifier, phrase à compléter, erreur à corriger, comparaison, explication avec ses propres mots, exemple à trouver. Une question qui demande la même chose que celle du contrôle est refusée.
 Total 20 points (par ex. 5, 7, 8). Chaque exercice : un énoncé autonome (avec un coup de pouce entre parenthèses pour le 1), un corrigé-type, des critères de notation, 2 ou 3 erreurs types, un nombre de lignes de réponse (3 à 12).
 ${NOSRC}
-${replaceId ? "IMPORTANT : propose des exercices DIFFÉRENTS de ceux-ci : " + (ctrl(replaceId)?.questions || []).map(q => vOf(q, "standard").enonce).join(" / ") + "\n" : ""}Réponds uniquement en JSON : {"titre":"…","questions":[{"notion":"…","points":5,"lignes":5,"enonce":"…","corrige":"…","criteres":"…","erreurs":["…"]}]}`);
+${refus.length ? "Ces questions sont INTERDITES car l'élève les a déjà eues : " + refus.map(t => "« " + t.slice(0, 200) + " »").join(" / ") + "\n" : ""}Réponds uniquement en JSON : {"titre":"…","questions":[{"notion":"…","points":5,"lignes":5,"enonce":"…","corrige":"…","criteres":"…","erreurs":["…"]}]}`;
+  let r = await ai(prompt(replaceId ? (ctrl(replaceId)?.questions || []).map(q => vOf(q, "standard").enonce) : []));
+  const copies = rr => (rr?.questions || []).filter(x => seen.some(t => tooClose(String(x.enonce || ""), t)));
+  if (copies(r).length){ const r2 = await ai(prompt([...new Set([...copies(r).map(x => String(x.enonce)), ...target.map(({q}) => vOf(q, "standard").enonce)])]));
+    if ((r2?.questions || []).length && copies(r2).length < copies(r).length) r = r2; }
   const qs = (r?.questions || []).slice(0, 3).map(x => ({id:"q" + uid(5), notion:String(x.notion || ""), points:+x.points || 5, lignes:clamp(+x.lignes || 6, 2, 20), erreurs:(x.erreurs || []).map(String),
     v:{standard:{enonce:String(x.enonce || ""), corrige:String(x.corrige || ""), criteres:String(x.criteres || "")}}}));
   if (!qs.length) throw {code:"invalid_json"};
   const old = replaceId && ctrl(replaceId), printed = old && feuille(replaceId) && Object.keys(feuille(replaceId).copies || {}).length;
-  if (old && !printed){ const o = structuredClone(old); o.questions = qs; o.titre = "Rattrapage · " + (r.titre || c.titre); await saveCtrl(o); return replaceId; }
+  if (old && !printed){ const o = structuredClone(old); o.questions = qs; o.titre = "Rattrapage · " + rTitre(r.titre || c.titre); await saveCtrl(o); return replaceId; }
   const round = store.controles.filter(x => x.type === "rattrapage" && x.parentId === c.id && x.eleves?.includes(e.id)).length;
   const id = uid(12);
-  const doc = {type:"rattrapage", parentId:c.id, titre:"Rattrapage" + (round ? " " + (round + 1) : "") + " · " + (r.titre || c.titre), matiere:c.matiere, niveau:c.niveau, classeId:c.classeId, eleves:[e.id], coursId:c.coursId || null,
+  const doc = {type:"rattrapage", parentId:c.id, titre:"Rattrapage" + (round ? " " + (round + 1) : "") + " · " + rTitre(r.titre || c.titre), matiere:c.matiere, niveau:c.niveau, classeId:c.classeId, eleves:[e.id], coursId:c.coursId || null,
     duree:30, differencie:false, mise:{...(c.mise || {}), consignes:"Feuille de rattrapage personnelle. Prends ton temps et relis le coup de pouce."}, statut:"brouillon", date:today(), questions:qs, createdAt:new Date().toISOString()};
   await write("controles/" + id, doc);
   return id;
@@ -1534,6 +1553,7 @@ document.addEventListener("click", async ev => {
   if (d.usecours){ const co = store.cours.find(c => c.id === d.usecours); S.coursId = co.id; S.params.matiere = co.matiere; S.params.niveau = co.niveau; S.params.classeId = ""; S.wizStep = 2; return render(); }
   if (d.delcours){ if (!confirm("Supprimer ce cours ? Les contrôles déjà créés à partir de lui restent.")) return; await write("cours/" + d.delcours, null, "delete"); toast("Cours supprimé."); return; }
   if (t.id === "back1"){ S.wizStep = 1; return render(); }
+  if (d.fold){ const f = foldGet(); f[d.fold] = !f[d.fold]; try { localStorage.setItem("mastery.fold", JSON.stringify(f)); } catch(e){} return render(); }
   if (t.id === "p-niv-cl"){ S.params.niveau = t.dataset.niv; return render(); }
   if (t.id === "gen" || t.id === "genBlank"){
     if (!S.params.langue) S.params.langue = langueDef(store.cours.find(c => c.id === S.coursId)?.texte);
