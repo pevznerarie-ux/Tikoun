@@ -1821,5 +1821,20 @@
  "Nouveaux exercices prêts": "New practice exercises ready",
  "Variante prête": "Variant ready",
  "prêt": "ready",
- "Nouveau rattrapage de": "New remediation for"
+ "Nouveau rattrapage de": "New remediation for",
+ ".\nRÈGLE ABSOLUE : chaque exercice doit demander autre chose et attendre une réponse DIFFÉRENTE de toutes les questions interdites. Reformuler une question interdite, la transformer en vrai/faux, en texte à trous, en QCM ou en mise en situation qui revient à donner la même réponse, c'est un doublon : refusé.\nPour rester sur les notions ratées sans répéter : appuie-toi sur d'autres éléments du cours (autre règle, autre détail, autre exemple, cas particulier, conséquence pratique, comparaison entre deux notions, application à une situation concrète nouvelle, explication du « pourquoi »).\nMéthode : AVANT d'écrire, choisis": ".\nABSOLUTE RULE: each exercise must ask for something else and expect an answer DIFFERENT from all the forbidden questions. Rephrasing a forbidden question, or turning it into true/false, fill-in-the-blank, multiple choice or a scenario that amounts to giving the same answer, is a duplicate: rejected.\nTo stay on the failed concepts without repeating: use other parts of the lesson (another rule, another detail, another example, a special case, a practical consequence, a comparison between two concepts, application to a new concrete situation, explaining the “why”).\nMethod: BEFORE writing, choose",
+ ", INTERDITES (ni reprises, ni reformulées, ni en vrai/faux, texte à trous ou QCM qui attend la même réponse) :\\n": ", FORBIDDEN (not reused, not rephrased, not as true/false, fill-in-the-blank or multiple choice expecting the same answer):\\n",
+ "Ajoute UNE nouvelle question qui évalue un élément du cours que la feuille n'évalue pas encore.": "Add ONE new question that assesses a part of the lesson the sheet doesn't assess yet.",
+ "\\nATTENTION : ta proposition «": "\\nWARNING: your suggestion “",
+ "\\nQuestions déjà sur la feuille": "\\nQuestions already on the sheet",
+ "angle(s) tous différents (dans \"angles\"), chacun tiré d'un passage précis du cours, puis écris un exercice par angle. Deux exercices ne doivent jamais demander la même chose entre eux.\nS'il n'y a pas assez de matière dans le cours pour": "completely different angle(s) (in \"angles\"), each taken from a specific passage of the lesson, then write one exercise per angle. Two exercises must never ask the same thing.\nIf the lesson doesn't contain enough material for",
+ "corrigé(s)": "graded",
+ "exercice(s) vraiment différents, écris-en moins (au moins 1) et explique dans \"manque\", en une phrase, ce qu'il faudrait ajouter au cours.\nTotal": "truly different exercise(s), write fewer (at least 1) and explain in \"manque\", in one sentence, what should be added to the lesson.\nTotal",
+ "imprimé(s)": "printed",
+ "ou dans le contrôle d'origine": "or in the original test",
+ "» répète une question interdite. Propose une question sur un AUTRE élément du cours.": "” repeats a forbidden question. Suggest a question on ANOTHER part of the lesson.",
+ "à préparer": "to prepare",
+ "élève": "student",
+ "Question non modifiée : l'IA ne trouve pas de version qui ne répète pas une autre question. Précise ta demande ou enrichis le cours.": "Question unchanged: the AI can't find a version that doesn't repeat another question. Be more specific or add to the lesson.",
+ "Aucune question ajoutée : l'IA ne trouve plus de question vraiment nouvelle dans ce cours. Ajoute du contenu au cours, ou écris la question toi-même.": "No question added: the AI can't find any truly new question in this lesson. Add content to the lesson, or write the question yourself."
 }
