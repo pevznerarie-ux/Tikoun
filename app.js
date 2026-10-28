@@ -57,6 +57,12 @@ const TON_EX = {bienveillant:{tu:"Bonne idée de citer la règle ! Il manque l'e
   neutre:{tu:"La règle est citée. L'exemple manque : voir le paragraphe 2.", vous:"La règle est citée. L'exemple manque : voir le paragraphe 2."},
   exigeant:{tu:"La règle seule ne suffit pas : un exemple précis était attendu. Relis le paragraphe 2.", vous:"La règle seule ne suffit pas : un exemple précis était attendu. Relisez le paragraphe 2."},
   chaleureux:{tu:"Bravo, tu connais la règle ! Il manque juste un exemple. Tu vas y arriver !", vous:"Bravo, vous connaissez la règle ! Il manque juste un exemple. Vous allez y arriver !"}};
+/* Compétences évaluées par chaque question (1 ou 2), suivies sur l'année avec l'échelle du livret scolaire */
+const COMPS = {connaitre:"Connaître", comprendre:"Comprendre", raisonner:"Raisonner", lire:"Lire", ecrire:"Écrire"};
+const compsOf = a => Object.keys(COMPS).filter(k => (Array.isArray(a) ? a : []).map(x => String(x).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")).includes(k)).slice(0, 2);
+const COMP_RULE = `\n"competences" : pour chaque question, 1 ou 2 compétences parmi "connaitre" (restituer le cours), "comprendre" (expliquer, reformuler, interpréter), "raisonner" (logique, déduire, résoudre un problème), "lire" (lire et analyser un texte ou un document), "ecrire" (rédiger, argumenter, s'exprimer à l'écrit).`;
+const MAITRISE = r => r == null ? null : r >= .8 ? {k:"tb", t:"ok", l:"Très bonne maîtrise"} : r >= .6 ? {k:"s", t:"ok", l:"Maîtrise satisfaisante"} : r >= .4 ? {k:"f", t:"warn", l:"Maîtrise fragile"} : {k:"i", t:"bad", l:"Maîtrise insuffisante"};
+const MAI_ABR = {tb:"TB", s:"S", f:"F", i:"I"};
 /* Mise en page d'un nouveau contrôle : préférences du prof, réglure Seyès et interligne large au primaire */
 const miseDef = (niv, extra) => { const P = prefs(), prim = isPrim(niv);
   return {affiche:S.me?.affichage || "les2", police:P.police, lh:prim ? Math.max(P.lh, 38) : P.lh, reglure:prim && P.reglure === "lignes" ? "seyes" : P.reglure, bareme:P.bareme, consignes:P.consignes, ...(extra || {})}; };
@@ -66,7 +72,7 @@ const OLD_ENTETE = "Collège-Lycée Beth Mena'hem · Levallois-Perret";
 /* En-tête des feuilles : choisi par le prof (école, son nom, ou les deux) ; un texte libre saisi dans la mise en page reste prioritaire. */
 const AFFICHE = {les2:"École et mon nom", ecole:"École seulement", nom:"Mon nom seulement"};
 /* Préférences du prof (Mon compte) : mise en page par défaut des feuilles et style des questions */
-const PREF_DEF = {police:15, lh:30, reglure:"lignes", ton:"bienveillant", adresse:"tu", bareme:true, consignes:"Écris uniquement dans les cadres.", q:{format:"mixte", justif:true, profondeur:"standard", longueur:"moyenne"}, ratt:{seuil:10, regle:"meilleure", plafond:10, bonus:3}};
+const PREF_DEF = {police:15, lh:30, reglure:"lignes", ton:"bienveillant", adresse:"tu", bareme:true, consignes:"Écris uniquement dans les cadres.", q:{format:"mixte", justif:true, profondeur:"standard", longueur:"moyenne"}, ratt:{seuil:10, regle:"meilleure", plafond:10, bonus:3}, periodes:{mode:"trim", t2:"12-01", t3:"03-15", s2:"02-01"}};
 function prefs(){ let p = S.me?.prefs; if (!p){ try { p = JSON.parse(localStorage.getItem("mastery.prefs") || "null"); } catch(e){} }
   return {...PREF_DEF, ...(p || {}), q:{...PREF_DEF.q, ...(p?.q || {})}, ratt:{...PREF_DEF.ratt, ...(p?.ratt || {})}}; }
 async function savePrefs(patch){ const cur = prefs(), next = {...cur, ...patch, q:{...cur.q, ...(patch.q || {})}, ratt:{...cur.ratt, ...(patch.ratt || {})}};
@@ -185,6 +191,14 @@ function saveState(){ const e = document.getElementById("savest"); if (!e) retur
   e.textContent = SAVE.err && !busy ? "⚠ Échec de l'enregistrement : vérifie ta connexion, puis refais la dernière modification" : busy ? "Enregistrement…" : SAVE.at ? "✓ Enregistré" : "Enregistrement automatique"; }
 window.addEventListener("beforeunload", ev => { if (editPending || SAVE.n > 0){ flushEdit(); ev.preventDefault(); ev.returnValue = ""; } });
 const saveCtrl = c => { const {id, ...d} = c; return write("controles/" + id, d); };
+/* Compétences des questions d'un contrôle existant : proposées par l'IA, modifiables ensuite */
+async function tagComps(c){
+  const qs = (c.questions || []).map(q => { const v = q.v?.standard || Object.values(q.v || {})[0] || {}; return `${q.id} : ${q.notion || ""} · ${String(v.enonce || "").slice(0, 400)}`; }).join("\n");
+  const r = await ai(`Voici les questions d'un contrôle de ${c.matiere} (${c.niveau || ""}).\n${qs}\n${COMP_RULE}\nRéponds uniquement en JSON : {"questions":[{"id":"…","competences":["…"]}]}`, {modelTier:"quick"});
+  const m = new Map((r?.questions || []).map(x => [String(x.id), compsOf(x.competences)]));
+  if (![...m.values()].some(x => x.length)) throw {code:"invalid_json"};
+  c.questions.forEach(q => { const k = m.get(q.id); if (k?.length) q.comps = k; }); await saveCtrl(c);
+}
 /* Relecture d'une page : les notes posées par le professeur et les copies validées ne sont jamais écrasées */
 function keepTeacherNotes(cp, out){
   const ans = out.answers || {};
@@ -399,6 +413,7 @@ function vHome(){
     </div>
   </section>
   ${quotaHome()}
+  ${typeof aObserver === "function" ? aObserver() : ""}
   ${foldSec("encours", "En cours", todo.length, todo.map(line).join("") || `<p class="muted" style="padding:10px 0">Aucun contrôle en cours.</p>`)}
   ${done.length ? foldSec("corriges", "Corrigés", done.length, done.map(line).join("")) : ""}`;
 }
@@ -586,6 +601,7 @@ function wizParams(){
     </div>
     ${(() => { const cl = classe(p.classeId), nv = nivOf(cl); return cl && nv && p.niveau && nv !== p.niveau ? `<p class="banner">Attention : le niveau choisi (${esc(p.niveau)}) ne correspond pas à la classe ${esc(cl.nom)}. <button class="btn sm" id="p-niv-cl" data-niv="${esc(nv)}">Utiliser ${esc(nv)}</button></p>` : ""; })()}
     <div class="field"><label>Types de questions</label><div class="row">${T.map(([k, l]) => `<label class="row small" style="gap:6px"><input type="checkbox" data-type="${k}"${p.types.includes(k) ? " checked" : ""}> ${l}</label>`).join("")}</div>${prefs().q.justif ? `<p class="small muted" style="margin:6px 0 0">Questions à choix : les propositions sont dans l'énoncé, avec un cadre pour justifier (corrigé par l'IA). Pour de vrais QCM à cocher, corrigés sans IA, décoche « toujours laisser un cadre pour justifier » dans Mon compte.</p>` : ""}</div>
+    <div class="field"><label>Compétences à évaluer en priorité (facultatif)</label><div class="row">${Object.entries(COMPS).map(([k, l]) => `<label class="row small" style="gap:6px"><input type="checkbox" data-pcomp="${k}"${(p.comps || []).includes(k) ? " checked" : ""}> ${l}</label>`).join("")}</div></div>
     <label class="row small" style="gap:6px"><input type="checkbox" id="p-diff"${p.differencie ? " checked" : ""}> Feuilles différenciées : chaque question en 3 niveaux (socle, standard, approfondi), selon le niveau de chaque élève</label>
     <div class="field"><label for="p-cons">Tes consignes à l'IA (facultatif)</label><textarea id="p-cons" data-p="consignes" data-live placeholder="ex. Insister sur la notion d'antécédent. Une question de rédaction à la fin.">${esc(p.consignes)}</textarea></div>
     <div class="row"><button class="btn primary" id="gen" ${store.classes.length ? "" : "disabled"}>${EXO ? "Générer les exercices (IA)" : "Générer le contrôle (IA)"}</button><button class="btn" id="genBlank" ${store.classes.length ? "" : "disabled"}>Partir d'un contrôle vide</button><span class="status" id="gen-st"></span></div>
@@ -616,7 +632,7 @@ function vEdit(){
       ${["meilleure", "bonus", "remplace"].includes(R.regle) ? `<div class="field"><label for="rr-plaf">Plafond</label><select id="rr-plaf">${selOpts(["10","12","14","16","20"], String(R.plafond), x => x === "20" ? "Aucun" : noteS(+x))}</select></div>` : ""}</div></section>`; })() : ""}
   ${c.remarques?.length ? `<section class="panel grid" style="border-color:var(--warn)"><div class="row between"><h3 style="margin:0">À vérifier</h3><button class="btn sm" id="remOk">C'est vérifié</button></div><ul class="small" style="margin:0;padding-left:18px">${c.remarques.map(x => `<li>${esc(x)}</li>`).join("")}</ul></section>` : ""}
   <div class="head"><h3>Questions <span class="muted num" style="font-weight:500">· total ${fmt(tot)} pts${tot !== 20 && bareme() === "20" ? " (ramené sur 20)" : ""}</span></h3>
-    <div class="row">${c.type === "exercices" ? (canEx() ? `<button class="btn sm primary" id="regenEx">↻ Régénérer les exercices (IA)</button>` : lockChip()) : (!c.type || c.type === "controle") && c.coursId ? `<button class="btn sm primary" id="regenCtrl">↻ Régénérer le contrôle (IA)</button>` + (canEx() ? `<button class="btn sm" data-exfrom="${c.id}">+ Quiz d'exercices sur ce cours</button>` : lockChip()) : ""}${(!c.type || c.type === "controle") && c.questions?.length ? `<button class="btn sm" id="variante" title="Même structure, mêmes notions et mêmes points, nouveaux énoncés">⧉ Variante (IA)</button>` : ""}<button class="btn sm" id="addQ">+ Question vide</button><button class="btn sm" id="addQcm">+ QCM</button><button class="btn sm" id="addQai">+ Question (IA)</button><button class="btn sm" id="bankOpen">${S.bankOpen ? "Fermer la banque" : "+ Depuis la banque"}</button></div></div>
+    <div class="row">${(c.questions || []).some(q => !(q.comps || []).length) ? `<button class="btn sm" id="compAI" title="L'IA indique les compétences évaluées par chaque question">Compétences (IA)</button>` : ""}${c.type === "exercices" ? (canEx() ? `<button class="btn sm primary" id="regenEx">↻ Régénérer les exercices (IA)</button>` : lockChip()) : (!c.type || c.type === "controle") && c.coursId ? `<button class="btn sm primary" id="regenCtrl">↻ Régénérer le contrôle (IA)</button>` + (canEx() ? `<button class="btn sm" data-exfrom="${c.id}">+ Quiz d'exercices sur ce cours</button>` : lockChip()) : ""}${(!c.type || c.type === "controle") && c.questions?.length ? `<button class="btn sm" id="variante" title="Même structure, mêmes notions et mêmes points, nouveaux énoncés">⧉ Variante (IA)</button>` : ""}<button class="btn sm" id="addQ">+ Question vide</button><button class="btn sm" id="addQcm">+ QCM</button><button class="btn sm" id="addQai">+ Question (IA)</button><button class="btn sm" id="bankOpen">${S.bankOpen ? "Fermer la banque" : "+ Depuis la banque"}</button></div></div>
   ${S.bankOpen ? bankPanel(c) : ""}
   ${(c.questions || []).map((q, i) => qEditor(c, q, i)).join("") || `<div class="panel empty">Aucune question.</div>`}`;
   const partLayout = `  <section class="panel grid">
@@ -661,6 +677,7 @@ function qEditor(c, q, i){
       <div class="field"><label for="q-t-${q.id}">Type</label><select id="q-t-${q.id}" data-q="${i}" data-k="type">${selOpts(["", "qcm"], q.type || "", x => x ? "QCM (sans IA)" : "Réponse rédigée")}</select></div>
       ${q.type === "qcm" ? "" : `<div class="field"><label for="q-l-${q.id}">Lignes de réponse</label><input id="q-l-${q.id}" type="number" min="1" max="30" data-q="${i}" data-k="lignes" value="${esc(q.lignes || 5)}"></div>`}
     </div>
+    <div class="row small" style="gap:8px;flex-wrap:wrap"><span class="muted">Compétences</span><div class="qchips" style="flex-wrap:wrap;min-width:0">${Object.entries(COMPS).map(([k, l]) => `<button class="chip${(q.comps || []).includes(k) ? " cur" : ""}" data-qcomp="${i}" data-ck="${k}" aria-pressed="${(q.comps || []).includes(k)}">${l}</button>`).join("")}</div></div>
     ${c.differencie ? `<div class="vtabs" role="tablist">${LEVELS.map(l => `<button class="vtab" role="tab" data-vt="${q.id}" data-l="${l}" aria-selected="${l === vt}">${LVL[l]}</button>`).join("")}</div>` : ""}
     <div class="field"><label for="q-e-${q.id}-${vt}">Énoncé${c.differencie ? " · " + LVL[vt] : ""}</label><textarea id="q-e-${q.id}-${vt}" dir="auto" data-q="${i}" data-vk="enonce" data-lv="${vt}" data-live>${esc(v.enonce)}</textarea></div>
     ${q.type === "qcm" ? `<div class="field"><label for="q-ch-${q.id}-${vt}">Choix : un par ligne, mets * devant les bonnes réponses</label><textarea id="q-ch-${q.id}-${vt}" dir="auto" data-q="${i}" data-vk="choixRaw" data-lv="${vt}" data-live>${esc((v.choix || []).map((ch, j) => ((v.bonnes || []).includes(j) ? "*" : "") + ch).join("\n"))}</textarea></div>` : `
@@ -1170,6 +1187,7 @@ async function processPage(it){
         const res = await ai(gradePrompt(c, cp, aiQ, many ? "halves" : "page"), {images:imgs, modelTier:"complex"});
         arr = Array.isArray(res?.reponses) ? res.reponses : Array.isArray(res) ? res : []; bon = res;
       }
+      if (String(bon?.alerte || "").trim()) upd.copies[it.eleveId].alertes = {[it.page]:{txt:String(bon.alerte).trim().slice(0, 600), at:new Date().toISOString()}};
       if (bonusMax(c)) upd.copies[it.eleveId].bonusPages = {[it.page]:{proprete:clamp(+bon?.proprete || 0, 0, 1), orthographe:clamp(+bon?.orthographe || 0, 0, 1)}};
     }
     const missing = [];
@@ -1226,7 +1244,8 @@ Consignes :
 5. "erreurs" : choisis dans les erreurs types (texte exact) ; sinon une étiquette de 2 à 5 mots. "acquis" : 1 à 3 étiquettes courtes.
 6. "lisible" : false si tu as dû deviner une partie importante de la réponse.
 7. ${NOSRC}
-${bm ? `8. Donne aussi pour la page "proprete" (0 à 1 : lisibilité, soin, ratures) et "orthographe" (0 à 1 : 1 = aucune faute).\n` : ""}Réponds uniquement en JSON : {"reponses":[{"id":"…","transcription":"…","fautes":["…"],"lisible":true,"note":0,"commentaire":"…","erreurs":["…"],"acquis":["…"],"coches":[]}]${bm ? ',"proprete":1,"orthographe":1' : ""}}`;
+8. "alerte" : "" dans presque tous les cas. Seulement si l'élève a écrit, sans rapport avec la question, un message qui peut révéler une détresse ou un danger (idées noires, violence subie, harcèlement, appel à l'aide), recopie ce message mot pour mot. Ne juge jamais l'écriture, la présentation, les fautes ni les réponses scolaires.
+${bm ? `9. Donne aussi pour la page "proprete" (0 à 1 : lisibilité, soin, ratures) et "orthographe" (0 à 1 : 1 = aucune faute).\n` : ""}Réponds uniquement en JSON : {"reponses":[{"id":"…","transcription":"…","fautes":["…"],"lisible":true,"note":0,"commentaire":"…","erreurs":["…"],"acquis":["…"],"coches":[]}],"alerte":""${bm ? ',"proprete":1,"orthographe":1' : ""}}`;
 }
 
 /* ================= CORRECTION ================= */
@@ -1537,8 +1556,8 @@ Méthode : AVANT d'écrire, choisis ${n} angle(s) tous différents (dans "angles
 S'il n'y a pas assez de matière dans le cours pour ${n} exercice(s) vraiment différents, écris-en moins (au moins 1) et explique dans "manque", en une phrase, ce qu'il faudrait ajouter au cours.
 Total ${n === 3 ? "20 points (par ex. 5, 7, 8)" : "des points : " + n * 6 + " environ"}. Chaque exercice : un énoncé autonome${n === 3 ? " (avec un coup de pouce entre parenthèses pour le 1)" : ""}, un corrigé-type, des critères de notation, 2 ou 3 erreurs types, un nombre de lignes de réponse (3 à 12).
 ${NOSRC}
-Réponds uniquement en JSON : {"angles":["…"],"manque":"","titre":"…","questions":[{"notion":"…","points":5,"lignes":5,"enonce":"…","corrige":"…","criteres":"…","erreurs":["…"]}]}`;
-  const toQ = x => ({id:"q" + uid(5), notion:String(x.notion || ""), points:+x.points || 5, lignes:clamp(+x.lignes || 6, 2, 20), erreurs:(x.erreurs || []).map(String),
+Réponds uniquement en JSON : {"angles":["…"],"manque":"","titre":"…","questions":[{"notion":"…","competences":["…"],"points":5,"lignes":5,"enonce":"…","corrige":"…","criteres":"…","erreurs":["…"]}]}` + COMP_RULE;
+  const toQ = x => ({id:"q" + uid(5), notion:String(x.notion || ""), comps:compsOf(x.competences), points:+x.points || 5, lignes:clamp(+x.lignes || 6, 2, 20), erreurs:(x.erreurs || []).map(String),
     v:{standard:{enonce:String(x.enonce || ""), corrige:String(x.corrige || ""), criteres:String(x.criteres || "")}}});
   const prev = replaceId ? askedOf([ctrl(replaceId)].filter(Boolean)) : [];
   if (spec){   // tâche confiée au serveur : il génère, vérifie les doublons et enregistre lui-même
@@ -1627,6 +1646,7 @@ ${n > 1 ? `Nombre de questions : ${n}. Total des points : 20 exactement.` : ""}
 ${p.consignes ? "Consignes du professeur : " + p.consignes : ""}
 ${langueRule(p.langue)}
 ${questionRule(p)}
+${(p.comps || []).length ? "Compétences à évaluer en priorité (au moins la moitié des questions) : " + p.comps.map(k => COMPS[k]).join(", ") + "." : ""}
 ${extra || ""}
 Pour chaque question, rédige 3 versions de la même question, portant sur la même notion et notées sur les mêmes points :
 - "socle" : plus guidée (étapes, données simplifiées, coup de pouce), pour un élève en difficulté ;
@@ -1639,9 +1659,9 @@ ${NOSRC}
 COURS :
 """${(co?.texte || "").slice(0, 30000)}"""
 
-Réponds uniquement en JSON : {"titre":"…","questions":[{"notion":"…","points":4,"lignes":6,"erreurs":["…"],"versions":{"socle":{"enonce":"…","corrige":"…","criteres":"…"},"standard":{…},"approfondi":{…}}}]}`;
+Réponds uniquement en JSON : {"titre":"…","questions":[{"notion":"…","competences":["…"],"points":4,"lignes":6,"erreurs":["…"],"versions":{"socle":{"enonce":"…","corrige":"…","criteres":"…"},"standard":{…},"approfondi":{…}}}]}` + COMP_RULE;
 }
-const mapQ = x => ({id:"q" + uid(5), ...(x.type === "qcm" ? {type:"qcm"} : {}), notion:String(x.notion || ""), points:+x.points || 4, lignes:clamp(+x.lignes || 6, 1, 30), erreurs:(x.erreurs || []).map(String).slice(0, 5),
+const mapQ = x => ({id:"q" + uid(5), ...(x.type === "qcm" ? {type:"qcm"} : {}), notion:String(x.notion || ""), comps:compsOf(x.competences), points:+x.points || 4, lignes:clamp(+x.lignes || 6, 1, 30), erreurs:(x.erreurs || []).map(String).slice(0, 5),
   v:Object.fromEntries(LEVELS.map(l => { const y = x.versions?.[l] || {}; const o = {enonce:String(y.enonce || ""), corrige:String(y.corrige || ""), criteres:String(y.criteres || "")};
     if (x.type === "qcm"){ o.choix = (y.choix || []).map(String).slice(0, 6); o.bonnes = (y.bonnes || []).map(Number).filter(n => n >= 0 && n < o.choix.length); o.corrige = "Bonne(s) réponse(s) : " + o.bonnes.map(n => "ABCDEF"[n]).join(", "); o.criteres = "Tout ou rien."; }
     return [l, o]; }))});
@@ -1874,6 +1894,8 @@ document.addEventListener("click", async ev => {
   const c = S.view === "edit" ? ctrl(S.editId) : null;
   if (c){
     if (d.vt){ S.vtab[d.vt] = d.l; return render(); }
+    if (d.qcomp !== undefined){ const q = c.questions[+d.qcomp]; if (!q) return; const st = new Set(q.comps || []); st.has(d.ck) ? st.delete(d.ck) : st.add(d.ck); q.comps = Object.keys(COMPS).filter(k => st.has(k)); await saveCtrl(c); return; }
+    if (t.id === "compAI"){ t.disabled = true; t.innerHTML = `<span class="thinking">Analyse…</span>`; try { await tagComps(c); toast("Compétences ajoutées : vérifie-les."); } catch(x){ toast(aiErr(x?.code)); } render(); return; }
     if (d.qup !== undefined){ const i = +d.qup; [c.questions[i - 1], c.questions[i]] = [c.questions[i], c.questions[i - 1]]; await saveCtrl(c); return; }
     if (d.qdown !== undefined){ const i = +d.qdown; [c.questions[i + 1], c.questions[i]] = [c.questions[i], c.questions[i + 1]]; await saveCtrl(c); return; }
     if (d.qdel !== undefined){ const printed = c.statut && c.statut !== "brouillon";
@@ -2058,6 +2080,7 @@ document.addEventListener("change", async ev => {
   if (["rr-regle", "rr-bonus", "rr-plaf"].includes(el.id) && S.view === "edit"){ const c = ctrl(S.editId); if (!c) return;
     const R = {...rattRule(c), ...(el.id === "rr-regle" ? {regle:el.value} : el.id === "rr-bonus" ? {bonus:+el.value} : {plafond:+el.value})};
     await saveCtrl({...c, regle:R}); return; }
+  if (el.id === "ap-mode"){ await savePrefs({periodes:{...PREF_DEF.periodes, ...(prefs().periodes || {}), mode:el.value}}); render(); return; }
   if (el.id === "tp-ton" || el.id === "tp-adr"){ await savePrefs(el.id === "tp-ton" ? {ton:el.value} : {adresse:el.value}); render(); toast("Ton enregistré"); return; }
   if (["rp-seuil", "rp-regle", "rp-bonus", "rp-plaf"].includes(el.id)){ const k = {"rp-seuil":"seuil", "rp-regle":"regle", "rp-bonus":"bonus", "rp-plaf":"plafond"}[el.id];
     await savePrefs({ratt:{[k]:el.id === "rp-regle" ? el.value : +el.value}}); render(); toast("Règle de rattrapage enregistrée"); return; }
@@ -2069,6 +2092,7 @@ document.addEventListener("change", async ev => {
     catch(e){ console.error(e); $("#dc-st").textContent = e?.code ? aiErr(e.code) : "Lecture du fichier impossible."; } return; }
   if (el.id === "c-mat" || el.id === "c-niv"){ S.coursDraft = {...(S.coursDraft || {}), matiere:$("#c-mat").value, niveau:$("#c-niv").value}; return; }
   if (d.p){ S.params[d.p] = el.value; if (d.p === "niveau") S.params.classeId = S.params.classeId || ""; if (d.p === "niveau" || d.p === "classeId") render(); return; }
+  if (d.pcomp){ const st = new Set(S.params.comps || []); el.checked ? st.add(d.pcomp) : st.delete(d.pcomp); S.params.comps = Object.keys(COMPS).filter(k => st.has(k)); return; }
   if (d.type){ const s = new Set(S.params.types); el.checked ? s.add(d.type) : s.delete(d.type); S.params.types = [...s]; return; }
   if (el.id === "p-diff"){ S.params.differencie = el.checked; return; }
   if (d.kind){ S.params.kind = d.kind; return render(); }
@@ -2113,7 +2137,7 @@ ${qcm ? `- Si le professeur donne des propositions à cocher, fais-en un QCM : "
 - "remarques" : liste courte de ce que le professeur doit vérifier (vide si tout est clair).
 ${langueRule(langue)}
 ${NOSRC}
-Réponds uniquement en JSON : {"titre":"…","remarques":["…"],"questions":[{"notion":"…","points":4,"lignes":5,"erreurs":["…"],"versions":{"standard":{"enonce":"…","corrige":"…","criteres":"…"}}}]}`;
+Réponds uniquement en JSON : {"titre":"…","remarques":["…"],"questions":[{"notion":"…","competences":["…"],"points":4,"lignes":5,"erreurs":["…"],"versions":{"standard":{"enonce":"…","corrige":"…","criteres":"…"}}}]}` + COMP_RULE;
 }
 /* Variante d'un contrôle : même structure, mêmes notions et mêmes points, nouveaux énoncés */
 async function createVariante(c, spec){
@@ -2126,7 +2150,7 @@ Rédige une VARIANTE de ce contrôle pour une autre classe ou un autre jour : ex
 ${lv.length > 1 ? `Pour chaque question, 3 versions notées sur les mêmes points : "socle" (plus guidée), "standard", "approfondi" (plus exigeante).` : `Pour chaque question, une seule version "standard".`} Chaque version : énoncé, corrigé-type, critères de notation dont la somme fait les points.${c.questions.some(q => q.type === "qcm") ? ` Pour un QCM : "type":"qcm" et, dans chaque version, "choix" (propositions sans lettre) et "bonnes" (indices à partir de 0).` : ""}
 ${refus.length ? "Ces questions sont INTERDITES (doublons d'une question du contrôle) : " + refus.map(t => "« " + t.slice(0, 200) + " »").join(" / ") + "\n" : ""}${langueRule(c.langue)}
 ${NOSRC}
-Réponds uniquement en JSON : {"questions":[{"notion":"…","points":4,"lignes":6,"erreurs":["…"],"versions":{${lv.map(l => `"${l}":{"enonce":"…","corrige":"…","criteres":"…"}`).join(",")}}}]}`);
+Réponds uniquement en JSON : {"questions":[{"notion":"…","competences":["…"],"points":4,"lignes":6,"erreurs":["…"],"versions":{${lv.map(l => `"${l}":{"enonce":"…","corrige":"…","criteres":"…"}`).join(",")}}}]}` + COMP_RULE);
   const olds = askedOf([c]);
   if (spec){ const {id:_0, owner:_1, ...rest0} = c;
     return {check:true, prompt:vprompt([]), n:c.questions.length, olds, points:c.questions.map(q => +q.points), lignes:c.questions.map(q => q.lignes || 0), path:"controles/" + uid(12), mode:"create",

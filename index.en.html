@@ -208,6 +208,14 @@ td.c,th.c{text-align:center}
 .sh-qh{display:flex;justify-content:space-between;gap:10px;font-weight:700}
 .sh-qt{margin:3px 0 6px;white-space:pre-wrap}
 .sh-box{border:1.5px solid #222;border-radius:6px;background-image:linear-gradient(to bottom,transparent var(--lh,30px),#c9cdd6 var(--lh,30px));background-size:100% calc(var(--lh,30px) + 1px);position:relative}
+.flag{display:inline-block;font-size:11.5px;font-weight:700;padding:1px 7px;border-radius:99px;background:var(--warn-soft);color:var(--warn);white-space:nowrap;vertical-align:middle}
+.flag.al{background:var(--bad-soft);color:var(--bad)}
+.item.al{border-left:3px solid var(--bad);padding-left:10px}
+.tbl-sticky td:first-child,.tbl-sticky th:first-child{position:sticky;left:0;background:var(--surface);z-index:1}
+.tbl-sticky tr.sel td:first-child{background:var(--surface-2)}
+tr.tot td{border-top:2px solid var(--line)}
+@media (max-width:600px){.tbl-sticky td:first-child,.tbl-sticky th:first-child{max-width:118px;min-width:96px;white-space:normal;font-size:12.5px;line-height:1.25}}
+select.coef{width:auto;min-width:0;padding:1px 4px;font-size:11px;height:auto;margin-top:3px}
 .sh-box.r-seyes{background-image:linear-gradient(to bottom,transparent calc(var(--lh,30px) - 1px),#9fa6d2 calc(var(--lh,30px) - 1px)),linear-gradient(to bottom,transparent calc(var(--lh,30px) / 4 - 1px),#dcdff0 calc(var(--lh,30px) / 4 - 1px)),linear-gradient(to right,transparent calc(var(--lh,30px) - 1px),#e3e5f2 calc(var(--lh,30px) - 1px));background-size:100% var(--lh,30px),100% calc(var(--lh,30px) / 4),var(--lh,30px) 100%;background-repeat:repeat}
 .sh-box.r-carreaux{background-image:linear-gradient(to bottom,transparent 18px,#cfd3dc 18px),linear-gradient(to right,transparent 18px,#cfd3dc 18px);background-size:100% 19px,19px 100%;background-repeat:repeat}
 .sh-box.r-aucune{background-image:none}
@@ -632,6 +640,12 @@ const TON_EX = {bienveillant:{tu:"Good idea to state the rule! The example is mi
   neutre:{tu:"The rule is stated. The example is missing: see paragraph 2.", vous:"The rule is stated. The example is missing: see paragraph 2."},
   exigeant:{tu:"The rule alone is not enough: a specific example was expected. Reread paragraph 2.", vous:"The rule alone is not enough: a specific example was expected. Please reread paragraph 2."},
   chaleureux:{tu:"Well done, you know the rule! Just one example is missing. You can do it!", vous:"Well done, you know the rule! Just one example is missing. You can do it!"}};
+/* Compétences évaluées par chaque question (1 ou 2), suivies sur l'année avec l'échelle du livret scolaire */
+const COMPS = {connaitre:"Know", comprendre:"Understand", raisonner:"Reason", lire:"Read", ecrire:"Write"};
+const compsOf = a => Object.keys(COMPS).filter(k => (Array.isArray(a) ? a : []).map(x => String(x).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")).includes(k)).slice(0, 2);
+const COMP_RULE = `\n"competences": for each question, 1 or 2 skills among "connaitre" (recall the lesson), "comprendre" (explain, rephrase, interpret), "raisonner" (logic, deduce, solve a problem), "lire" (read and analyze a text or document), "ecrire" (write, argue, express oneself in writing). Keep these exact French keys.`;
+const MAITRISE = r => r == null ? null : r >= .8 ? {k:"tb", t:"ok", l:"Very good mastery"} : r >= .6 ? {k:"s", t:"ok", l:"Satisfactory mastery"} : r >= .4 ? {k:"f", t:"warn", l:"Fragile mastery"} : {k:"i", t:"bad", l:"Insufficient mastery"};
+const MAI_ABR = {tb:"TB", s:"S", f:"F", i:"I"};
 /* Mise en page d'un nouveau contrôle : préférences du prof, réglure Seyès et interligne large au primaire */
 const miseDef = (niv, extra) => { const P = prefs(), prim = isPrim(niv);
   return {affiche:S.me?.affichage || "les2", police:P.police, lh:prim ? Math.max(P.lh, 38) : P.lh, reglure:prim && P.reglure === "lignes" ? "seyes" : P.reglure, bareme:P.bareme, consignes:P.consignes, ...(extra || {})}; };
@@ -641,7 +655,7 @@ const OLD_ENTETE = "Collège-Lycée Beth Mena'hem · Levallois-Perret";
 /* En-tête des feuilles : choisi par le prof (école, son nom, ou les deux) ; un texte libre saisi dans la mise en page reste prioritaire. */
 const AFFICHE = {les2:"School and my name", ecole:"School only", nom:"My name only"};
 /* Préférences du prof (Mon compte) : mise en page par défaut des feuilles et style des questions */
-const PREF_DEF = {police:15, lh:30, reglure:"lignes", ton:"bienveillant", adresse:"tu", bareme:true, consignes:"Write only inside the boxes.", q:{format:"mixte", justif:true, profondeur:"standard", longueur:"moyenne"}, ratt:{seuil:10, regle:"meilleure", plafond:10, bonus:3}};
+const PREF_DEF = {police:15, lh:30, reglure:"lignes", ton:"bienveillant", adresse:"tu", bareme:true, consignes:"Write only inside the boxes.", q:{format:"mixte", justif:true, profondeur:"standard", longueur:"moyenne"}, ratt:{seuil:10, regle:"meilleure", plafond:10, bonus:3}, periodes:{mode:"trim", t2:"12-01", t3:"03-15", s2:"02-01"}};
 function prefs(){ let p = S.me?.prefs; if (!p){ try { p = JSON.parse(localStorage.getItem("mastery.prefs") || "null"); } catch(e){} }
   return {...PREF_DEF, ...(p || {}), q:{...PREF_DEF.q, ...(p?.q || {})}, ratt:{...PREF_DEF.ratt, ...(p?.ratt || {})}}; }
 async function savePrefs(patch){ const cur = prefs(), next = {...cur, ...patch, q:{...cur.q, ...(patch.q || {})}, ratt:{...cur.ratt, ...(patch.ratt || {})}};
@@ -760,6 +774,14 @@ function saveState(){ const e = document.getElementById("savest"); if (!e) retur
   e.textContent = SAVE.err && !busy ? "⚠ Saving failed: check your connection, then redo your last change" : busy ? "Enregistrement…" : SAVE.at ? "✓ Saved" : "Enregistrement automatique"; }
 window.addEventListener("beforeunload", ev => { if (editPending || SAVE.n > 0){ flushEdit(); ev.preventDefault(); ev.returnValue = ""; } });
 const saveCtrl = c => { const {id, ...d} = c; return write("controles/" + id, d); };
+/* Compétences des questions d'un contrôle existant : proposées par l'IA, modifiables ensuite */
+async function tagComps(c){
+  const qs = (c.questions || []).map(q => { const v = q.v?.standard || Object.values(q.v || {})[0] || {}; return `${q.id} : ${q.notion || ""} · ${String(v.enonce || "").slice(0, 400)}`; }).join("\n");
+  const r = await ai(`Here are the questions of a test in ${c.matiere} (${c.niveau || ""}).\n${qs}\n${COMP_RULE}\nRespond only in JSON: {"questions":[{"id":"…","competences":["…"]}]}`, {modelTier:"quick"});
+  const m = new Map((r?.questions || []).map(x => [String(x.id), compsOf(x.competences)]));
+  if (![...m.values()].some(x => x.length)) throw {code:"invalid_json"};
+  c.questions.forEach(q => { const k = m.get(q.id); if (k?.length) q.comps = k; }); await saveCtrl(c);
+}
 /* Relecture d'une page : les notes posées par le professeur et les copies validées ne sont jamais écrasées */
 function keepTeacherNotes(cp, out){
   const ans = out.answers || {};
@@ -974,6 +996,7 @@ function vHome(){
     </div>
   </section>
   ${quotaHome()}
+  ${typeof aObserver === "function" ? aObserver() : ""}
   ${foldSec("encours", "In progress", todo.length, todo.map(line).join("") || `<p class="muted" style="padding:10px 0">No test in progress.</p>`)}
   ${done.length ? foldSec("corriges", "Graded", done.length, done.map(line).join("")) : ""}`;
 }
@@ -1161,6 +1184,7 @@ function wizParams(){
     </div>
     ${(() => { const cl = classe(p.classeId), nv = nivOf(cl); return cl && nv && p.niveau && nv !== p.niveau ? `<p class="banner">Warning: the selected level (${esc(p.niveau)}) doesn't match the class ${esc(cl.nom)}. <button class="btn sm" id="p-niv-cl" data-niv="${esc(nv)}">Use ${esc(nv)}</button></p>` : ""; })()}
     <div class="field"><label>Question types</label><div class="row">${T.map(([k, l]) => `<label class="row small" style="gap:6px"><input type="checkbox" data-type="${k}"${p.types.includes(k) ? " checked" : ""}> ${l}</label>`).join("")}</div>${prefs().q.justif ? `<p class="small muted" style="margin:6px 0 0">Choice questions: options are written in the question, with a box to justify (graded by AI). For real tick-box multiple choice graded without AI, untick “always leave a box to justify” in My account.</p>` : ""}</div>
+    <div class="field"><label>Skills to assess first (optional)</label><div class="row">${Object.entries(COMPS).map(([k, l]) => `<label class="row small" style="gap:6px"><input type="checkbox" data-pcomp="${k}"${(p.comps || []).includes(k) ? " checked" : ""}> ${l}</label>`).join("")}</div></div>
     <label class="row small" style="gap:6px"><input type="checkbox" id="p-diff"${p.differencie ? " checked" : ""}> Differentiated sheets: each question in 3 levels (foundational, standard, advanced), based on each student's level</label>
     <div class="field"><label for="p-cons">Your instructions to the AI (optional)</label><textarea id="p-cons" data-p="consignes" data-live placeholder="e.g. Emphasize the concept of antecedents. One essay question at the end.">${esc(p.consignes)}</textarea></div>
     <div class="row"><button class="btn primary" id="gen" ${store.classes.length ? "" : "disabled"}>${EXO ? "Generate exercises (AI)" : "Generate the test (AI)"}</button><button class="btn" id="genBlank" ${store.classes.length ? "" : "disabled"}>Start from a blank test</button><span class="status" id="gen-st"></span></div>
@@ -1191,7 +1215,7 @@ function vEdit(){
       ${["meilleure", "bonus", "remplace"].includes(R.regle) ? `<div class="field"><label for="rr-plaf">Cap</label><select id="rr-plaf">${selOpts(["10","12","14","16","20"], String(R.plafond), x => x === "20" ? "None" : noteS(+x))}</select></div>` : ""}</div></section>`; })() : ""}
   ${c.remarques?.length ? `<section class="panel grid" style="border-color:var(--warn)"><div class="row between"><h3 style="margin:0">To check</h3><button class="btn sm" id="remOk">Checked</button></div><ul class="small" style="margin:0;padding-left:18px">${c.remarques.map(x => `<li>${esc(x)}</li>`).join("")}</ul></section>` : ""}
   <div class="head"><h3>Questions <span class="muted num" style="font-weight:500">· total ${fmt(tot)} pts${tot !== 20 && bareme() === "20" ? " (scaled to 20)" : ""}</span></h3>
-    <div class="row">${c.type === "exercices" ? (canEx() ? `<button class="btn sm primary" id="regenEx">↻ Regenerate exercises (AI)</button>` : lockChip()) : (!c.type || c.type === "controle") && c.coursId ? `<button class="btn sm primary" id="regenCtrl">↻ Regenerate the test (AI)</button>` + (canEx() ? `<button class="btn sm" data-exfrom="${c.id}">+ Practice quiz on this lesson</button>` : lockChip()) : ""}${(!c.type || c.type === "controle") && c.questions?.length ? `<button class="btn sm" id="variante" title="Same structure, same concepts and same points, new questions">⧉ Variant (AI)</button>` : ""}<button class="btn sm" id="addQ">+ Blank question</button><button class="btn sm" id="addQcm">+ MCQ</button><button class="btn sm" id="addQai">+ Question (AI)</button><button class="btn sm" id="bankOpen">${S.bankOpen ? "Close the question bank" : "+ From the question bank"}</button></div></div>
+    <div class="row">${(c.questions || []).some(q => !(q.comps || []).length) ? `<button class="btn sm" id="compAI" title="The AI indicates the skills assessed by each question">Skills (AI)</button>` : ""}${c.type === "exercices" ? (canEx() ? `<button class="btn sm primary" id="regenEx">↻ Regenerate exercises (AI)</button>` : lockChip()) : (!c.type || c.type === "controle") && c.coursId ? `<button class="btn sm primary" id="regenCtrl">↻ Regenerate the test (AI)</button>` + (canEx() ? `<button class="btn sm" data-exfrom="${c.id}">+ Practice quiz on this lesson</button>` : lockChip()) : ""}${(!c.type || c.type === "controle") && c.questions?.length ? `<button class="btn sm" id="variante" title="Same structure, same concepts and same points, new questions">⧉ Variant (AI)</button>` : ""}<button class="btn sm" id="addQ">+ Blank question</button><button class="btn sm" id="addQcm">+ MCQ</button><button class="btn sm" id="addQai">+ Question (AI)</button><button class="btn sm" id="bankOpen">${S.bankOpen ? "Close the question bank" : "+ From the question bank"}</button></div></div>
   ${S.bankOpen ? bankPanel(c) : ""}
   ${(c.questions || []).map((q, i) => qEditor(c, q, i)).join("") || `<div class="panel empty">No questions.</div>`}`;
   const partLayout = `  <section class="panel grid">
@@ -1236,6 +1260,7 @@ function qEditor(c, q, i){
       <div class="field"><label for="q-t-${q.id}">Type</label><select id="q-t-${q.id}" data-q="${i}" data-k="type">${selOpts(["", "qcm"], q.type || "", x => x ? "MCQ (no AI)" : "Written answer")}</select></div>
       ${q.type === "qcm" ? "" : `<div class="field"><label for="q-l-${q.id}">Answer lines</label><input id="q-l-${q.id}" type="number" min="1" max="30" data-q="${i}" data-k="lignes" value="${esc(q.lignes || 5)}"></div>`}
     </div>
+    <div class="row small" style="gap:8px;flex-wrap:wrap"><span class="muted">Skills</span><div class="qchips" style="flex-wrap:wrap;min-width:0">${Object.entries(COMPS).map(([k, l]) => `<button class="chip${(q.comps || []).includes(k) ? " cur" : ""}" data-qcomp="${i}" data-ck="${k}" aria-pressed="${(q.comps || []).includes(k)}">${l}</button>`).join("")}</div></div>
     ${c.differencie ? `<div class="vtabs" role="tablist">${LEVELS.map(l => `<button class="vtab" role="tab" data-vt="${q.id}" data-l="${l}" aria-selected="${l === vt}">${LVL[l]}</button>`).join("")}</div>` : ""}
     <div class="field"><label for="q-e-${q.id}-${vt}">Question text${c.differencie ? " · " + LVL[vt] : ""}</label><textarea id="q-e-${q.id}-${vt}" dir="auto" data-q="${i}" data-vk="enonce" data-lv="${vt}" data-live>${esc(v.enonce)}</textarea></div>
     ${q.type === "qcm" ? `<div class="field"><label for="q-ch-${q.id}-${vt}">Choices: one per line, put * before the correct answers</label><textarea id="q-ch-${q.id}-${vt}" dir="auto" data-q="${i}" data-vk="choixRaw" data-lv="${vt}" data-live>${esc((v.choix || []).map((ch, j) => ((v.bonnes || []).includes(j) ? "*" : "") + ch).join("\n"))}</textarea></div>` : `
@@ -1745,6 +1770,7 @@ async function processPage(it){
         const res = await ai(gradePrompt(c, cp, aiQ, many ? "halves" : "page"), {images:imgs, modelTier:"complex"});
         arr = Array.isArray(res?.reponses) ? res.reponses : Array.isArray(res) ? res : []; bon = res;
       }
+      if (String(bon?.alerte || "").trim()) upd.copies[it.eleveId].alertes = {[it.page]:{txt:String(bon.alerte).trim().slice(0, 600), at:new Date().toISOString()}};
       if (bonusMax(c)) upd.copies[it.eleveId].bonusPages = {[it.page]:{proprete:clamp(+bon?.proprete || 0, 0, 1), orthographe:clamp(+bon?.orthographe || 0, 0, 1)}};
     }
     const missing = [];
@@ -1801,7 +1827,8 @@ Instructions:
 5. "erreurs": pick from the common mistakes (exact text); otherwise a 2-to-5-word label. "acquis": 1 to 3 short labels.
 6. "lisible": false if you had to guess a significant part of the answer.
 7. ${NOSRC}
-${bm ? `8. Also give for the page "proprete" (0 to 1: legibility, neatness, crossed-out text) and "orthographe" (0 to 1: 1 = no spelling mistakes).\n` : ""}Reply only in JSON: {"reponses":[{"id":"…","transcription":"…","fautes":["…"],"lisible":true,"note":0,"commentaire":"…","erreurs":["…"],"acquis":["…"],"coches":[]}]${bm ? ',"proprete":1,"orthographe":1' : ""}}`;
+8. "alerte": "" in almost every case. Only if the student wrote, unrelated to the question, a message that may reveal distress or danger (dark thoughts, violence suffered, bullying, a call for help), copy that message word for word. Never judge the handwriting, presentation, mistakes or school answers.
+${bm ? `9. Also give for the page "proprete" (0 to 1: legibility, neatness, crossed-out text) and "orthographe" (0 to 1: 1 = no spelling mistakes).\n` : ""}Respond only in JSON: {"reponses":[{"id":"…","transcription":"…","fautes":["…"],"lisible":true,"note":0,"commentaire":"…","erreurs":["…"],"acquis":["…"],"coches":[]}],"alerte":""${bm ? ',"proprete":1,"orthographe":1' : ""}}`;
 }
 
 /* ================= CORRECTION ================= */
@@ -2112,8 +2139,8 @@ Method: BEFORE writing, choose ${n} completely different angle(s) (in "angles"),
 If the lesson doesn't contain enough material for ${n} truly different exercise(s), write fewer (at least 1) and explain in "manque", in one sentence, what should be added to the lesson.
 Total ${n === 3 ? "20 points (e.g. 5, 7, 8)" : "points: " + n * 6 + " approximately"}. Each exercise: a self-contained prompt${n === 3 ? " (with a hint in parentheses for #1)" : ""}, a model answer, grading criteria, 2 or 3 typical mistakes, a number of answer lines (3 to 12).
 ${NOSRC}
-Réponds uniquement en JSON : {"angles":["…"],"manque":"","titre":"…","questions":[{"notion":"…","points":5,"lignes":5,"enonce":"…","corrige":"…","criteres":"…","erreurs":["…"]}]}`;
-  const toQ = x => ({id:"q" + uid(5), notion:String(x.notion || ""), points:+x.points || 5, lignes:clamp(+x.lignes || 6, 2, 20), erreurs:(x.erreurs || []).map(String),
+Respond only in JSON: {"angles":["…"],"manque":"","titre":"…","questions":[{"notion":"…","competences":["…"],"points":5,"lignes":5,"enonce":"…","corrige":"…","criteres":"…","erreurs":["…"]}]}` + COMP_RULE;
+  const toQ = x => ({id:"q" + uid(5), notion:String(x.notion || ""), comps:compsOf(x.competences), points:+x.points || 5, lignes:clamp(+x.lignes || 6, 2, 20), erreurs:(x.erreurs || []).map(String),
     v:{standard:{enonce:String(x.enonce || ""), corrige:String(x.corrige || ""), criteres:String(x.criteres || "")}}});
   const prev = replaceId ? askedOf([ctrl(replaceId)].filter(Boolean)) : [];
   if (spec){   // tâche confiée au serveur : il génère, vérifie les doublons et enregistre lui-même
@@ -2202,6 +2229,7 @@ ${n > 1 ? `Number of questions: ${n}. Total points: exactly 20.` : ""}
 ${p.consignes ? "Teacher's instructions: " + p.consignes : ""}
 ${langueRule(p.langue)}
 ${questionRule(p)}
+${(p.comps || []).length ? "Skills to assess first (at least half of the questions): " + p.comps.map(k => COMPS[k]).join(", ") + "." : ""}
 ${extra || ""}
 For each question, write 3 versions of the same question, covering the same skill and worth the same points:
 - "socle" (Foundational): more guided (steps, simplified data, a hint), for a struggling student;
@@ -2214,9 +2242,9 @@ ${NOSRC}
 LESSON:
 """${(co?.texte || "").slice(0, 30000)}"""
 
-Respond only in JSON, in English for a US school: {"titre":"…","questions":[{"notion":"…","points":4,"lignes":6,"erreurs":["…"],"versions":{"socle":{"enonce":"…","corrige":"…","criteres":"…"},"standard":{…},"approfondi":{…}}}]}`;
+Respond only in JSON, in English for a US school: {"titre":"…","questions":[{"notion":"…","competences":["…"],"points":4,"lignes":6,"erreurs":["…"],"versions":{"socle":{"enonce":"…","corrige":"…","criteres":"…"},"standard":{…},"approfondi":{…}}}]}` + COMP_RULE;
 }
-const mapQ = x => ({id:"q" + uid(5), ...(x.type === "qcm" ? {type:"qcm"} : {}), notion:String(x.notion || ""), points:+x.points || 4, lignes:clamp(+x.lignes || 6, 1, 30), erreurs:(x.erreurs || []).map(String).slice(0, 5),
+const mapQ = x => ({id:"q" + uid(5), ...(x.type === "qcm" ? {type:"qcm"} : {}), notion:String(x.notion || ""), comps:compsOf(x.competences), points:+x.points || 4, lignes:clamp(+x.lignes || 6, 1, 30), erreurs:(x.erreurs || []).map(String).slice(0, 5),
   v:Object.fromEntries(LEVELS.map(l => { const y = x.versions?.[l] || {}; const o = {enonce:String(y.enonce || ""), corrige:String(y.corrige || ""), criteres:String(y.criteres || "")};
     if (x.type === "qcm"){ o.choix = (y.choix || []).map(String).slice(0, 6); o.bonnes = (y.bonnes || []).map(Number).filter(n => n >= 0 && n < o.choix.length); o.corrige = "Correct answer(s): " + o.bonnes.map(n => "ABCDEF"[n]).join(", "); o.criteres = "All or nothing."; }
     return [l, o]; }))});
@@ -2449,6 +2477,8 @@ document.addEventListener("click", async ev => {
   const c = S.view === "edit" ? ctrl(S.editId) : null;
   if (c){
     if (d.vt){ S.vtab[d.vt] = d.l; return render(); }
+    if (d.qcomp !== undefined){ const q = c.questions[+d.qcomp]; if (!q) return; const st = new Set(q.comps || []); st.has(d.ck) ? st.delete(d.ck) : st.add(d.ck); q.comps = Object.keys(COMPS).filter(k => st.has(k)); await saveCtrl(c); return; }
+    if (t.id === "compAI"){ t.disabled = true; t.innerHTML = `<span class="thinking">Analyzing…</span>`; try { await tagComps(c); toast("Skills added: check them."); } catch(x){ toast(aiErr(x?.code)); } render(); return; }
     if (d.qup !== undefined){ const i = +d.qup; [c.questions[i - 1], c.questions[i]] = [c.questions[i], c.questions[i - 1]]; await saveCtrl(c); return; }
     if (d.qdown !== undefined){ const i = +d.qdown; [c.questions[i + 1], c.questions[i]] = [c.questions[i], c.questions[i + 1]]; await saveCtrl(c); return; }
     if (d.qdel !== undefined){ const printed = c.statut && c.statut !== "brouillon";
@@ -2633,6 +2663,7 @@ document.addEventListener("change", async ev => {
   if (["rr-regle", "rr-bonus", "rr-plaf"].includes(el.id) && S.view === "edit"){ const c = ctrl(S.editId); if (!c) return;
     const R = {...rattRule(c), ...(el.id === "rr-regle" ? {regle:el.value} : el.id === "rr-bonus" ? {bonus:+el.value} : {plafond:+el.value})};
     await saveCtrl({...c, regle:R}); return; }
+  if (el.id === "ap-mode"){ await savePrefs({periodes:{...PREF_DEF.periodes, ...(prefs().periodes || {}), mode:el.value}}); render(); return; }
   if (el.id === "tp-ton" || el.id === "tp-adr"){ await savePrefs(el.id === "tp-ton" ? {ton:el.value} : {adresse:el.value}); render(); toast("Tone saved"); return; }
   if (["rp-seuil", "rp-regle", "rp-bonus", "rp-plaf"].includes(el.id)){ const k = {"rp-seuil":"seuil", "rp-regle":"regle", "rp-bonus":"bonus", "rp-plaf":"plafond"}[el.id];
     await savePrefs({ratt:{[k]:el.id === "rp-regle" ? el.value : +el.value}}); render(); toast("Retake rule saved"); return; }
@@ -2644,6 +2675,7 @@ document.addEventListener("change", async ev => {
     catch(e){ console.error(e); $("#dc-st").textContent = e?.code ? aiErr(e.code) : "Unable to read the file."; } return; }
   if (el.id === "c-mat" || el.id === "c-niv"){ S.coursDraft = {...(S.coursDraft || {}), matiere:$("#c-mat").value, niveau:$("#c-niv").value}; return; }
   if (d.p){ S.params[d.p] = el.value; if (d.p === "niveau") S.params.classeId = S.params.classeId || ""; if (d.p === "niveau" || d.p === "classeId") render(); return; }
+  if (d.pcomp){ const st = new Set(S.params.comps || []); el.checked ? st.add(d.pcomp) : st.delete(d.pcomp); S.params.comps = Object.keys(COMPS).filter(k => st.has(k)); return; }
   if (d.type){ const s = new Set(S.params.types); el.checked ? s.add(d.type) : s.delete(d.type); S.params.types = [...s]; return; }
   if (el.id === "p-diff"){ S.params.differencie = el.checked; return; }
   if (d.kind){ S.params.kind = d.kind; return render(); }
@@ -2688,7 +2720,7 @@ ${qcm ? `- If the teacher gives options to tick, make it a multiple-choice quest
 - "remarques": a short list of what the teacher should check (empty if everything is clear).
 ${langueRule(langue)}
 ${NOSRC}
-Reply only in JSON: {"titre":"…","remarques":["…"],"questions":[{"notion":"…","points":4,"lignes":5,"erreurs":["…"],"versions":{"standard":{"enonce":"…","corrige":"…","criteres":"…"}}}]}`;
+Reply only in JSON: {"titre":"…","remarques":["…"],"questions":[{"notion":"…","competences":["…"],"points":4,"lignes":5,"erreurs":["…"],"versions":{"standard":{"enonce":"…","corrige":"…","criteres":"…"}}}]}` + COMP_RULE;
 }
 /* Variante d'un contrôle : même structure, mêmes notions et mêmes points, nouveaux énoncés */
 async function createVariante(c, spec){
@@ -2701,7 +2733,7 @@ Write a VARIANT of this test for another class or another day: exactly ${c.quest
 ${lv.length > 1 ? `For each question, 3 versions graded on the same points: "socle" (more guided), "standard", "approfondi" (more demanding).` : `For each question, a single "standard" version.`} Each version: question, model answer, grading criteria adding up to the points.${c.questions.some(q => q.type === "qcm") ? ` For a multiple-choice question: "type":"qcm" and, in each version, "choix" (options without letters) and "bonnes" (indices starting at 0).` : ""}
 ${refus.length ? "These questions are FORBIDDEN (duplicates of a test question): " + refus.map(t => "« " + t.slice(0, 200) + " ”").join(" / ") + "\n" : ""}${langueRule(c.langue)}
 ${NOSRC}
-Reply only in JSON: {"questions":[{"notion":"…","points":4,"lignes":6,"erreurs":["…"],"versions":{${lv.map(l => `"${l}":{"enonce":"…","corrige":"…","criteres":"…"}`).join(",")}}}]}`);
+Reply only in JSON: {"questions":[{"notion":"…","competences":["…"],"points":4,"lignes":6,"erreurs":["…"],"versions":{${lv.map(l => `"${l}":{"enonce":"…","corrige":"…","criteres":"…"}`).join(",")}}}]}` + COMP_RULE);
   const olds = askedOf([c]);
   if (spec){ const {id:_0, owner:_1, ...rest0} = c;
     return {check:true, prompt:vprompt([]), n:c.questions.length, olds, points:c.questions.map(q => +q.points), lignes:c.questions.map(q => q.lignes || 0), path:"controles/" + uid(12), mode:"create",
@@ -3318,6 +3350,12 @@ function vCompte(){
     <div class="field"><label for="qp-long">Answer length</label><select id="qp-long">${selOpts(["courte","moyenne","developpee"], Q.longueur, x => ({courte:"Short (3 to 5 lines)", moyenne:"Medium (5 to 8 lines)", developpee:"Developed (8 to 14 lines)"}[x]))}</select></div>
     <label class="row small" style="gap:6px"><input type="checkbox" id="qp-just"${Q.justif ? " checked" : ""}> <span>Multiple-choice questions: always leave a box to justify the answer (graded by AI)</span></label>
     <div class="row"><button class="btn primary" id="qp-save">Save</button></div></section>
+  ${(() => { const R = {...PREF_DEF.periodes, ...(P.periodes || {})}, dIn = (id, md) => `<input type="date" id="${id}" value="${(+md.slice(0, 2) >= 8 ? "2026" : "2027") + "-" + md}">`;
+    return `<section class="panel grid" style="max-width:640px" id="annee-pref"><h3>School year</h3>
+    <p class="small muted" style="margin:0">How the year is divided for averages in student tracking. The year starts in September; only the day and month of the dates matter.</p>
+    <div class="form-row"><div class="field"><label for="ap-mode">Division</label><select id="ap-mode">${selOpts(["trim", "sem"], R.mode, x => x === "sem" ? "Semesters" : "Terms (3)")}</select></div>
+      ${R.mode === "sem" ? `<div class="field"><label for="ap-s2">Start of semester 2</label>${dIn("ap-s2", R.s2)}</div>` : `<div class="field"><label for="ap-t2">Start of term 2</label>${dIn("ap-t2", R.t2)}</div><div class="field"><label for="ap-t3">Start of term 3</label>${dIn("ap-t3", R.t3)}</div>`}</div>
+    <div class="row"><button class="btn primary" id="ap-save">Save</button></div></section>`; })()}
   <section class="panel grid" style="max-width:640px" id="ton-pref"><h3>Comment tone</h3>
     <p class="small muted" style="margin:0">How the AI addresses students in grading and quiz comments, and the tone of report card comments.</p>
     <div class="form-row"><div class="field"><label for="tp-ton">Tone</label><select id="tp-ton">${selOpts(Object.keys(TONS), P.ton, x => TONS[x])}</select></div>
@@ -3414,6 +3452,8 @@ document.addEventListener("click", async ev => {
       S.pend = j.user; S.auth = "pending"; history.replaceState(null, "", "#/connexion"); return render(); }
     if (t.id === "mp-save"){ const j = await api("/api/me", {method:"PATCH", body:JSON.stringify({affichage:affValue()})}); S.me = j.user;
       await savePrefs({police:+$("#mp-pol").value, lh:+$("#mp-lh").value, reglure:$("#mp-reg").value, consignes:$("#mp-cons").value.trim(), bareme:$("#mp-bar").checked}); render(); toast("Saved"); return; }
+    if (t.id === "ap-save"){ const P = prefs().periodes || {}, md = id => ($("#" + id)?.value || "").slice(5, 10);
+      await savePrefs({periodes:{...PREF_DEF.periodes, ...P, mode:$("#ap-mode").value, ...($("#ap-t2") ? {t2:md("ap-t2") || P.t2, t3:md("ap-t3") || P.t3} : {s2:md("ap-s2") || P.s2})}}); render(); toast("Saved"); return; }
     if (t.id === "qp-save"){ await savePrefs({q:{format:$("#qp-fmt").value, profondeur:$("#qp-prof").value, longueur:$("#qp-long").value, justif:$("#qp-just").checked}}); S.params._pref = false; render(); toast("Saved"); return; }
     if (t.id === "me-save"){ const body = {nom:$("#me-nom").value}, e = ecoleVal();
       if (e.nom && e.ville && (e.nom !== S.me.ecole?.nom || e.ville !== S.me.ecole?.ville)) body.ecole = e;
@@ -3626,40 +3666,187 @@ function vSuivi(){
   const sum = cl => { const n = store.controles.filter(c => c.classeId === cl.id && isCtrl(c)).length, q = (store.quizzes || []).filter(x => x.classeId === cl.id).length; return `${(cl.eleves || []).length} students · ${n} test(s)${q ? " · " + q + " quiz" : ""}`; };
   return head + classAcc("suivi", store.classes, sum, cl => { S.su.cl = cl.id; return vSuiviBase() + (typeof quizSuivi === "function" ? quizSuivi() : ""); }, false);
 }
+/* ---------- Année scolaire : trimestres (ou semestres) et coefficients ---------- */
+const ctrlDay = c => String(c.date || c.createdAt || "").slice(0, 10);
+const yearOf = d => { if (!/^\d{4}-\d\d/.test(d || "")) return null; const y = +d.slice(0, 4); return +d.slice(5, 7) >= 8 ? y : y - 1; };   // l'année scolaire commence en août
+const yearLab = y => y + "-" + (y + 1);
+const curYear = () => yearOf(new Date().toISOString().slice(0, 10));
+const isSem = () => prefs().periodes?.mode === "sem";
+const bornes = () => { const P = prefs().periodes || {}; return isSem() ? [P.s2 || "02-01"] : [P.t2 || "12-01", P.t3 || "03-15"]; };
+const perKey = md => (+md.slice(0, 2) >= 8 ? "0" : "1") + md;   // ordre de l'année scolaire : septembre … août
+const periodOf = d => bornes().filter(b => perKey(d.slice(5, 10)) >= perKey(b)).length;
+const perLab = i => (isSem() ? "Semester " : "Term ") + (i + 1);
+const perAbr = i => (isSem() ? "S" : "T") + (i + 1);
+const coefOf = c => +c.coef > 0 ? +c.coef : 1;
+const noteDe = (c, e) => { const cp = feuille(c.id)?.copies?.[e.id]; return copyDone(c, cp) ? noteRetenue(c, e)?.retenue ?? final20(c, cp) : null; };
+const wavg = xs => { const v = xs.filter(x => x.v != null), w = v.reduce((a, x) => a + x.w, 0); return w ? v.reduce((a, x) => a + x.v * x.w, 0) / w : null; };
+const mean = xs => { const v = xs.filter(x => x != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+function yearCtrls(cl, mat, y){ return store.controles.filter(c => c.classeId === cl.id && c.matiere === mat && isCtrl(c) && yearOf(ctrlDay(c)) === y).sort((a, b) => ctrlDay(a).localeCompare(ctrlDay(b))); }
+function yearsOf(cl, mat){ const s = new Set(store.controles.filter(c => c.classeId === cl.id && c.matiere === mat && isCtrl(c)).map(c => yearOf(ctrlDay(c))).filter(y => y != null)); s.add(curYear()); return [...s].sort((a, b) => b - a); }
+/* Notes d'un élève, moyennes par période et sur l'année, pondérées par les coefficients (rattrapage compris) */
+function moyennes(cs, e){ const rows = cs.map(c => ({c, v:noteDe(c, e), w:coefOf(c), p:periodOf(ctrlDay(c))}));
+  return {rows, per:Array.from({length:bornes().length + 1}, (_, i) => wavg(rows.filter(r => r.p === i))), an:wavg(rows)}; }
+/* Compétences : part des points obtenus sur les questions qui évaluent chaque compétence */
+function compStats(cs, e){ const acc = {};
+  for (const c of cs){ const cp = feuille(c.id)?.copies?.[e.id]; if (!copyDone(c, cp)) continue;
+    for (const q of c.questions || []){ const n = noteOf(cp.answers?.[q.id]); if (n == null || !+q.points) continue;
+      for (const k of q.comps || []){ const o = acc[k] = acc[k] || {s:0, p:0}; o.s += n; o.p += +q.points; } } }
+  return Object.fromEntries(Object.keys(COMPS).map(k => [k, acc[k] ? acc[k].s / acc[k].p : null])); }
+const maiCell = r => { const m = MAITRISE(r); return m ? `<span class="cell ${m.t}" title="${esc(m.l)} · ${pct(r)}">${MAI_ABR[m.k]}</span>` : `<span class="cell none">—</span>`; };
+
+/* ---------- Signaux à observer : des faits tirés des notes et des copies, jamais un diagnostic. Vus du seul professeur. ---------- */
+function signaux(cl, mat, e, y){
+  const out = [], cs = yearCtrls(cl, mat, y), M = moyennes(cs, e), done = M.rows.filter(r => r.v != null), cpOf = c => feuille(c.id).copies[e.id];
+  const add = (k, txt, c) => out.push({k, txt, c, lvl:"obs"});
+  if (done.length >= 3){ const last = done[done.length - 1], m = mean(done.slice(0, -1).map(r => r.v));
+    if (last.v <= m - 4) add("chute|" + last.c.id, `Sharp drop: ${noteS(last.v)} à « ${last.c.titre} ”, compared with an average of ${noteS(m)} before.`, last.c);
+    const [a, b, d] = done.slice(-3); if (a.v > b.v && b.v > d.v && a.v - d.v >= 3) add("baisse|" + d.c.id, `Three tests in a row going down: ${[a, b, d].map(r => noteS(r.v)).join(" → ")}.`, d.c); }
+  const pers = M.per.map((v, i) => ({v, i, n:done.filter(r => r.p === i).length})).filter(p => p.v != null), lp = pers[pers.length - 1];
+  if (lp && lp.n >= 2 && lp.v < 8) add("periode|" + y + "|" + lp.i, `Average for ${perLab(lp.i).toLowerCase()} : ${noteS(lp.v)}.`, null);
+  if (pers.length >= 2){ const pp = pers[pers.length - 2]; if (pp.v - lp.v >= 3) add("recul|" + y + "|" + lp.i, `Average going down: ${perAbr(pp.i)} ${noteS(pp.v)} → ${perAbr(lp.i)} ${noteS(lp.v)}.`, null); }
+  let fins = 0, finC = null;
+  for (const r of done.slice(-3)){ const cp = cpOf(r.c), ws = (r.c.questions || []).filter(q => q.type !== "qcm"), vide = ws.map(q => isNoAnswer(cp.answers?.[q.id]?.transcription)), nv0 = vide.filter(Boolean).length;
+    if (ws.length >= 3 && nv0 / ws.length >= .4) add("vide|" + r.c.id, `Paper largely blank on “ ${r.c.titre} » : ${nv0} answer(s) out of ${ws.length} with no content.`, r.c);
+    else if (ws.length >= 2 && vide[vide.length - 1] && vide.some(v => !v)){ fins++; finC = r.c; } }
+  if (fins >= 2) add("fin|" + finC.id, "The last questions are often left unanswered: time management?", finC);
+  const hist = {};
+  for (const r of done){ const cp = cpOf(r.c), by = {};
+    for (const q of r.c.questions || []){ const n = noteOf(cp.answers?.[q.id]); if (n == null || !+q.points || !q.notion) continue; const k = nkey(q.notion), o = by[k] = by[k] || {s:0, p:0, l:q.notion}; o.s += n; o.p += +q.points; }
+    for (const [k, o] of Object.entries(by)) (hist[k] = hist[k] || []).push({r:o.s / o.p, c:r.c, l:o.l}); }
+  for (const [k, h] of Object.entries(hist)){ const last = h[h.length - 1];
+    if (h.length >= 2 && last.r <= .4 && h.slice(0, -1).some(x => x.r >= .7)) add("notion|" + k + "|" + last.c.id, `Topic “ ${last.l} ” mastered before, not acquired again on “ ${last.c.titre} ».`, last.c); }
+  for (const k of Object.keys(COMPS)){
+    const pts = done.map(r => { const cp = cpOf(r.c); let s = 0, p = 0; for (const q of r.c.questions || []) if ((q.comps || []).includes(k) && +q.points){ const n = noteOf(cp.answers?.[q.id]); if (n != null){ s += n; p += +q.points; } } return p ? {r:s / p, c:r.c} : null; }).filter(Boolean), l2 = pts.slice(-2);
+    if (l2.length === 2 && l2.every(x => x.r < .4)) add("comp|" + k + "|" + l2[1].c.id, `Skill “ ${COMPS[k]} ” insufficient on the last two tests that assess it.`, l2[1].c); }
+  const soin = done.map(r => { const b = Object.values(cpOf(r.c).bonusPages || {}).map(x => +x?.proprete).filter(x => !isNaN(x)); return b.length ? {v:mean(b), c:r.c} : null; }).filter(Boolean);
+  if (soin.length >= 3){ const l = soin[soin.length - 1], m = mean(soin.slice(0, -1).map(x => x.v)); if (l.v <= m - .3) add("soin|" + l.c.id, `Presentation much less careful than usual on “ ${l.c.titre} ».`, l.c); }
+  return [...alertesEcrites(cl, e, y), ...out];
+}
+/* Écrits inquiétants relevés pendant la correction (toutes les matières du professeur) */
+function alertesEcrites(cl, e, y){ const out = [];
+  for (const c of store.controles) if (c.classeId === cl.id && yearOf(ctrlDay(c)) === y){
+    for (const [pg, a] of Object.entries(feuille(c.id)?.copies?.[e.id]?.alertes || {})) if (a?.txt) out.push({k:"ecrit|" + c.id + "|" + pg, lvl:"alerte", c, txt:`Writing to be read by an adult (“ ${c.titre} ”, page ${pg}) : « ${a.txt} ”`}); }
+  return out; }
+const vusOf = cl => store.bilans?.["vus_" + cl.id]?.k || {};
+const nonVus = (cl, e, list) => { const v = vusOf(cl); return list.filter(f => !v[e.id + "|" + f.k]); };
+const flagBadge = list => list.length ? ` <span class="flag${list.some(f => f.lvl === "alerte") ? " al" : ""}" title="${esc(list.length + " flag(s) to watch")}">🚩${list.length > 1 ? " " + list.length : ""}</span>` : "";
+/* Accueil : élèves avec des signaux non vus, toutes classes et matières */
+function aObserver(){
+  const y = curYear(), out = [];
+  for (const cl of store.classes){ const mats = [...new Set(store.controles.filter(c => c.classeId === cl.id && isCtrl(c)).map(c => c.matiere))];
+    for (const e of cl.eleves || []){ const seen = new Set(), all = [];
+      for (const f of mats.length ? mats.flatMap(m => signaux(cl, m, e, y).map(x => ({...x, mat:m}))) : alertesEcrites(cl, e, y)) if (!seen.has(f.k)){ seen.add(f.k); all.push(f); }
+      const n = nonVus(cl, e, all); if (n.length) out.push({cl, e, n, mat:n.find(f => f.mat)?.mat || mats[0] || ""}); } }
+  if (!out.length) return "";
+  const al = o => o.n.some(f => f.lvl === "alerte");
+  out.sort((a, b) => al(b) - al(a) || b.n.length - a.n.length);
+  return foldSec("observer", "Students to watch", out.length, out.slice(0, 15).map(o => `<div class="item clickable" data-suopen="${esc(o.cl.id + "|" + o.e.id + "|" + o.mat)}"><div><div class="t">${esc(o.e.prenom + " " + o.e.nom)} <span class="muted small">· ${esc(o.cl.nom)}</span></div><div class="s">${esc(o.n[0].txt)}${o.n.length > 1 ? " · +" + (o.n.length - 1) : ""}</div></div>${flagBadge(o.n)}</div>`).join("")
+    + `<p class="small muted" style="margin:8px 0 0">Facts drawn from grades and papers, to watch: never a diagnosis. Never shown to the student or their family.</p>`);
+}
+
+/* ---------- Savoir-être : observé et noté par le professeur, jamais par l'IA ---------- */
+const SE = {participation:"Participation", autonomie:"Independence", concentration:"Focus", confiance:"Self-confidence", soin:"Care in work"};
+const SE_N = {1:"Insufficient", 2:"Shaky", 3:"Satisfactory", 4:"Very good"};
+const seId = (cl, e, mat) => `se_${cl.id}_${e.id}_${slug(mat)}`;
+
 function vSuiviBase(){
   if (!store.classes.length) return `<div class="head"><h2>Student progress</h2></div><div class="panel empty">Create a class first.</div>`;
   const cl = classe(S.su?.cl) || store.classes[0]; S.su = S.su || {}; S.su.cl = cl.id;
   const mats = [...new Set([...store.controles.filter(c => c.classeId === cl.id), ...(store.quizzes || []).filter(q => q.classeId === cl.id)].map(c => c.matiere))];
   const mat = mats.includes(S.su.mat) ? S.su.mat : mats[0]; S.su.mat = mat;
-  const top = mats.length > 1 ? `<div class="row"><span class="small muted">Subject</span><select id="su-mat" style="width:auto" aria-label="Subject">${selOpts(mats, mat)}</select></div>` : mats.length ? `<div class="label">${esc(mat)}</div>` : "";
   if (!mat) return `<p class="muted">No tests or quizzes for this class yet.</p>`;
-  const st = notionStats(cl, mat), cols = st.notions.slice(0, 10);
-  const ms = (eid, k) => { const o = st.per[eid]?.[k]; return o ? o.s / o.n : null; };
-  const lab = r => r == null ? "" : r >= .7 ? "Mastered" : r >= .5 ? "Shaky" : "Not mastered";
-  const e = (cl.eleves || []).find(x => x.id === S.su.el);
-  let detail = "";
-  if (e){
-    const hist = studentCtrls(cl, mat, e), avg = hist.filter(x => isCtrl(x.c)).map(x => noteRetenue(x.c, e)?.retenue ?? final20(x.c, x.cp));   // note retenue : rattrapage compris
-    const bil = store.bilans[`${cl.id}_${e.id}_${slug(mat)}`];
-    const nl = st.notions.map(k => ({k, r:ms(e.id, k), n:st.per[e.id]?.[k]?.n || 0})).filter(x => x.r != null).sort((a, b) => a.r - b.r);
-    detail = `<section class="panel grid">
-      <div class="row between"><div><div class="label">${esc(mat)}</div><h3 style="font-size:20px">${esc(e.prenom)} ${esc(e.nom)}</h3></div>
-        <div class="total num" style="color:var(--ink)">${avg.length ? nv(avg.reduce((a, b) => a + b, 0) / avg.length) : "—"}<small>${avg.length ? sfxN(avg.reduce((a, b) => a + b, 0) / avg.length) : ""}</small></div></div>
-      <div class="grid g2">
-        <div><div class="label" style="margin-bottom:6px">Skills, from weakest to strongest</div>
-          <div class="bars">${nl.map(x => `<div class="bar" style="grid-template-columns:1fr 90px 44px"><span class="small">${esc(st.labels[x.k])} <span class="muted">(${x.n})</span></span><div class="track"><div class="fill" style="width:${Math.round(x.r * 100)}%;background:var(--${tone(x.r)})"></div></div><span class="num small" style="text-align:right">${pct(x.r)}</span></div>`).join("") || `<p class="muted small">No papers approved.</p>`}</div></div>
-        <div><div class="label" style="margin-bottom:6px">Tests</div>${hist.map(x => `<div class="item"><div><div class="t small">${x.c.type === "rattrapage" ? "↺ " : ""}${esc(x.c.titre)}</div><div class="s">${esc(frDate(x.c.date) || "")}</div></div>${(() => { const N = isCtrl(x.c) ? noteRetenue(x.c, e) : null, v = N ? N.retenue : final20(x.c, x.cp), up = N && N.ratt != null && Math.abs(N.retenue - N.base) > 0.001;
-          return `<span class="cell ${tone(v / 20)}" title="${up ? esc("Initial score " + noteS(N.base) + " · " + ruleTxt(N.R)) : ""}">${noteS(v)}${up ? " ↺" : ""}</span>`; })()}</div>`).join("") || `<p class="muted small">Aucun.</p>`}</div>
-      </div>
-      <div class="grid" style="gap:8px"><div class="row between"><div class="label">Report card comment</div><button class="btn sm" id="appr" data-e="${e.id}">${bil ? "Rewrite" : "Draft"} (IA)</button></div>
-        <div class="status" id="appr-st"></div>
-        ${bil ? `<textarea id="appr-txt" data-live>${esc(bil.texte)}</textarea><div class="row"><button class="btn sm" id="apprSave">Save my version</button><button class="btn sm ghost" id="apprCopy">Copy</button></div>` : `<p class="muted small">Drafted from the year's grades, skills, and comments. You review and edit it.</p>`}</div>
-    </section>`;
+  const ys = yearsOf(cl, mat), y = ys.includes(+S.su.y) ? +S.su.y : yearCtrls(cl, mat, curYear()).length ? curYear() : ys.find(v => yearCtrls(cl, mat, v).length) ?? curYear(); S.su.y = y;
+  const TABS = {annee:"Year", controle:"By test", notions:"Topics", comps:"Skills"}, tab = TABS[S.su.tab] ? S.su.tab : "annee"; S.su.tab = tab;
+  const top = `<div class="row between" style="gap:10px;flex-wrap:wrap"><div class="row" style="gap:8px">${mats.length > 1 ? `<select id="su-mat" style="width:auto" aria-label="Subject">${selOpts(mats, mat)}</select>` : `<div class="label">${esc(mat)}</div>`}
+      ${ys.length > 1 ? `<select id="su-y" style="width:auto" aria-label="School year">${selOpts(ys.map(String), String(y), v => "Year " + yearLab(+v))}</select>` : `<span class="small muted">Year ${yearLab(y)}</span>`}</div>
+    <div class="qchips" role="tablist">${Object.entries(TABS).map(([k, l]) => `<button class="chip${k === tab ? " cur" : ""}" role="tab" aria-selected="${k === tab}" data-sutab="${k}">${l}</button>`).join("")}</div></div>`;
+  const cs = yearCtrls(cl, mat, y), els = cl.eleves || [], flags = Object.fromEntries(els.map(e => [e.id, nonVus(cl, e, signaux(cl, mat, e, y))]));
+  const nameTd = x => `<td><b>${esc(x.prenom)} ${esc(x.nom)}</b>${flagBadge(flags[x.id])}</td>`, rowAttr = x => `class="clickable ${x.id === S.su.el ? "sel" : ""}" data-suel="${x.id}"`;
+  const cell = v => `<td class="c"><span class="cell ${v == null ? "none" : tone(v / 20)}">${v == null ? "—" : nv(v)}</span></td>`;
+  let body = "";
+  if (tab === "annee"){
+    const done = cs.filter(c => els.some(e => noteDe(c, e) != null)), num = new Map(done.map((c, k) => [c.id, k + 1]));
+    const pers = Array.from({length:bornes().length + 1}, (_, i) => ({i, l:done.filter(c => periodOf(ctrlDay(c)) === i)})).filter(p => p.l.length);
+    const M = Object.fromEntries(els.map(e => [e.id, moyennes(done, e)]));
+    body = done.length ? `<section class="panel"><div class="row between"><p class="small muted" style="margin:0">Final grade for each test (make-up included), averages by ${isSem() ? "semester" : "term"} and for the year, weighted by coefficients. Tap a student for their profile.</p><button class="btn sm" id="an-csv">Export (CSV)</button></div>
+      <div class="tbl-wrap tbl-sticky" style="margin-top:8px"><table><thead><tr><th rowspan="2">Student</th>${pers.map(p => `<th class="c" colspan="${p.l.length + 1}">${perLab(p.i)}</th>`).join("")}<th class="c" rowspan="2">Year</th></tr>
+        <tr>${pers.map(p => p.l.map(c => `<th class="c" title="${esc(c.titre + (ctrlDay(c) ? " · " + frDate(ctrlDay(c)) : ""))}">C${num.get(c.id)}<div><select class="coef" data-coef="${c.id}" aria-label="Coefficient de ${esc(c.titre)}">${selOpts(["0.5","1","2","3","4"], String(coefOf(c)), x => "×" + x.replace(".", ","))}</select></div></th>`).join("") + `<th class="c">Avg. ${perAbr(p.i)}</th>`).join("")}</tr></thead><tbody>
+      ${els.map(x => `<tr ${rowAttr(x)}>${nameTd(x)}${pers.map(p => p.l.map(c => cell(noteDe(c, x))).join("") + `<td class="c"><b>${cell(M[x.id].per[p.i]).replace(/^<td class="c">|<\/td>$/g, "")}</b></td>`).join("")}<td class="c"><b>${cell(M[x.id].an).replace(/^<td class="c">|<\/td>$/g, "")}</b></td></tr>`).join("")}
+      <tr class="tot"><td><b>Class average</b></td>${pers.map(p => p.l.map(c => cell(mean(els.map(e => noteDe(c, e))))).join("") + cell(mean(els.map(e => M[e.id].per[p.i])))).join("")}${cell(mean(els.map(e => M[e.id].an)))}</tr>
+      </tbody></table></div>
+      <p class="small muted" style="margin:8px 0 0">${done.map(c => `C${num.get(c.id)} : ${esc(c.titre)}${ctrlDay(c) ? " (" + esc(frDate(ctrlDay(c))) + ")" : ""}`).join(" · ")}</p></section>`
+      : `<section class="panel empty">No graded test in ${esc(mat)} for the year ${yearLab(y)}.</section>`;
   }
-  return top + `<section class="panel"><p class="small muted">${cols.length ? "Green: mastered (70% and up) · orange: fragile · red: not mastered. Tap a student for details." : "No graded paper validated yet: mastery of each skill will appear here once a paper is validated. Tap a student for details."}</p>
-    <div class="tbl-wrap" style="margin-top:8px"><table><thead><tr><th>Student</th>${cols.map(k => `<th class="c" title="${esc(st.labels[k])}" style="max-width:110px;overflow:hidden;text-overflow:ellipsis">${esc(st.labels[k].slice(0, 16))}</th>`).join("")}</tr></thead><tbody>
-    ${(cl.eleves || []).map(x => `<tr class="clickable ${x.id === S.su.el ? "sel" : ""}" data-suel="${x.id}"><td><b>${esc(x.prenom)} ${esc(x.nom)}</b></td>${cols.map(k => { const r = ms(x.id, k); return `<td class="c"><span class="cell ${tone(r)}" title="${lab(r)}">${r == null ? "—" : Math.round(r * 100)}</span></td>`; }).join("")}</tr>`).join("")}
-    </tbody></table></div></section>` + detail;
+  if (tab === "controle"){
+    const done = cs.filter(c => els.some(e => noteDe(c, e) != null)), c = done.find(x => x.id === S.su.ctrl) || done[done.length - 1];
+    if (c){ S.su.ctrl = c.id; const qs = c.questions || [], cpOf = e => feuille(c.id)?.copies?.[e.id];
+      const qc = (q, e) => { const n = noteOf(cpOf(e)?.answers?.[q.id]); return `<td class="c"><span class="cell ${n == null ? "none" : tone(n / (+q.points || 1))}">${n == null ? "—" : fmt(n)}</span></td>`; };
+      body = `<section class="panel"><div class="row between" style="gap:8px"><select id="su-ctrl" style="width:auto" aria-label="Test">${selOpts(done.map(x => x.id), c.id, id => { const x = done.find(z => z.id === id); return x.titre + (ctrlDay(x) ? " · " + frDate(ctrlDay(x)) : ""); })}</select><a class="btn sm" href="#/controle/${c.id}/classe">Full analysis</a></div>
+        <div class="tbl-wrap tbl-sticky" style="margin-top:8px"><table><thead><tr><th>Student</th>${qs.map((q, k) => `<th class="c" title="${esc(q.notion || "")}">Q${k + 1}<div class="small muted">/ ${fmt(+q.points)}</div></th>`).join("")}<th class="c">Score</th></tr></thead><tbody>
+        ${els.map(x => `<tr ${rowAttr(x)}>${nameTd(x)}${qs.map(q => qc(q, x)).join("")}${cell(noteDe(c, x))}</tr>`).join("")}
+        <tr class="tot"><td><b>Average</b></td>${qs.map(q => { const v = mean(els.map(e => noteOf(cpOf(e)?.answers?.[q.id]))); return `<td class="c"><span class="cell ${v == null ? "none" : tone(v / (+q.points || 1))}">${v == null ? "—" : fmt(Math.round(v * 10) / 10)}</span></td>`; }).join("")}${cell(mean(els.map(e => noteDe(c, e))))}</tr>
+        </tbody></table></div></section>`; }
+    else body = `<section class="panel empty">No graded test in ${esc(mat)} for the year ${yearLab(y)}.</section>`;
+  }
+  if (tab === "notions"){
+    const st = notionStats(cl, mat), cols = st.notions.slice(0, 10), ms = (eid, k) => { const o = st.per[eid]?.[k]; return o ? o.s / o.n : null; }, lab = r => r == null ? "" : r >= .7 ? "Mastered" : r >= .5 ? "Shaky" : "Not mastered";
+    body = `<section class="panel"><p class="small muted">${cols.length ? "Green: mastered (70% and up) · orange: fragile · red: not mastered. Tap a student for details." : "No graded paper validated yet: mastery of each skill will appear here once a paper is validated. Tap a student for details."}</p>
+      <div class="tbl-wrap tbl-sticky" style="margin-top:8px"><table><thead><tr><th>Student</th>${cols.map(k => `<th class="c" title="${esc(st.labels[k])}" style="max-width:110px;overflow:hidden;text-overflow:ellipsis">${esc(st.labels[k].slice(0, 16))}</th>`).join("")}</tr></thead><tbody>
+      ${els.map(x => `<tr ${rowAttr(x)}>${nameTd(x)}${cols.map(k => { const r = ms(x.id, k); return `<td class="c"><span class="cell ${tone(r)}" title="${lab(r)}">${r == null ? "—" : Math.round(r * 100)}</span></td>`; }).join("")}</tr>`).join("")}
+      </tbody></table></div></section>`;
+  }
+  if (tab === "comps"){
+    const sans = cs.filter(c => (c.questions || []).some(q => !(q.comps || []).length)), CS = Object.fromEntries(els.map(e => [e.id, compStats(cs, e)]));
+    body = `<section class="panel"><p class="small muted" style="margin:0">Report card scale, for the year: <b>TB</b> very good mastery · <b>S</b> satisfactory · <b>F</b> fragile · <b>I</b> insufficient. Each question counts toward the skill(s) it assesses.</p>
+      ${sans.length ? `<p class="banner" style="margin-top:8px">${sans.length} test(s) this year have questions without a skill. <button class="btn sm" id="compAll">Add them with AI</button> <span class="status" id="comp-st"></span></p>` : ""}
+      <div class="tbl-wrap tbl-sticky" style="margin-top:8px"><table><thead><tr><th>Student</th>${Object.values(COMPS).map(l => `<th class="c">${l}</th>`).join("")}</tr></thead><tbody>
+      ${els.map(x => `<tr ${rowAttr(x)}>${nameTd(x)}${Object.keys(COMPS).map(k => `<td class="c">${maiCell(CS[x.id][k])}</td>`).join("")}</tr>`).join("")}
+      <tr class="tot"><td><b>Class</b></td>${Object.keys(COMPS).map(k => `<td class="c">${maiCell(mean(els.map(e => CS[e.id][k])))}</td>`).join("")}</tr>
+      </tbody></table></div></section>`;
+  }
+  const e = els.find(x => x.id === S.su.el);
+  return top + body + (e ? ficheEleve(cl, mat, e, y, cs) : "");
+}
+
+/* Fiche d'un élève : courbe, moyennes, compétences, signaux, savoir-être, appréciation */
+function ficheEleve(cl, mat, e, y, cs){
+  const st = notionStats(cl, mat), M = moyennes(cs, e), done = M.rows.filter(r => r.v != null), CS = compStats(cs, e);
+  const ms = k => { const o = st.per[e.id]?.[k]; return o ? o.s / o.n : null; };
+  const hist = studentCtrls(cl, mat, e).filter(x => yearOf(ctrlDay(x.c)) === y), bil = store.bilans[`${cl.id}_${e.id}_${slug(mat)}`];
+  const nl = st.notions.map(k => ({k, r:ms(k), n:st.per[e.id]?.[k]?.n || 0})).filter(x => x.r != null).sort((a, b) => a.r - b.r);
+  const all = signaux(cl, mat, e, y), vus = vusOf(cl), nouv = all.filter(f => !vus[e.id + "|" + f.k]), anciens = all.filter(f => vus[e.id + "|" + f.k]);
+  const W = 560, H = 120, xs = i => done.length > 1 ? 20 + i * (W - 40) / (done.length - 1) : W / 2, ys = v => H - 14 - v / 20 * (H - 28);
+  const courbe = done.length ? `<svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px;height:auto" role="img" aria-label="Grade trend">
+      <line x1="0" x2="${W}" y1="${ys(10)}" y2="${ys(10)}" stroke="var(--line)" stroke-dasharray="4 4"/>
+      <polyline fill="none" stroke="var(--blue)" stroke-width="2" points="${done.map((r, i) => xs(i) + "," + ys(r.v)).join(" ")}"/>
+      ${done.map((r, i) => `<circle cx="${xs(i)}" cy="${ys(r.v)}" r="4" fill="var(--${tone(r.v / 20)})"><title>${esc(r.c.titre)} : ${esc(noteS(r.v))}</title></circle>`).join("")}</svg>` : `<p class="muted small">No grades this year.</p>`;
+  const pnow = periodOf(new Date().toISOString().slice(0, 10)), sp = Number.isInteger(+S.su.sp) && +S.su.sp <= bornes().length ? +S.su.sp : (yearOf(new Date().toISOString().slice(0, 10)) === y ? pnow : 0);
+  const seD = store.bilans[seId(cl, e, mat)]?.p?.[y + "-" + sp] || {};
+  const flagLi = (f, vu) => `<div class="item${f.lvl === "alerte" ? " al" : ""}"><div><div class="t small">${f.lvl === "alerte" ? "⚠️ " : "🚩 "}${esc(f.txt)}</div>${f.c ? `<div class="s">${esc(frDate(ctrlDay(f.c)) || "")}</div>` : ""}</div>${vu ? `<span class="small muted">Vu</span>` : `<button class="btn sm" data-vu="${esc(e.id + "|" + f.k)}">Vu</button>`}</div>`;
+  return `<section class="panel grid" id="fiche-el">
+    <div class="row between"><div><div class="label">${esc(mat)} · ${yearLab(y)}</div><h3 style="font-size:20px">${esc(e.prenom)} ${esc(e.nom)}</h3></div>
+      <div class="row" style="gap:6px">${M.per.map((v, i) => v == null ? "" : `<span class="chip">${perAbr(i)} <b class="num">${esc(noteS(v))}</b></span>`).join("")}<span class="chip">Year <b class="num">${esc(noteS(M.an))}</b></span></div></div>
+    ${courbe}
+    <div><div class="label" style="margin-bottom:6px">To watch</div>
+      ${nouv.length ? nouv.map(f => flagLi(f, false)).join("") : `<p class="small muted" style="margin:0">No current flags.</p>`}
+      ${anciens.length ? `<details style="margin-top:6px"><summary class="small muted">Already seen (${anciens.length})</summary>${anciens.map(f => flagLi(f, true)).join("")}</details>` : ""}
+      <p class="small muted" style="margin:6px 0 0">Facts drawn from grades and papers to help you observe: never a diagnosis. Never shown to the student or their family.</p></div>
+    <div class="grid g2">
+      <div><div class="label" style="margin-bottom:6px">Skills</div>
+        <div class="bars">${Object.entries(COMPS).map(([k, l]) => { const r = CS[k], m = MAITRISE(r); return `<div class="bar" style="grid-template-columns:110px 1fr auto"><span class="small">${l}</span><div class="track"><div class="fill" style="width:${r == null ? 0 : Math.round(r * 100)}%;background:var(--${m ? m.t : "line"})"></div></div><span class="small ${m ? "" : "muted"}">${m ? esc(m.l) : "—"}</span></div>`; }).join("")}</div></div>
+      <div><div class="label" style="margin-bottom:6px">Skills, from weakest to strongest</div>
+        <div class="bars">${nl.map(x => `<div class="bar" style="grid-template-columns:1fr 90px 44px"><span class="small">${esc(st.labels[x.k])} <span class="muted">(${x.n})</span></span><div class="track"><div class="fill" style="width:${Math.round(x.r * 100)}%;background:var(--${tone(x.r)})"></div></div><span class="num small" style="text-align:right">${pct(x.r)}</span></div>`).join("") || `<p class="muted small">No papers approved.</p>`}</div></div>
+    </div>
+    <div><div class="label" style="margin-bottom:6px">Tests</div>${hist.map(x => `<div class="item"><div><div class="t small">${x.c.type === "rattrapage" ? "↺ " : ""}${esc(x.c.titre)}${isCtrl(x.c) && coefOf(x.c) !== 1 ? ` <span class="muted">· weight ${fmt(coefOf(x.c))}</span>` : ""}</div><div class="s">${esc(frDate(x.c.date) || "")}</div></div>${(() => { const N = isCtrl(x.c) ? noteRetenue(x.c, e) : null, v = N ? N.retenue : final20(x.c, x.cp), up = N && N.ratt != null && Math.abs(N.retenue - N.base) > 0.001;
+      return `<span class="cell ${tone(v / 20)}" title="${up ? esc("Initial score " + noteS(N.base) + " · " + ruleTxt(N.R)) : ""}">${noteS(v)}${up ? " ↺" : ""}</span>`; })()}</div>`).join("") || `<p class="muted small">Aucun.</p>`}</div>
+    <div class="grid" style="gap:8px"><div class="row between"><div class="label">Behavior (observed by you)</div><select id="se-p" style="width:auto" aria-label="Period">${selOpts(Array.from({length:bornes().length + 1}, (_, i) => String(i)), String(sp), i => perLab(+i))}</select></div>
+      <div class="form-row" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">${Object.entries(SE).map(([k, l]) => `<div class="field"><label for="se-${k}">${l}</label><select id="se-${k}" data-se="${k}">${selOpts(["", "1", "2", "3", "4"], String(seD[k] || ""), v => v ? SE_N[v] : "—")}</select></div>`).join("")}</div>
+      <textarea id="se-txt" data-live placeholder="Note (optional)">${esc(seD.txt || "")}</textarea>
+      <div class="row"><button class="btn sm" id="se-save" data-e="${e.id}">Save</button><span class="small muted">Used only to write the report card comment, if you fill it in.</span></div></div>
+    <div class="grid" style="gap:8px"><div class="row between"><div class="label">Report card comment</div><button class="btn sm" id="appr" data-e="${e.id}">${bil ? "Rewrite" : "Draft"} (IA)</button></div>
+      <div class="status" id="appr-st"></div>
+      ${bil ? `<textarea id="appr-txt" data-live>${esc(bil.texte)}</textarea><div class="row"><button class="btn sm" id="apprSave">Save my version</button><button class="btn sm ghost" id="apprCopy">Copy</button></div>` : `<p class="muted small">Written from grades, averages, skills, grading comments and your behavior notes. You review and edit it.</p>`}</div>
+  </section>`;
 }
 
 /* ================= 3. Vue direction ================= */
@@ -3790,9 +3977,25 @@ async function sampleImages(eid, mat, max = 3){
 
 /* ================= Events for the modules above ================= */
 document.addEventListener("click", async ev => {
-  const t = ev.target.closest("button, tr[data-suel]"); if (!t) return;
+  const t = ev.target.closest("button, tr[data-suel], [data-suopen]"); if (!t) return;
   const d = t.dataset;
-  if (d.suel){ S.su.el = d.suel; render(); $("#appr")?.scrollIntoView({block:"center"}); return; }
+  if (d.suel){ S.su.el = d.suel; render(); $("#fiche-el")?.scrollIntoView({block:"start", behavior:"smooth"}); return; }
+  if (d.suopen){ const [cid, eid, mat] = d.suopen.split("|"); S.acc.suivi = [cid]; S.su = {cl:cid, el:eid, mat, tab:"annee"}; location.hash = "#/suivi"; setTimeout(() => $("#fiche-el")?.scrollIntoView({block:"start"}), 400); return; }
+  if (d.sutab){ S.su.tab = d.sutab; return render(); }
+  if (d.vu){ const cl = classe(S.su.cl); if (!cl) return; const cur = vusOf(cl); await write("bilans/vus_" + cl.id, {classeId:cl.id, k:{...cur, [d.vu]:new Date().toISOString()}}); return; }
+  if (t.id === "an-csv"){ const cl = classe(S.su.cl), mat = S.su.mat, y = S.su.y, els = cl.eleves || [], cs = yearCtrls(cl, mat, y).filter(c => els.some(e => noteDe(c, e) != null));
+    const np = bornes().length + 1, f = v => v == null ? "" : String(Math.round(v * 100) / 100).replace(".", ","), q = x => '"' + String(x).replace(/"/g, '""') + '"';
+    const head = ["Student", ...cs.map(c => `${c.titre} (${ctrlDay(c)}, weight ${coefOf(c)})`), ...Array.from({length:np}, (_, i) => "Average " + perAbr(i)), "Yearly average"];
+    const rows = els.map(e => { const M = moyennes(cs, e); return [e.prenom + " " + e.nom, ...cs.map(c => f(noteDe(c, e))), ...M.per.map(f), f(M.an)]; });
+    const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["\ufeff" + [head, ...rows].map(r => r.map(q).join(";")).join("\r\n")], {type:"text/csv;charset=utf-8"}));
+    a.download = `Tracking ${cl.nom} - ${mat} - ${yearLab(y)}.csv`; a.click(); return; }
+  if (t.id === "compAll"){ const cl = classe(S.su.cl), st = $("#comp-st"), list = yearCtrls(cl, S.su.mat, S.su.y).filter(c => (c.questions || []).some(q => !(q.comps || []).length));
+    t.disabled = true; let n = 0;
+    for (const c of list){ st.innerHTML = `<span class="thinking">${++n} / ${list.length}…</span>`; try { await tagComps(c); } catch(x){ st.textContent = aiErr(x?.code); t.disabled = false; return; } }
+    toast("Skills added: you can check them in each test."); return; }
+  if (t.id === "se-save"){ const cl = classe(S.su.cl), e = cl.eleves.find(x => x.id === d.e), mat = S.su.mat, k = S.su.y + "-" + (+$("#se-p").value || 0), id = seId(cl, e, mat), cur = store.bilans[id]?.p || {};
+    const v = Object.fromEntries(Object.keys(SE).map(c => [c, +$("#se-" + c).value || 0]).filter(([, n]) => n)); const txt = $("#se-txt").value.trim(); if (txt) v.txt = txt.slice(0, 600);
+    await write("bilans/" + id, {classeId:cl.id, eleveId:e.id, matiere:mat, p:{...cur, [k]:v}}); toast("Behavior notes saved."); return; }
   if (t.id === "addQcm"){ const c = ctrl(S.editId); c.questions.push({...mapQ({type:"qcm", points:2, versions:{standard:{enonce:"", choix:["", "", "", ""], bonnes:[0]}}})}); await saveCtrl(c); return; }
   if (t.id === "bankOpen"){ S.bankOpen = !S.bankOpen; return render(); }
   if (d.bankadd){ const [cid, qid] = d.bankadd.split("|"); const src = ctrl(cid)?.questions?.find(q => q.id === qid), c = ctrl(S.editId);
@@ -3818,13 +4021,17 @@ document.addEventListener("click", async ev => {
     const hist = studentCtrls(cl, mat, e); if (!hist.length){ st.textContent = "No graded paper yet for this student."; return; }
     const notions = ns.notions.map(k => { const o = ns.per[e.id]?.[k]; return o ? `${ns.labels[k]} : ${pct(o.s / o.n)}` : null; }).filter(Boolean).join(" ; ");
     const coms = hist.flatMap(x => x.c.questions.map(q => x.cp.answers?.[q.id]?.commentaire).filter(Boolean)).slice(-6).join(" | ");
+    const y = S.su.y ?? curYear(), cs = yearCtrls(cl, mat, y), M = moyennes(cs, e), CS = compStats(cs, e), pn = M.per.map((v, i) => v == null ? null : i).filter(i => i != null).pop() ?? 0;
+    const moys = M.per.map((v, i) => v == null ? "" : `${perLab(i)} : ${noteS(v)}`).filter(Boolean).join(" ; ");
+    const comps = Object.entries(CS).filter(([, r]) => r != null).map(([k, r]) => `${COMPS[k]} : ${MAITRISE(r).l.toLowerCase()}`).join(" ; ");
+    const se = store.bilans[seId(cl, e, mat)]?.p?.[y + "-" + pn] || {}, seTxt = [...Object.entries(SE).filter(([k]) => se[k]).map(([k, l]) => `${l} : ${SE_N[se[k]].toLowerCase()}`), se.txt ? "note: " + se.txt : ""].filter(Boolean).join(" ; ");
     t.disabled = true; st.innerHTML = `<span class="thinking">Writing…</span>`;
     try{
       const txt = await aiText(`Write the trimester report card comment for a student in ${mat} (grade ${cl.niveau}).
 First name: ${e.prenom}
 Grades: ${hist.map(x => `${x.c.titre} : ${noteS(isCtrl(x.c) ? noteRetenue(x.c, e)?.retenue ?? final20(x.c, x.cp) : final20(x.c, x.cp))}${x.c.type === "rattrapage" ? " (rattrapage)" : x.c.type === "exercices" ? " (exercices)" : ""}`).join(" ; ")}
 Mastery by skill: ${notions}
-Excerpts from grading comments: ${coms}
+${moys ? "Averages: " + moys + " (comment for " + perLab(pn).toLowerCase() + ")\n" : ""}${comps ? "Skills: " + comps + "\n" : ""}${seTxt ? "Behavior observed by the teacher: " + seTxt + "\n" : ""}Excerpts from grading comments: ${coms}
 US report card style: 2 to 3 sentences, 300 characters maximum, in the third person using the student's first name, fair, tone: ${TON_P[prefs().ton] || TON_P.bienveillant}, with one strength and one specific suggestion. Respond in English. Just the comment, no quotation marks. Don't invent anything that isn't in this data.`, {modelTier:"quick"});
       await write("bilans/" + `${cl.id}_${e.id}_${slug(mat)}`, {texte:txt.trim(), classeId:cl.id, eleveId:e.id, matiere:mat, at:new Date().toISOString()});
     }catch(x){ st.textContent = aiErr(x?.code); t.disabled = false; }
@@ -3835,7 +4042,11 @@ US report card style: 2 to 3 sentences, 300 characters maximum, in the third per
 document.addEventListener("change", ev => {
   const el = ev.target;
   if (el.id === "su-cl"){ S.su = {cl:el.value}; return render(); }
-  if (el.id === "su-mat"){ S.su.mat = el.value; S.su.el = null; return render(); }
+  if (el.id === "su-mat"){ S.su.mat = el.value; S.su.el = null; S.su.ctrl = null; return render(); }
+  if (el.id === "su-y"){ S.su.y = +el.value; S.su.ctrl = null; return render(); }
+  if (el.id === "su-ctrl"){ S.su.ctrl = el.value; return render(); }
+  if (el.id === "se-p"){ S.su.sp = +el.value; return render(); }
+  if (el.dataset.coef){ write("controles/" + el.dataset.coef, {coef:+el.value || 1}, "update"); return; }
   if (el.id === "bk-mat" || el.id === "bk-niv" || el.id === "bk-q"){ S.bk[el.id.slice(3)] = el.value; S.bk.n = 10; S.bk.open = null; return render(); }
   if (el.id === "bkq-search"){ S.bkq = el.value; return render(); }
 });

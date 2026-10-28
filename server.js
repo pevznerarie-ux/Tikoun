@@ -122,7 +122,8 @@ const AFF = ["ecole", "nom", "les2"];
 const PREF_Q = {format:["redige","mixte","qcm"], profondeur:["simple","standard","exigeant"], longueur:["courte","moyenne","developpee"]};
 const cleanPrefs = p => { const n = (v, a, b, d) => { v = +v; return v >= a && v <= b ? v : d; }, q = isObj(p.q) ? p.q : {};
   return {police:n(p.police, 13, 17, 15), lh:n(p.lh, 26, 46, 30), reglure:["lignes", "seyes", "carreaux", "aucune"].includes(p.reglure) ? p.reglure : "lignes",
-    ton:["bienveillant", "neutre", "exigeant", "chaleureux"].includes(p.ton) ? p.ton : "bienveillant", adresse:p.adresse === "vous" ? "vous" : "tu", bareme:p.bareme !== false, consignes:String(p.consignes ?? "Écris uniquement dans les cadres.").slice(0, 400),
+    ton:["bienveillant", "neutre", "exigeant", "chaleureux"].includes(p.ton) ? p.ton : "bienveillant", adresse:p.adresse === "vous" ? "vous" : "tu",
+    periodes:(r => { const md = (v, d) => /^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(v || "") ? v : d; return {mode:r.mode === "sem" ? "sem" : "trim", t2:md(r.t2, "12-01"), t3:md(r.t3, "03-15"), s2:md(r.s2, "02-01")}; })(isObj(p.periodes) ? p.periodes : {}), bareme:p.bareme !== false, consignes:String(p.consignes ?? "Écris uniquement dans les cadres.").slice(0, 400),
     q:Object.fromEntries(Object.entries(PREF_Q).map(([k, l]) => [k, l.includes(q[k]) ? q[k] : l[1]]).concat([["justif", q.justif !== false]])),
     ratt:(r => ({seuil:n(r.seuil, 5, 15, 10), regle:["meilleure", "bonus", "moyenne", "remplace", "formatif"].includes(r.regle) ? r.regle : "meilleure", plafond:n(r.plafond, 10, 20, 10), bonus:n(r.bonus, 1, 5, 3)}))(isObj(p.ratt) ? p.ratt : {})}; };
 const pub = u => ({id:u.id, email:u.email, nom:u.nom, role:u.role, mustChange:!!u.mustChange, ecole:u.ecole || null, prefs:cleanPrefs(u.prefs || {}), quota:quota(u), matieres:u.matieres || [], enseigne:u.enseigne || [], affichage:AFF.includes(u.affichage) ? u.affichage : "les2", plan:u.plan || "essentiel", options:{exercices:!!u.options?.exercices}, can:{exercices:entitled(u)}, actif:u.actif !== false, statut:u.statut || "valide", planDemande:u.planDemande || null, createdAt:u.createdAt, bareme:u.bareme || null, partageEcriture:u.partageEcriture !== false, espace:u.espace, ref:refCode(u), acces:access(u), billing:BILLING(), parrainage:refStats(u), etab:etabPub(groupOf(u), u), inscription:u.inscription || "admin", resetDemande:u.resetDemande || null});
@@ -870,6 +871,7 @@ async function runJob(j){
   if (jr0.missing.length && (j.tries || 0) < 2){ j.tries = (j.tries || 0) + 1; j.status = "attente"; j.msg = "Réponse de l'IA incomplète : nouvel essai"; j.notBefore = Date.now() + 5000; return; }
   const kt = keepTeacher(cur, j.eleveId, jr0.answers), answers = kt.answers, lisibleKo = jr0.lisibleKo;
   const patch = {copies:{[j.eleveId]:kt.validee ? {answers} : {answers, validee:false}}};
+  if (String(res?.alerte || "").trim()) patch.copies[j.eleveId].alertes = {[j.page]:{txt:String(res.alerte).trim().slice(0, 600), at:new Date().toISOString()}};   // écrit inquiétant : signalé au seul professeur
   if (j.bonus) patch.copies[j.eleveId].bonusPages = {[j.page]:{proprete:clampN(+res?.proprete || 0, 0, 1), orthographe:clampN(+res?.orthographe || 0, 0, 1)}};
   persist(dp, merge(cur, patch));
   j.status = jr0.missing.length ? "erreur" : "fait"; j.doneAt = new Date().toISOString();
@@ -892,8 +894,9 @@ function genQ(x){
       o.corrige = "Bonne(s) réponse(s) : " + o.bonnes.map(n => "ABCDEF"[n]).join(", "); o.criteres = "Tout ou rien."; } return o; };
   const v = isObj(x?.versions) ? Object.fromEntries(LVLS.filter(l => isObj(x.versions[l])).map(l => [l, one(x.versions[l])])) : {standard:one(x)};
   if (!v.standard) v.standard = Object.values(v)[0] || one({});
-  return {id, ...(qcm ? {type:"qcm"} : {}), notion:String(x?.notion || "").slice(0, 120), points:+x?.points || 4, lignes:clampN(+x?.lignes || 6, 1, 30), erreurs:(Array.isArray(x?.erreurs) ? x.erreurs : []).map(String).slice(0, 5), v};
+  return {id, ...(qcm ? {type:"qcm"} : {}), notion:String(x?.notion || "").slice(0, 120), comps:COMPK.filter(k => (Array.isArray(x?.competences) ? x.competences : []).map(c => String(c).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")).includes(k)).slice(0, 2), points:+x?.points || 4, lignes:clampN(+x?.lignes || 6, 1, 30), erreurs:(Array.isArray(x?.erreurs) ? x.erreurs : []).map(String).slice(0, 5), v};
 }
+const COMPK = ["connaitre", "comprendre", "raisonner", "lire", "ecrire"];
 const stdOf = q => q.v.standard?.enonce ? q.v.standard : Object.values(q.v).find(y => y?.enonce) || {enonce:"", corrige:""};
 const tokOf = t => new Set(String(t).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9֐-׿ ]+/g, " ").split(/\s+/).filter(x => x.length > 3).map(x => x.slice(0, 5)));
 const closeTo = (a, b, seuil) => { const A = tokOf(a), B = tokOf(b); if (!A.size || !B.size) return false; return [...A].filter(x => B.has(x)).length / Math.min(A.size, B.size) >= seuil; };

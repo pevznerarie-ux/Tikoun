@@ -129,6 +129,12 @@ function vCompte(){
     <div class="field"><label for="qp-long">Longueur des réponses</label><select id="qp-long">${selOpts(["courte","moyenne","developpee"], Q.longueur, x => ({courte:"Courtes (3 à 5 lignes)", moyenne:"Moyennes (5 à 8 lignes)", developpee:"Développées (8 à 14 lignes)"}[x]))}</select></div>
     <label class="row small" style="gap:6px"><input type="checkbox" id="qp-just"${Q.justif ? " checked" : ""}> <span>Questions à choix : toujours laisser un cadre pour justifier la réponse (corrigé par l'IA)</span></label>
     <div class="row"><button class="btn primary" id="qp-save">Enregistrer</button></div></section>
+  ${(() => { const R = {...PREF_DEF.periodes, ...(P.periodes || {})}, dIn = (id, md) => `<input type="date" id="${id}" value="${(+md.slice(0, 2) >= 8 ? "2026" : "2027") + "-" + md}">`;
+    return `<section class="panel grid" style="max-width:640px" id="annee-pref"><h3>Année scolaire</h3>
+    <p class="small muted" style="margin:0">Le découpage utilisé pour les moyennes du suivi des élèves. L'année commence en septembre ; seuls le jour et le mois des dates comptent.</p>
+    <div class="form-row"><div class="field"><label for="ap-mode">Découpage</label><select id="ap-mode">${selOpts(["trim", "sem"], R.mode, x => x === "sem" ? "Semestres" : "Trimestres")}</select></div>
+      ${R.mode === "sem" ? `<div class="field"><label for="ap-s2">Début du 2e semestre</label>${dIn("ap-s2", R.s2)}</div>` : `<div class="field"><label for="ap-t2">Début du 2e trimestre</label>${dIn("ap-t2", R.t2)}</div><div class="field"><label for="ap-t3">Début du 3e trimestre</label>${dIn("ap-t3", R.t3)}</div>`}</div>
+    <div class="row"><button class="btn primary" id="ap-save">Enregistrer</button></div></section>`; })()}
   <section class="panel grid" style="max-width:640px" id="ton-pref"><h3>Ton des commentaires</h3>
     <p class="small muted" style="margin:0">La façon dont l'IA s'adresse aux élèves dans les commentaires de correction et des quiz, et le ton des appréciations de bulletin.</p>
     <div class="form-row"><div class="field"><label for="tp-ton">Ton</label><select id="tp-ton">${selOpts(Object.keys(TONS), P.ton, x => TONS[x])}</select></div>
@@ -225,6 +231,8 @@ document.addEventListener("click", async ev => {
       S.pend = j.user; S.auth = "pending"; history.replaceState(null, "", "#/connexion"); return render(); }
     if (t.id === "mp-save"){ const j = await api("/api/me", {method:"PATCH", body:JSON.stringify({affichage:affValue()})}); S.me = j.user;
       await savePrefs({police:+$("#mp-pol").value, lh:+$("#mp-lh").value, reglure:$("#mp-reg").value, consignes:$("#mp-cons").value.trim(), bareme:$("#mp-bar").checked}); render(); toast("Enregistré"); return; }
+    if (t.id === "ap-save"){ const P = prefs().periodes || {}, md = id => ($("#" + id)?.value || "").slice(5, 10);
+      await savePrefs({periodes:{...PREF_DEF.periodes, ...P, mode:$("#ap-mode").value, ...($("#ap-t2") ? {t2:md("ap-t2") || P.t2, t3:md("ap-t3") || P.t3} : {s2:md("ap-s2") || P.s2})}}); render(); toast("Enregistré"); return; }
     if (t.id === "qp-save"){ await savePrefs({q:{format:$("#qp-fmt").value, profondeur:$("#qp-prof").value, longueur:$("#qp-long").value, justif:$("#qp-just").checked}}); S.params._pref = false; render(); toast("Enregistré"); return; }
     if (t.id === "me-save"){ const body = {nom:$("#me-nom").value}, e = ecoleVal();
       if (e.nom && e.ville && (e.nom !== S.me.ecole?.nom || e.ville !== S.me.ecole?.ville)) body.ecole = e;
