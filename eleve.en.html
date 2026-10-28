@@ -68,6 +68,12 @@ h1,h2,h3,.big{font-family:var(--display);font-weight:700;letter-spacing:-.025em}
 .chip{border-radius:999px}
 .opt.sel{border-color:var(--gold);box-shadow:0 0 0 2px var(--gold) inset;background:var(--gold-soft)}
 input:focus,textarea:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 4px var(--gold-soft)}
+h2.sec{font-family:var(--body)!important;font-size:13px!important;font-weight:700!important;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:22px 0 8px}
+.card.res{all:unset;color:var(--ink);box-sizing:border-box;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px 16px}
+.card.res:hover{border-color:var(--gold)}.res .rt{font-weight:700;font-size:16px}.res .rn{display:grid;justify-items:end;gap:2px;flex:none}.res .rn b{font-size:22px}
+.tag{font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;background:var(--gold-soft);color:var(--gold)}
+.notes{display:flex;flex-wrap:wrap;gap:10px}.nb{display:grid;gap:2px;padding:10px 14px;border-radius:12px;background:var(--surface-2);min-width:110px}.nb span{font-size:12px;color:var(--muted)}.nb b{font-size:20px}.nb.main{background:var(--gold-soft)}.nb.main b{color:var(--gold);font-size:26px}
+.cq{display:grid;gap:10px}.blk{border-top:1px solid var(--line);padding-top:8px;display:grid;gap:4px}.blk.com{background:var(--surface-2);border:0;border-radius:10px;padding:10px 12px}.blk summary{cursor:pointer}
 </style>
 </head>
 <body>
@@ -87,24 +93,51 @@ async function api(p, body){
 }
 function vLogin(prefill, err){
   $("#who").textContent = "";
-  app.innerHTML = `<section class="card" style="display:grid;gap:16px;max-width:440px;margin:6vh auto 0;width:100%">
-    <div class="hello"><div class="label">Student portal</div><h1 style="font-size:30px">Welcome</h1><p class="muted">Enter the personal code written on your card.</p></div>
-    <input id="code" class="code" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false" value="${esc(prefill || "")}" aria-label="Your code">
+  app.innerHTML = `<section class="card" style="display:grid;gap:14px;max-width:440px;margin:6vh auto 0;width:100%">
+    <div class="hello"><div class="label">Student portal</div><h1 style="font-size:30px">Welcome</h1><p class="muted">Enter the personal code on your card and your last name.</p></div>
+    <input id="code" class="code" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false" value="${esc(prefill || "")}" aria-label="Your code" placeholder="CODE">
+    <input id="nom" autocomplete="family-name" spellcheck="false" placeholder="Your last name" aria-label="Your last name" dir="auto">
     <button class="btn primary" id="go">Enter</button><div class="err" id="err">${esc(err || "")}</div></section>`;
-  $("#code").focus();
-  const go = async () => { $("#go").disabled = true; try { await api("/api/eleve/login", {code:$("#code").value}); history.replaceState(null, "", "/eleve"); home(); } catch(e){ $("#err").textContent = e.message; $("#go").disabled = false; } };
-  $("#go").onclick = go; $("#code").onkeydown = e => { if (e.key === "Enter") go(); };
+  (prefill ? $("#nom") : $("#code")).focus();
+  const go = async () => { if (!$("#code").value.trim() || !$("#nom").value.trim()){ $("#err").textContent = "Enter your code and your last name."; return; }
+    $("#go").disabled = true; try { await api("/api/eleve/login", {code:$("#code").value, nom:$("#nom").value}); history.replaceState(null, "", "/eleve"); home(); } catch(e){ $("#err").textContent = e.message; $("#go").disabled = false; } };
+  $("#go").onclick = go; $("#code").onkeydown = $("#nom").onkeydown = e => { if (e.key === "Enter") go(); };
 }
 async function home(){
   try { ME = await api("/api/eleve/me"); } catch(e){ return vLogin("", e.status === 401 ? "" : e.message); }
   $("#who").innerHTML = `${esc(ME.eleve.prenom)} · ${esc(ME.eleve.classe)} · <button class="btn ghost small" id="out">Exit</button>`;
   $("#out").onclick = async () => { await api("/api/eleve/logout", {}); vLogin(); };
   const q = ME.quizzes;
-  app.innerHTML = `<div class="hello"><div class="label">${esc(new Date().toLocaleDateString("en-US", {weekday:"long", day:"numeric", month:"long"}))}</div><h1 style="font-size:32px">Good morning ${esc(ME.eleve.prenom)}</h1><p class="muted">Practice as much as you want: the questions change every time.</p></div>
+  const C = ME.controles || [], Rt = ME.rattrapages || [];
+  app.innerHTML = `<div class="hello"><div class="label">${esc(new Date().toLocaleDateString("en-US", {weekday:"long", day:"numeric", month:"long"}))}</div><h1 style="font-size:32px">Good morning ${esc(ME.eleve.prenom)}</h1><p class="muted">Your graded tests, your retakes and your practice.</p></div>
+  ${Rt.length ? `<h2 class="sec">My retakes</h2><div class="list">${Rt.map(x => `<button class="card res" data-ctrl="${esc(x.id)}"><div><div class="small muted">${esc(x.matiere)}${x.parent ? " · " + esc(x.parent) : ""}</div><div class="rt">${esc(x.titre)}</div></div>
+      <div class="rn">${x.corrige ? `<b>${esc(x.note)}</b>` : `<span class="tag">To do</span>`}</div></button>`).join("")}</div>` : ""}
+  <h2 class="sec">My tests</h2>
+  <div class="list">${C.length ? C.map(x => `<button class="card res" data-ctrl="${esc(x.id)}"><div><div class="small muted">${esc(x.matiere)}${x.date ? " · " + esc(new Date(x.date + "T12:00").toLocaleDateString("en-US", {day:"numeric", month:"long"})) : ""}</div><div class="rt">${esc(x.titre)}</div>
+      ${x.rattrape ? `<div class="small muted">Test ${esc(x.base)} · rattrapage ${esc(x.ratt)}</div>` : ""}</div><div class="rn"><b>${esc(x.note)}</b>${x.rattrape ? `<span class="small muted">after retake</span>` : ""}</div></button>`).join("") : `<section class="card"><p class="muted small">Your results will appear here when your teacher publishes them.</p></section>`}</div>
+  <h2 class="sec">My practice</h2>
   <div class="list">${q.length ? q.map(x => `<section class="card qz"><div class="row" style="justify-content:space-between"><div><div class="small muted">${esc(x.matiere)}${x.fermeture ? " · until " + esc(new Date(x.fermeture + "T12:00").toLocaleDateString("en-US", {day:"numeric", month:"long"})) : ""}</div><h2 style="font-size:22px">${esc(x.titre)}</h2></div>${x.nbNotions && x.acquises === x.nbNotions ? '<span class="chip ok">All mastered ✓</span>' : ""}</div>
       <div class="bar" aria-label="Skills mastered"><i style="width:${x.nbNotions ? Math.round(x.acquises / x.nbNotions * 100) : 0}%"></i></div>
       <div class="row" style="justify-content:space-between"><span class="small muted">${x.acquises}/${x.nbNotions} skills mastered · ${x.tentatives} tentative(s)</span>${x.ouvert ? `<button class="btn ${x.tentatives ? "" : "gold"}" data-play="${esc(x.id)}">${x.tentatives ? "Start over" : "Start"}</button>` : `<span class="chip">Closed</span>`}</div></section>`).join("") : `<section class="card"><p class="muted">No practice yet. Your teacher will assign some soon.</p></section>`}</div>`;
   app.querySelectorAll("[data-play]").forEach(b => b.onclick = () => play(b.dataset.play));
+  app.querySelectorAll("[data-ctrl]").forEach(b => b.onclick = () => copie(b.dataset.ctrl));
+}
+/* Copie corrigée (ou feuille de rattrapage à faire) */
+async function copie(id){
+  let d; try { d = await api(`/api/eleve/controle/${id}`); } catch(e){ app.innerHTML = `<section class="card"><p>${esc(e.message)}</p><button class="btn" id="back">Back</button></section>`; $("#back").onclick = home; return; }
+  const N = d.notes, fmtN = v => v == null ? "—" : String(Math.round(v * 100) / 100).replace(".", ",");
+  app.innerHTML = `<button class="btn ghost" id="back">← Back</button>
+  <section class="card" style="display:grid;gap:10px"><div class="small muted">${esc(d.matiere)}${d.rattrapage && d.parent ? " · rattrapage de « " + esc(d.parent) + " ”" : ""}</div><h1 style="font-size:26px;margin:0">${esc(d.titre)}</h1>
+    ${d.corrige && N ? `<div class="notes"><div class="nb main"><span>${d.rattrapage ? "Remediation" : "Final score"}</span><b>${esc(d.rattrapage ? N.ratt : N.retenue)}</b></div>
+      ${!d.rattrapage && N.rattrape ? `<div class="nb"><span>Test</span><b>${esc(N.base)}</b></div><div class="nb"><span>Remediation</span><b>${esc(N.ratt)}</b></div>` : ""}
+      ${d.rattrapage && N.retenue ? `<div class="nb"><span>Final score</span><b>${esc(N.retenue)}</b></div>` : ""}</div>${N.regle ? `<p class="small muted" style="margin:0">Rule applied: ${esc(N.regle)}.</p>` : ""}`
+      : `<p class="muted" style="margin:0">${d.rattrapage ? "Your retake to do. Take your time and read the hint again." : ""}</p>${d.consignes ? `<p class="small muted" style="margin:0">${esc(d.consignes)}</p>` : ""}`}</section>
+  ${d.questions.map(q => `<section class="card cq"><div class="qhead"><span>Question ${q.n}${q.notion ? " · " + esc(q.notion) : ""}</span><span>${d.corrige ? `<b>${fmtN(q.note)}</b> / ${fmtN(q.points)}` : fmtN(q.points) + " pts"}</span></div>
+    <div class="enonce" dir="auto">${esc(q.enonce)}</div>${q.choix ? `<ol type="A" class="small">${q.choix.map(c => `<li dir="auto">${esc(c)}</li>`).join("")}</ol>` : ""}
+    ${d.corrige ? `<div class="blk"><div class="label">Your answer</div><div dir="auto">${esc(q.reponse || "(no answer)")}</div></div>
+      ${q.commentaire ? `<div class="blk com"><div class="label">Comment</div><div dir="auto">${esc(q.commentaire)}</div></div>` : ""}
+      ${q.corrige ? `<details class="blk"><summary class="label">See the answer key</summary><div dir="auto">${esc(q.corrige)}</div></details>` : ""}` : ""}</section>`).join("")}`;
+  $("#back").onclick = home; scrollTo(0, 0);
 }
 async function play(id){
   app.innerHTML = `<section class="card"><p class="muted">Preparing your questions…</p></section>`;
@@ -154,7 +187,7 @@ async function finish(){
   $("#again").onclick = () => play(R.id); $("#home").onclick = home;
 }
 const pre = new URLSearchParams(location.search).get("c");
-if (pre) (async () => { try { await api("/api/eleve/login", {code:pre}); history.replaceState(null, "", "/eleve"); home(); } catch(e){ vLogin(pre, e.message); } })();
+if (pre){ history.replaceState(null, "", "/eleve"); (async () => { try { ME = await api("/api/eleve/me"); home(); } catch(e){ vLogin(pre); } })(); }
 else home();
 </script>
 <p style="text-align:center;font-size:12px;opacity:.6;margin:28px 0 20px"><a href="/confidentialite" style="color:inherit">Privacy</a></p>

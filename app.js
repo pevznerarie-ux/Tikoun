@@ -1435,6 +1435,7 @@ function vAnalyse(){
   return `
   <div class="head"><div><h2>Classe & rattrapage</h2><p>${rows.length} copie(s) corrigée(s) sur ${studs.length}${unval ? ` · <span style="color:var(--warn)">${unval} pas encore validée(s)</span>` : ""}</p></div>
     <select id="anSel" style="max-width:440px" aria-label="Contrôle">${selOpts(list, c.id, x => (x.type === "rattrapage" ? "Rattrapage · " : x.type === "exercices" ? "Exercices · " : "") + x.titre + " · " + (classe(x.classeId)?.nom || ""), x => x.id)}</select></div>
+  ${pubPanel(c)}
   <div class="grid g3">
     <div class="panel"><div class="label">Moyenne</div><div class="total num" style="color:var(--ink)">${nv(avg)}<small>${sfxN(avg)}</small></div>${(() => { const ret = rows.map(r => noteRetenue(c, r.e)?.retenue ?? 0), a2 = ret.reduce((a, b) => a + b, 0) / ret.length; return Math.abs(a2 - avg) > 0.005 ? `<div class="small muted">après rattrapages : <b>${noteS(a2)}</b></div>` : ""; })()}</div>
     <div class="panel"><div class="label">Min – max</div><div class="total num" style="color:var(--ink)">${nv(Math.min(...notes))} – ${nv(Math.max(...notes))}</div></div>
@@ -1646,6 +1647,19 @@ const seuilR = () => prefs().ratt.seuil;
 const rattRule = r => ({...prefs().ratt, ...(r?.regle || {})});
 const plafTxt = R => R.plafond < 20 ? `, plafonnée à ${noteS(R.plafond)}` : "";
 const ruleTxt = R => R.regle === "bonus" ? `Bonus : jusqu'à +${fmt(R.bonus)} point${R.bonus > 1 ? "s" : ""} (20/20 au rattrapage)${plafTxt(R)}` : R.regle === "formatif" ? RREGLES.formatif : RREGLES[R.regle] + (R.regle === "moyenne" ? "" : plafTxt(R));
+/* Publication aux élèves : instantané des notes (copies validées seulement), lu par l'espace élève */
+function pubSnapshot(c){ const res = {}, f = feuille(c.id);
+  for (const e of studentsOf(c)){ if (!f?.copies?.[e.id]?.validee) continue; const N = noteRetenue(c, e); if (!N) continue;
+    res[e.id] = {base:N.base, ratt:N.ratt, retenue:N.retenue, regle:N.ratt != null ? ruleTxt(N.R) : "", aff:{base:noteS(N.base), ratt:N.ratt != null ? noteS(N.ratt) : "", retenue:noteS(N.retenue)}}; }
+  return res; }
+function pubPanel(c){
+  if (!isCtrl(c)) return "";
+  const snap = pubSnapshot(c), n = Object.keys(snap).length, pub = c.pub, diff = pub && JSON.stringify(pub.res) !== JSON.stringify(snap);
+  return `<section class="panel pubp"><div class="row between" style="gap:12px;flex-wrap:wrap"><div><h3 style="margin:0">Espace élève</h3>
+    <p class="small muted" style="margin:4px 0 0">${pub ? `Résultats publiés le ${esc(frDate(pub.at.slice(0, 10)))} · ${Object.keys(pub.res).length} élève(s)${diff ? ` · <b style="color:var(--warn)">des notes ont changé depuis</b>` : ""}` : `Les élèves ne voient pas encore leurs résultats. Une fois publiés, chacun voit sa note, sa copie corrigée et les commentaires en se connectant avec son code et son nom de famille.`}</p></div>
+    <div class="row">${pub ? `${diff ? `<button class="btn sm primary" id="pub-go">Mettre à jour la publication</button>` : `<span class="chip ok">Publié</span>`}<button class="btn sm ghost" id="pub-off">Retirer</button>` : `<button class="btn sm primary" id="pub-go"${n ? "" : " disabled"}>Publier les résultats aux élèves</button>`}</div></div>
+    ${!pub && n < studentsOf(c).length ? `<p class="small muted" style="margin:6px 0 0">${n} copie(s) validée(s) sur ${studentsOf(c).length} : seules les copies validées sont publiées.</p>` : ""}</section>`;
+}
 /* Note retenue d'un élève : contrôle d'origine + dernier rattrapage corrigé, selon la règle */
 function noteRetenue(c, e){
   const cp = feuille(c.id)?.copies?.[e.id]; if (!copyDone(c, cp)) return null;
@@ -1973,6 +1987,10 @@ document.addEventListener("click", async ev => {
   if (S.view === "analyse"){
     const C = ctrl(S.anCtrl);
     if (d.ratt){ rattTask(C, eleveOf(C, d.ratt), `[data-ratt="${d.ratt}"]`); return; }
+    if (t.id === "pub-go"){ const snap = pubSnapshot(C); if (!Object.keys(snap).length) return toast("Valide d'abord des copies.");
+      if (!C.pub && !confirm(`Publier les résultats de ${Object.keys(snap).length} élève(s) ? Chacun verra sa note, sa copie corrigée et les commentaires dans son espace.`)) return;
+      await saveCtrl({...ctrl(C.id), pub:{at:new Date().toISOString(), res:snap}}); toast("Résultats publiés aux élèves."); return render(); }
+    if (t.id === "pub-off"){ if (!confirm("Retirer la publication ? Les élèves ne verront plus ces résultats.")) return; const {pub:_p, ...rest} = ctrl(C.id); await saveCtrl(rest); toast("Publication retirée."); return render(); }
     if (t.id === "synth"){ const f = feuille(C.id), max = maxOf(C), st = $("#syn-st"); st.innerHTML = `<span class="thinking">Analyse de la classe.</span> ${TASK_WAIT}`;
       const rows = studentsOf(C).map(e => f.copies[e.id]).filter(k => copyDone(C, k));
       const lines = C.questions.map((q, k) => { const got = rows.map(r => noteOf(r.answers[q.id]) / q.points); const tags = {}; rows.forEach(r => (r.answers[q.id]?.erreurs || []).forEach(x => tags[x] = (tags[x] || 0) + 1));

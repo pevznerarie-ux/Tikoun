@@ -2007,6 +2007,7 @@ function vAnalyse(){
   return `
   <div class="head"><div><h2>Classe & rattrapage</h2><p>${rows.length} copie(s) corrigée(s) sur ${studs.length}${unval ? ` · <span style="color:var(--warn)">${unval} pas encore validée(s)</span>` : ""}</p></div>
     <select id="anSel" style="max-width:440px" aria-label="Contrôle">${selOpts(list, c.id, x => (x.type === "rattrapage" ? "Rattrapage · " : x.type === "exercices" ? "Exercices · " : "") + x.titre + " · " + (classe(x.classeId)?.nom || ""), x => x.id)}</select></div>
+  ${pubPanel(c)}
   <div class="grid g3">
     <div class="panel"><div class="label">Moyenne</div><div class="total num" style="color:var(--ink)">${nv(avg)}<small>${sfxN(avg)}</small></div>${(() => { const ret = rows.map(r => noteRetenue(c, r.e)?.retenue ?? 0), a2 = ret.reduce((a, b) => a + b, 0) / ret.length; return Math.abs(a2 - avg) > 0.005 ? `<div class="small muted">après rattrapages : <b>${noteS(a2)}</b></div>` : ""; })()}</div>
     <div class="panel"><div class="label">Min – max</div><div class="total num" style="color:var(--ink)">${nv(Math.min(...notes))} – ${nv(Math.max(...notes))}</div></div>
@@ -2218,6 +2219,19 @@ const seuilR = () => prefs().ratt.seuil;
 const rattRule = r => ({...prefs().ratt, ...(r?.regle || {})});
 const plafTxt = R => R.plafond < 20 ? `, plafonnée à ${noteS(R.plafond)}` : "";
 const ruleTxt = R => R.regle === "bonus" ? `Bonus : jusqu'à +${fmt(R.bonus)} point${R.bonus > 1 ? "s" : ""} (20/20 au rattrapage)${plafTxt(R)}` : R.regle === "formatif" ? RREGLES.formatif : RREGLES[R.regle] + (R.regle === "moyenne" ? "" : plafTxt(R));
+/* Publication aux élèves : instantané des notes (copies validées seulement), lu par l'espace élève */
+function pubSnapshot(c){ const res = {}, f = feuille(c.id);
+  for (const e of studentsOf(c)){ if (!f?.copies?.[e.id]?.validee) continue; const N = noteRetenue(c, e); if (!N) continue;
+    res[e.id] = {base:N.base, ratt:N.ratt, retenue:N.retenue, regle:N.ratt != null ? ruleTxt(N.R) : "", aff:{base:noteS(N.base), ratt:N.ratt != null ? noteS(N.ratt) : "", retenue:noteS(N.retenue)}}; }
+  return res; }
+function pubPanel(c){
+  if (!isCtrl(c)) return "";
+  const snap = pubSnapshot(c), n = Object.keys(snap).length, pub = c.pub, diff = pub && JSON.stringify(pub.res) !== JSON.stringify(snap);
+  return `<section class="panel pubp"><div class="row between" style="gap:12px;flex-wrap:wrap"><div><h3 style="margin:0">Espace élève</h3>
+    <p class="small muted" style="margin:4px 0 0">${pub ? `Résultats publiés le ${esc(frDate(pub.at.slice(0, 10)))} · ${Object.keys(pub.res).length} élève(s)${diff ? ` · <b style="color:var(--warn)">des notes ont changé depuis</b>` : ""}` : `Les élèves ne voient pas encore leurs résultats. Une fois publiés, chacun voit sa note, sa copie corrigée et les commentaires en se connectant avec son code et son nom de famille.`}</p></div>
+    <div class="row">${pub ? `${diff ? `<button class="btn sm primary" id="pub-go">Mettre à jour la publication</button>` : `<span class="chip ok">Publié</span>`}<button class="btn sm ghost" id="pub-off">Retirer</button>` : `<button class="btn sm primary" id="pub-go"${n ? "" : " disabled"}>Publier les résultats aux élèves</button>`}</div></div>
+    ${!pub && n < studentsOf(c).length ? `<p class="small muted" style="margin:6px 0 0">${n} copie(s) validée(s) sur ${studentsOf(c).length} : seules les copies validées sont publiées.</p>` : ""}</section>`;
+}
 /* Note retenue d'un élève : contrôle d'origine + dernier rattrapage corrigé, selon la règle */
 function noteRetenue(c, e){
   const cp = feuille(c.id)?.copies?.[e.id]; if (!copyDone(c, cp)) return null;
@@ -2545,6 +2559,10 @@ document.addEventListener("click", async ev => {
   if (S.view === "analyse"){
     const C = ctrl(S.anCtrl);
     if (d.ratt){ rattTask(C, eleveOf(C, d.ratt), `[data-ratt="${d.ratt}"]`); return; }
+    if (t.id === "pub-go"){ const snap = pubSnapshot(C); if (!Object.keys(snap).length) return toast("Valide d'abord des copies.");
+      if (!C.pub && !confirm(`Publier les résultats de ${Object.keys(snap).length} élève(s) ? Chacun verra sa note, sa copie corrigée et les commentaires dans son espace.`)) return;
+      await saveCtrl({...ctrl(C.id), pub:{at:new Date().toISOString(), res:snap}}); toast("Résultats publiés aux élèves."); return render(); }
+    if (t.id === "pub-off"){ if (!confirm("Retirer la publication ? Les élèves ne verront plus ces résultats.")) return; const {pub:_p, ...rest} = ctrl(C.id); await saveCtrl(rest); toast("Publication retirée."); return render(); }
     if (t.id === "synth"){ const f = feuille(C.id), max = maxOf(C), st = $("#syn-st"); st.innerHTML = `<span class="thinking">Analyse de la classe.</span> ${TASK_WAIT}`;
       const rows = studentsOf(C).map(e => f.copies[e.id]).filter(k => copyDone(C, k));
       const lines = C.questions.map((q, k) => { const got = rows.map(r => noteOf(r.answers[q.id]) / q.points); const tags = {}; rows.forEach(r => (r.answers[q.id]?.erreurs || []).forEach(x => tags[x] = (tags[x] || 0) + 1));
@@ -3236,6 +3254,7 @@ function vAuth(){
 }
 const KEEP = ["rg-nom","rg-mail","rg-pw","me-nom","ec-nom","ec-ville"]; let kept = {}; S.form = {};
 document.addEventListener("change", async ev => { if (ev.target.id === "rg-cgu") S.regCgu = ev.target.checked;
+  if (ev.target.id === "et-collecte"){ try { await api("/api/etab/reglages", {method:"POST", body:JSON.stringify({collecte:ev.target.checked})}); toast("Enregistré"); refreshMe(); } catch(e){ toast(e.message || "Impossible"); } return; }
   if (ev.target.id === "me-partage"){ try { const j = await api("/api/me", {method:"PATCH", body:JSON.stringify({partageEcriture:ev.target.checked})}); S.me = j.user; toast("Enregistré"); } catch(e){ toast(e.message); } }
   if (ev.target.id === "me-bareme"){ try { const j = await api("/api/me", {method:"PATCH", body:JSON.stringify({bareme:ev.target.value})}); S.me = j.user; toast("Enregistré"); render(); } catch(e){ toast(e.message); } } });
 document.addEventListener("input", ev => { const el = ev.target; if (KEEP.includes(el.id)) S.form[el.id] = el.value; });
@@ -3290,7 +3309,8 @@ function vCompte(){
     <div class="row"><input id="mat-new" placeholder="Matière absente de la liste" style="max-width:260px"><button class="btn sm" id="mat-go">Ajouter</button></div></section>
   ${abonnementPanel()}${etabPanel()}${devicesPanel()}${parrainagePanel()}
   <section class="panel grid" style="max-width:640px"><h3>Amélioration de la lecture</h3>
-    <label class="row small" style="gap:8px;align-items:flex-start"><input type="checkbox" id="me-partage" style="width:auto;margin-top:3px"${S.me?.partageEcriture ? " checked" : ""}${isAdmin() ? " disabled" : ""}><span>Partager anonymement mes corrections de lecture (image du cadre de réponse et texte corrigé, jamais le nom de l'élève) pour améliorer la lecture de l'écriture manuscrite.</span></label></section>
+    <label class="row small" style="gap:8px;align-items:flex-start"><input type="checkbox" id="me-partage" style="width:auto;margin-top:3px"${S.me?.partageEcriture ? " checked" : ""}${isAdmin() ? " disabled" : ""}><span>Aider Mastery à mieux lire l'écriture manuscrite : quand je corrige une lecture, l'image du cadre de réponse et mon texte corrigé sont conservés, sans nom d'élève, de classe, de note ni d'établissement, 2 ans au plus, uniquement pour améliorer la lecture de Mastery.</span></label>
+    ${S.me?.etab && S.me.etab.collecte === false ? `<p class="small muted" style="margin:0">Désactivé par la direction de ton établissement.</p>` : ""}</section>
   <section class="panel grid" style="max-width:640px"><h3>Notes affichées</h3>
     <p class="small muted" style="margin:0">Les calculs restent identiques ; seul l'affichage des notes change.</p>
     <select id="me-bareme" style="max-width:320px">${[["20","Sur 20 (France)"],["10","Sur 10 (Brésil)"],["100","Pourcentage (%)"],["AF","Lettres A à F (États-Unis)"]].map(([k, t]) => `<option value="${k}"${bareme() === k ? " selected" : ""}>${t}</option>`).join("")}</select></section>
@@ -3467,6 +3487,7 @@ function etabPanel(){
       <p class="small muted" style="margin:0;align-self:end">${P.ecole ? esc(P.ecole) + " · " : ""}tous les professeurs sont inclus.</p></div>
     <div class="row"><button class="btn sm" id="et-save">Enregistrer</button>${S.me?.billing ? (ab && ["active","trialing","past_due"].includes(ab.status) ? `<button class="btn sm" id="et-portal">Gérer l'abonnement de l'établissement</button>` : `<button class="btn sm primary" id="et-pay-go">Payer le forfait établissement</button>`) : ""}</div>
     ${ab?.fin ? `<p class="small muted" style="margin:0">${ab.annule ? "Se termine" : "Renouvellement"} le ${frDate(ab.fin.slice(0, 10))}.</p>` : ""}
+    <label class="row small" style="gap:8px;align-items:flex-start"><input type="checkbox" id="et-collecte" style="width:auto;margin-top:3px"${e.collecte !== false ? " checked" : ""}><span>Les corrections de lecture des professeurs aident Mastery à mieux lire l'écriture manuscrite (sans nom d'élève, de classe, de note ni d'établissement). Décoche pour l'arrêter dans tout l'établissement.</span></label>
     <div><b class="small">Professeurs (${(e.membres || []).length})</b>${(e.membres || []).map(m => `<div class="item"><div><div class="t">${esc(m.nom)}</div><div class="s">${esc(m.email)}</div></div><button class="btn sm ghost" data-etout="${m.id}">Retirer</button></div>`).join("") || `<p class="small muted">Aucun professeur pour l'instant : donne-leur le code.</p>`}</div>
     ${(e.membres || []).length ? "" : `<div class="row"><button class="btn sm ghost danger" id="et-quit">Supprimer cet établissement</button></div>`}<div class="status" id="et-st"></div></section>`;
 }
@@ -3871,7 +3892,7 @@ function vExercices(){
       <div class="row"><span class="chip ${QSTAT[q.statut]?.[1] || ""}">${QSTAT[q.statut]?.[0] || q.statut}</span>${q.statut !== "brouillon" ? `<span class="chip">${act}/${n} élèves</span><span class="chip">${Math.round(acq * 100)} % des notions acquises</span>` : ""}</div></a>`; };
   const sum = cl => { const qs = list.filter(q => q.classeId === cl.id), op = qs.filter(q => q.statut === "ouvert").length; return `${qs.length} quiz${op ? ` · <b style="color:var(--ok)">${op} ouvert(s)</b>` : ""} · ${(cl.eleves || []).length} élèves`; };
   return head + (list.length ? classAcc("quiz", quizClasses(), sum, cl => `<div>${list.filter(q => q.classeId === cl.id).map(row).join("")}</div>`) : `<section class="panel"><div class="empty">Aucun quiz pour l'instant. <a class="btn sm primary" href="#/exercices/nouveau">Créer mon premier quiz</a></div></section>`) + `
-  <section class="panel grid" style="gap:6px"><div class="label">Accès des élèves</div><p>Chaque élève se connecte sur <b>${esc(location.origin)}/eleve</b> avec son code personnel. Génère et imprime les cartes dans <a href="#/classes">Classes → Codes élèves</a>.</p></section>`;
+  <section class="panel grid" style="gap:6px"><div class="label">Accès des élèves</div><p>Chaque élève se connecte sur <b>${esc(location.origin)}/eleve</b> avec son code personnel et son nom de famille. Génère et imprime les cartes dans <a href="#/classes">Classes → Codes élèves</a>.</p></section>`;
 }
 
 /* ---------- Création ---------- */
@@ -3992,14 +4013,14 @@ const newCode = () => { let s = ""; for (const b of crypto.getRandomValues(new U
 function codesPanel(cl){
   if (!cl || !window.TIKOUN_CONFIG?.accounts) return "";
   const n = (cl.eleves || []).filter(e => e.code).length, tot = (cl.eleves || []).length;
-  return `<section class="panel grid" style="gap:10px"><div class="row between"><div><h3>Codes élèves</h3><p class="small muted">Pour les exercices en ligne : chaque élève se connecte sur <b>${esc(location.origin)}/eleve</b> avec son code personnel (sans e-mail).</p></div>
+  return `<section class="panel grid" style="gap:10px"><div class="row between"><div><h3>Codes élèves</h3><p class="small muted">Espace élève (résultats publiés, rattrapages, exercices en ligne) : chaque élève se connecte sur <b>${esc(location.origin)}/eleve</b> avec son code personnel et son nom de famille (sans e-mail).</p></div>
     <div class="row"><button class="btn sm" id="codes-gen"${n < tot ? "" : " disabled"}>${n < tot ? "Générer les codes manquants" : "Codes à jour"}</button>${n ? `<button class="btn sm primary" id="codes-print">Imprimer les cartes</button>` : ""}</div></div>
     ${n ? `<div class="row">${(cl.eleves || []).map(e => `<span class="chip">${esc(e.prenom)} ${esc((e.nom || "").slice(0, 1))}. · <b class="num">${esc(e.code || "—")}</b>${e.code ? ` <button class="btn sm ghost" style="padding:0 4px" data-recode="${e.id}" title="Nouveau code">↻</button>` : ""}</span>`).join("")}</div>` : ""}</section>`;
 }
 function printCards(cl){
   const url = location.origin + "/eleve?c=";
   const card = e => { let svg = ""; try { const qr = qrcode(0, "M"); qr.addData(url + e.code); qr.make(); svg = qr.createSvgTag({cellSize:3, margin:0}); } catch(err){}
-    return `<div class="c"><div class="h"><b>Mastery</b><span>${esc(cl.nom)}</span></div><div class="n">${esc(e.prenom)} ${esc(e.nom)}</div><div class="b"><div>${svg}</div><div><div class="l">Ton code</div><div class="k">${esc(e.code)}</div><div class="u">${esc(location.host)}/eleve</div></div></div></div>`; };
+    return `<div class="c"><div class="h"><b>Mastery</b><span>${esc(cl.nom)}</span></div><div class="n">${esc(e.prenom)} ${esc(e.nom)}</div><div class="b"><div>${svg}</div><div><div class="l">Ton code</div><div class="k">${esc(e.code)}</div><div class="u">${esc(location.host)}/eleve · code + nom de famille</div></div></div></div>`; };
   const w = window.open("", "_blank"); if (!w) return toast("Autorise les fenêtres pour imprimer les cartes.");
   w.document.write(`<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Cartes élèves · ${esc(cl.nom)}</title><style>
     body{font-family:Inter,Arial,sans-serif;margin:0;padding:10mm;color:#15233F}.g{display:grid;grid-template-columns:1fr 1fr;gap:6mm}
