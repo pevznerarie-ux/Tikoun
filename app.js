@@ -197,6 +197,48 @@ async function purgeStudents(ids){
   for (const a of [...new Set(assets)]) if (!still.has(a)) fetch("/api/files/" + a, {method:"DELETE", credentials:"same-origin"}).catch(() => {});
 }
 
+/* ================= Tâches IA de fond =================
+   Les actions longues (générer, régénérer, rattrapage, variante…) continuent quand le professeur change de page.
+   Une pastille en haut montre ce qui tourne ; une notification dit quand c'est prêt, avec un bouton pour l'ouvrir. */
+const TASKS = [];
+function bgTask(o){   // o = {key, label, btn, run:async () => ({open, msg})}
+  if (TASKS.some(x => x.key === o.key)){ toast("Déjà en cours : " + o.label + "."); return false; }
+  const tk = {...o, hash:location.hash}; TASKS.push(tk); askNotif(); tasksUI(); markTaskBtns();
+  (async () => {
+    let out = null, err = null;
+    try { out = await o.run(); } catch(e){ err = e; console.warn("tâche", o.key, e); }
+    TASKS.splice(TASKS.indexOf(tk), 1); tasksUI(); scheduleRender();
+    if (err){ if (err?.code !== "cancelled") notify(o.label + " : échec. " + aiErr(err?.code) + (err?.message ? " (" + err.message + ")" : ""), null, true); return; }
+    const open = out?.open || null, msg = out?.msg || o.label + " : prêt.";
+    if (open && location.hash === tk.hash && document.visibilityState === "visible"){ if (location.hash === open) scheduleRender(); else location.hash = open; toast(msg, 4000); return; }
+    notify(msg, open);
+  })();
+  return true;
+}
+const TASK_WAIT = "C'est parti : tu peux continuer ailleurs, je te préviens quand c'est prêt.";
+function markTaskBtns(){ for (const t of TASKS) if (t.btn) $$(t.btn).forEach(b => { b.disabled = true; if (!b.dataset.busy){ b.dataset.busy = 1; b.innerHTML = `<span class="thinking">En cours…</span>`; } }); }
+function tasksUI(){
+  let el = document.getElementById("tasks-chip");
+  if (!TASKS.length){ el?.remove(); return; }
+  if (!el){ el = document.createElement("button"); el.id = "tasks-chip"; el.type = "button"; el.className = "tasks-chip";
+    el.addEventListener("click", () => toast(TASKS.map(t => "⏳ " + t.label).join(" · "), 6000));
+    const bar = document.querySelector(".topbar"); if (bar) bar.insertBefore(el, document.getElementById("umenu")); else document.body.append(el); }
+  el.innerHTML = `<span class="tdot" aria-hidden="true"></span>${TASKS.length} en cours`; el.title = TASKS.map(t => t.label).join("\n");
+}
+function askNotif(){ try { if ("Notification" in window && Notification.permission === "default") Notification.requestPermission().catch(() => {}); } catch(e){} }
+function notify(msg, open, bad){
+  try { navigator.vibrate?.(bad ? [80, 60, 80] : 120); } catch(e){}
+  try { if (document.visibilityState !== "visible" && "Notification" in window && Notification.permission === "granted"){
+    const n = new Notification("Mastery", {body:msg, tag:"mastery-" + Date.now()}); n.onclick = () => { window.focus(); if (open) location.hash = open; n.close(); }; } } catch(e){}
+  let box = document.getElementById("ntf"); if (!box){ box = document.createElement("div"); box.id = "ntf"; box.setAttribute("role", "status"); document.body.append(box); }
+  const it = document.createElement("div"); it.className = "ntf" + (bad ? " bad" : "");
+  it.innerHTML = `<span>${esc(msg)}</span>${open ? `<button class="btn sm primary" type="button">Ouvrir</button>` : ""}<button class="ntf-x" type="button" aria-label="Fermer">×</button>`;
+  it.querySelector(".btn")?.addEventListener("click", () => { location.hash = open; it.remove(); });
+  it.querySelector(".ntf-x").addEventListener("click", () => it.remove());
+  box.append(it); setTimeout(() => it.remove(), 20000);
+}
+window.addEventListener("beforeunload", ev => { if (TASKS.length){ ev.preventDefault(); ev.returnValue = ""; } });
+
 /* ================= AI ================= */
 async function ai(prompt, opts = {}){
   if (!AI) throw {code:"no_ai"};
@@ -236,6 +278,11 @@ function fixHebrewText(t){
   }).join("\n");
 }
 
+/* Logo à l'ouverture de l'application, retiré dès que la première vue est prête (au moins 0,7 s, au plus 6 s) */
+const SPLASH_T0 = Date.now();
+function hideSplash(){ const sp = document.getElementById("splash"); if (!sp || sp.dataset.out) return; sp.dataset.out = 1;
+  setTimeout(() => { sp.classList.add("out"); setTimeout(() => sp.remove(), 500); }, Math.max(0, 700 - (Date.now() - SPLASH_T0))); }
+setTimeout(hideSplash, 6000);
 /* ================= Render loop (keeps focus while data arrives) ================= */
 let rq = false, skipped = false;
 document.addEventListener("focusout", () => { if (skipped) setTimeout(scheduleRender, 0); });
@@ -246,6 +293,7 @@ function render(){
   skipped = false;
   $$(".tab").forEach(t => t.setAttribute("aria-selected", t.dataset.r === navKey()));
   const LOADING = window.TIKOUN_CONFIG?.storage === "server" && !S.auth && (!S.me || typeof DATA_READY === "undefined" || !DATA_READY);
+  if (!LOADING) hideSplash();
   const V = LOADING ? vLoading : S.auth ? vAuth : (typeof SB !== "undefined" && SB && !SB_USER) ? vLogin : (typeof NEED_CODE !== "undefined" && NEED_CODE) ? vCode : {home:vHome, classes:vClasses, new:vNew, edit:vEdit, scan:vScan, correct:vCorrect, analyse:vAnalyse, suivi:vSuivi, banque:vBanque, direction:vDirection, reglages:vReglages, controles:vControles, exercices:vExercices, quiznew:vQuizNew, quiz:vQuiz, compte:vCompte, comptes:vComptes, entrainement:vEntrainement}[S.view] || vHome;
   $("#tabs").hidden = V === vLogin || V === vCode || V === vAuth || V === vLoading; $("#umenu").hidden = $("#tabs").hidden && !(V === vAuth && S.me);
   { const acc = !!window.TIKOUN_CONFIG?.accounts; const tg = (id, h) => { const e = document.getElementById(id); if (e) e.hidden = h; };
@@ -256,7 +304,7 @@ function render(){
     if ((S.view === "correct" || S.view === "scan") && fc.statut === "brouillon") html = `<section class="panel empty">Les feuilles ne sont pas encore imprimées. Passe par l'étape « Imprimer ».</section>`;
     html = ctrlFrame(fc, html.replace(/<select id="(corrSel|anSel)"[\s\S]*?<\/select>/, "").replace(/<h2>(Correction|Classe & rattrapage|Scanner les copies)<\/h2>/, "<h3>$1</h3>"));
   }
-  $("#view").innerHTML = `<div class="view">${LOCAL ? `<p class="banner">Base de données indisponible : rien n'est sauvegardé. Recharge la page.</p>` : ""}${typeof billBanner === "function" ? billBanner() : ""}${html}</div>`; saveState();
+  $("#view").innerHTML = `<div class="view">${LOCAL ? `<p class="banner">Base de données indisponible : rien n'est sauvegardé. Recharge la page.</p>` : ""}${typeof billBanner === "function" ? billBanner() : ""}${html}</div>`; saveState(); markTaskBtns();
   if (keep){ const el = document.getElementById(keep.id); if (el){ if (keep.typing && el.tagName === keep.tag && el.value !== keep.v) el.value = keep.v; el.focus(); try { el.setSelectionRange(keep.s, keep.e); } catch(e){} } }
   if (S.view === "edit" && S.step === "mise-en-page") drawPreview();
   { const sp = $(".stepper"), on = $(".st.on"); if (sp && on) sp.scrollLeft = on.offsetLeft - sp.clientWidth / 2 + on.clientWidth / 2; }
@@ -1357,7 +1405,7 @@ function vAnalyse(){
   <section class="panel"><h3>Réussite et erreurs par question</h3>
     <div class="bars" style="margin-top:12px">${qs.map(x => `<div>
       <div class="bar"><b>Q${x.k + 1}</b><div class="track"><div class="fill" style="width:${Math.round(x.rate * 100)}%;background:var(--${tone(x.rate)})"></div></div><span class="num" style="text-align:right">${pct(x.rate)}</span></div>
-      <div class="small muted" style="margin:2px 0 0 50px">${esc(x.q.notion || "")}${x.fail ? ` · ${x.fail} élève(s) sous la moitié des points` : ""}${x.tags.length ? " · " + x.tags.map(([t, n]) => `<span class="chip bad">${esc(t)} × ${n}</span>`).join(" ") : ""}</div></div>`).join("")}</div>
+      <div class="qdet"><div class="small muted">${esc(x.q.notion || "")}${x.fail ? ` · ${x.fail} élève(s) sous la moitié des points` : ""}</div>${x.tags.length ? `<div class="chips">${x.tags.map(([t, n]) => `<span class="chip bad">${esc(t)} × ${n}</span>`).join("")}</div>` : ""}</div></div>`).join("")}</div>
   </section>
   <section class="panel grid"><div class="row between"><h3>Synthèse pédagogique</h3><button class="btn sm" id="synth">${c.analyse ? "Actualiser" : "Rédiger"} (IA)</button></div>
     <div class="status" id="syn-st"></div>
@@ -1421,6 +1469,11 @@ ${refus.length ? "Ces questions sont INTERDITES car l'élève les a déjà eues 
   return id;
 }
 
+/* Rattrapage préparé en tâche de fond */
+function rattTask(C, e, btn){
+  bgTask({key:"ratt:" + C.id + ":" + e.id, label:"Rattrapage de " + e.prenom, btn, run:async () => {
+    const id = await createRattrapage(C, e); return {open:`#/controle/${id}/preparer`, msg:"Rattrapage de " + e.prenom + " prêt : relis-le avant d'imprimer."}; }});
+}
 /* ================= Classes: level suggestions ================= */
 function suggestLevels(cl, mat){
   const cs = store.controles.filter(c => c.classeId === cl.id && c.matiere === mat && isCtrl(c)).sort((a, b) => (b.date || b.createdAt || "").localeCompare(a.date || a.createdAt || ""));
@@ -1525,7 +1578,7 @@ async function regenExercices(c){
   const deja = (c.questions || []).map(q => vOf(q, "standard").enonce).join(" / ").slice(0, 3000);
   const r = await genQuestions(co, p, clamp((c.questions || []).length || 5, 1, 10), EXO ? EXO_TXT + "\nPropose des exercices NOUVEAUX et DIFFÉRENTS de ceux-ci : " + deja : "Propose des questions NOUVELLES et DIFFÉRENTES de celles-ci : " + deja, EXO ? {feature:"exercices"} : {}), qs = r.questions;
   const f = feuille(c.id), printed = f && Object.keys(f.copies || {}).length;
-  if (!printed){ const o = structuredClone(c); o.questions = qs; if (!EXO && r.titre) o.titre = r.titre; await saveCtrl(o); return c.id; }
+  if (!printed){ const o = structuredClone(ctrl(c.id) || c); o.questions = qs; if (!EXO && r.titre) o.titre = r.titre; await saveCtrl(o); return c.id; }
   /* Feuilles déjà imprimées : on ne touche pas au contrôle d'origine (les copies doivent correspondre), on crée une nouvelle version */
   const n = store.controles.filter(x => (x.type || "controle") === (c.type || "controle") && (x.srcId || x.id) === (c.srcId || c.id)).length + 1;
   const id = uid(12), doc = structuredClone(c); delete doc.id; delete doc.owner;
@@ -1633,14 +1686,16 @@ document.addEventListener("click", async ev => {
   if (t.id === "dc-go"){ const texte = ($("#dc-texte").value || "").trim(); if (texte.length < 30) return toast("Dicte ou écris au moins une question avec sa réponse.");
     if (REC) REC.stop();
     const mat = $("#c-mat").value, cl = classe($("#dc-cl").value), niveau = nivOf(cl) || "", langue = langueDef(texte), photo = S.src === "photo", st = $("#dc-st2");
-    t.disabled = true; st.innerHTML = `<span class="thinking">L'IA met ton contrôle au propre (environ 1 minute)…</span>`;
-    try { const r = await ai(dictPrompt(texte, mat, niveau, langue, photo)), qs = (r?.questions || []).map(mapQ); if (!qs.length) throw {code:"invalid_json"};
-      const id = uid(12);
-      await write("controles/" + id, {type:"controle", titre:$("#dc-titre").value.trim() || r.titre || "Contrôle", gen:{source:photo ? "photo" : "dictee"}, source:texte.slice(0, 20000), remarques:(r.remarques || []).map(String).filter(Boolean).slice(0, 12),
-        matiere:mat, niveau, classeId:cl?.id || "", coursId:null, duree:+$("#dc-dur").value || 30, differencie:false, langue, statut:"brouillon", date:"",
+    const titre = $("#dc-titre").value.trim(), duree = +$("#dc-dur").value || 30;
+    if (bgTask({key:"dictee", label:"Mise au propre du contrôle dicté", btn:"#dc-go", run:async () => {
+      const r = await ai(dictPrompt(texte, mat, niveau, langue, photo)), qs = (r?.questions || []).map(mapQ); if (!qs.length) throw {code:"invalid_json"};
+      const id = uid(12), ti = titre || r.titre || "Contrôle";
+      await write("controles/" + id, {type:"controle", titre:ti, gen:{source:photo ? "photo" : "dictee"}, source:texte.slice(0, 20000), remarques:(r.remarques || []).map(String).filter(Boolean).slice(0, 12),
+        matiere:mat, niveau, classeId:cl?.id || "", coursId:null, duree, differencie:false, langue, statut:"brouillon", date:"",
         mise:{affiche:S.me?.affichage || "les2", police:prefs().police, lh:prefs().lh, bareme:prefs().bareme, consignes:prefs().consignes}, questions:qs, createdAt:new Date().toISOString()});
-      learnMatiere(mat); S.matChg = false; S.dict = null; S.src = "cours"; S.editId = id; S.wizStep = 1; S.step = "preparer"; return go("edit");
-    } catch(e){ console.warn("dictée", e); st.textContent = aiErr(e?.code) + (e?.message ? " (" + e.message + ")" : ""); t.disabled = false; }
+      learnMatiere(mat); S.matChg = false; S.dict = null; S.src = "cours";
+      return {open:`#/controle/${id}/preparer`, msg:`Contrôle prêt : « ${ti} ». Relis-le avant d'imprimer.`}; }}))
+      st.innerHTML = `<span class="thinking">L'IA met ton contrôle au propre (environ 1 minute).</span> ${TASK_WAIT}`;
     return; }
   if (t.id === "c-save"){ const texte = $("#c-texte").value.trim(), titre = $("#c-titre").value.trim() || "Cours sans titre";
     if (texte.length < 80) return toast("Le texte du cours est trop court.");
@@ -1661,12 +1716,13 @@ document.addEventListener("click", async ev => {
     const id = uid(12); const base = {type:EXO ? "exercices" : "controle", titre:p.titre || (EXO ? "Exercices · " : "") + (co?.titre || "Contrôle"), gen:{types:p.types, difficulte:p.difficulte, consignes:p.consignes || ""}, matiere:p.matiere, niveau:p.niveau, classeId:p.classeId, coursId:S.coursId, duree:+p.duree || 55,
       differencie:!!p.differencie, langue:p.langue || "", statut:"brouillon", date:"", mise:{affiche:S.me?.affichage || "les2", police:prefs().police, lh:prefs().lh, bareme:prefs().bareme, consignes:EXO ? "Feuille d'exercices d'entraînement. Écris uniquement dans les cadres." : prefs().consignes}, questions:[], createdAt:new Date().toISOString()};
     if (t.id === "genBlank"){ base.questions = [mapQ({points:4, lignes:6})]; await write("controles/" + id, base); S.editId = id; S.wizStep = 1; S.step = "preparer"; return go("edit"); }
-    t.disabled = true; st.innerHTML = `<span class="thinking">${p.differencie ? `L'IA rédige ${EXO ? "les exercices" : "le contrôle"} en 3 niveaux (1 à 2 minutes)…` : `L'IA rédige ${EXO ? "les exercices" : "le contrôle"} (1 à 2 minutes)…`}</span>`;
-    try{
-      const r = await genQuestions(co, p, clamp(+p.nbq || 5, 1, 10), EXO ? EXO_TXT : "", EXO ? {feature:"exercices"} : {}), qs = r.questions;
-      base.titre = p.titre || (EXO && r.titre ? "Exercices · " + r.titre : r.titre) || base.titre; base.questions = qs;
-      await write("controles/" + id, base); S.editId = id; S.wizStep = 1; S.params.titre = ""; S.params._pref = false; S.step = "preparer"; return go("edit");
-    }catch(e){ console.warn("gen", e); st.textContent = aiErr(e?.code) + (e?.message ? " (" + e.message + ")" : ""); t.disabled = false; }
+    const P = structuredClone(p);
+    if (bgTask({key:"gen", label:EXO ? "Nouvelle feuille d'exercices" : "Nouveau contrôle", btn:"#gen", run:async () => {
+      const r = await genQuestions(co, P, clamp(+P.nbq || 5, 1, 10), EXO ? EXO_TXT : "", EXO ? {feature:"exercices"} : {}), qs = r.questions;
+      base.titre = P.titre || (EXO && r.titre ? "Exercices · " + r.titre : r.titre) || base.titre; base.questions = qs;
+      await write("controles/" + id, base); S.params.titre = ""; S.params._pref = false; S.wizStep = 1;
+      return {open:`#/controle/${id}/preparer`, msg:`${EXO ? "Exercices prêts" : "Contrôle prêt"} : « ${base.titre} ».`}; }}))
+      st.innerHTML = `<span class="thinking">${P.differencie ? `L'IA rédige ${EXO ? "les exercices" : "le contrôle"} en 3 niveaux (1 à 2 minutes).` : `L'IA rédige ${EXO ? "les exercices" : "le contrôle"} (1 à 2 minutes).`}</span> ${TASK_WAIT}`;
     return;
   }
 
@@ -1679,35 +1735,35 @@ document.addEventListener("click", async ev => {
     if (d.qdel !== undefined){ const printed = c.statut && c.statut !== "brouillon";
       if (!confirm(printed ? "Les feuilles sont déjà imprimées : supprimer cette question retire aussi les réponses et les notes des élèves pour cette question, et change les totaux. Continuer ?" : "Supprimer cette question ?")) return;
       c.questions.splice(+d.qdel, 1); await saveCtrl(c); return; }
-    if (t.id === "variante"){ t.disabled = true; t.innerHTML = `<span class="thinking">Variante en cours (environ 1 minute)…</span>`;
-      try { const nid = await createVariante(c); toast("Variante créée : relis-la avant d'imprimer."); S.editId = nid; S.step = "preparer"; return go("edit"); }
-      catch(er){ toast(aiErr(er?.code) + (er?.message ? " (" + er.message + ")" : ""), 7000); t.disabled = false; t.textContent = "⧉ Variante (IA)"; }
+    if (t.id === "variante"){ bgTask({key:"var:" + c.id, label:"Variante de « " + c.titre + " »", btn:"#variante", run:async () => {
+        const nid = await createVariante(c); return {open:`#/controle/${nid}/preparer`, msg:"Variante prête : relis-la avant d'imprimer."}; }});
       return; }
     if (t.id === "remOk"){ c.remarques = []; await saveCtrl(c); return render(); }
     if (t.id === "regenCtrl"){ if (!confirm("Remplacer toutes les questions par un nouveau contrôle généré par l'IA ?")) return;
-      t.disabled = true; t.innerHTML = `<span class="thinking">Régénération (1 à 2 minutes)…</span>`;
-      try { const nid = await regenExercices(c); if (nid !== c.id){ toast("Feuilles déjà imprimées : une nouvelle version du contrôle a été créée."); S.editId = nid; S.step = "preparer"; return go("edit"); } toast("Nouveau contrôle généré."); render(); }
-      catch(er){ toast(aiErr(er?.code) + (er?.message ? " (" + er.message + ")" : ""), 7000); t.disabled = false; t.textContent = "↻ Régénérer le contrôle (IA)"; }
+      bgTask({key:"regen:" + c.id, label:"Régénération de « " + c.titre + " »", btn:"#regenCtrl", run:async () => {
+        const nid = await regenExercices(c);
+        return {open:`#/controle/${nid}/preparer`, msg:nid !== c.id ? "Feuilles déjà imprimées : une nouvelle version du contrôle est prête." : "Nouveau contrôle généré : « " + (ctrl(nid)?.titre || c.titre) + " »."}; }});
       return; }
     if (t.id === "regenEx"){ if (!canEx()) return toast(aiErr("no_option"));
-      t.disabled = true; t.textContent = "Régénération…";
-      try { const nid = await regenExercices(c); if (nid !== c.id){ toast("Feuille déjà imprimée : une nouvelle feuille d'exercices a été créée."); S.editId = nid; S.step = "preparer"; return go("edit"); } toast("Nouveaux exercices générés."); }
-      catch(er){ toast(aiErr(er?.code)); t.disabled = false; t.textContent = "↻ Régénérer les exercices (IA)"; }
+      bgTask({key:"regen:" + c.id, label:"Régénération des exercices", btn:"#regenEx", run:async () => {
+        const nid = await regenExercices(c);
+        return {open:`#/controle/${nid}/preparer`, msg:nid !== c.id ? "Feuille déjà imprimée : une nouvelle feuille d'exercices est prête." : "Nouveaux exercices générés."}; }});
       return; }
     if (t.id === "addQ"){ if (c.statut && c.statut !== "brouillon" && !confirm("Les feuilles sont déjà imprimées : une nouvelle question n'aura pas de cadre sur les copies déjà distribuées et comptera dans le total. Ajouter quand même ?")) return;
       c.questions.push(mapQ({points:4, lignes:6})); await saveCtrl(c); return; }
     if (t.id === "addQai" || d.qai !== undefined){
       const co = store.cours.find(x => x.id === c.coursId); const i = d.qai !== undefined ? +d.qai : -1; const q = c.questions[i];
-      const st = q ? $("#q-st-" + q.id) : null; t.disabled = true; if (st) st.innerHTML = `<span class="thinking">Réécriture…</span>`; else toast("L'IA rédige une question…");
       const instr = q ? ($("#q-i-" + q.id).value.trim() || "améliore la question") : "";
       const extra = q ? `Réécris la question suivante selon cette demande du professeur : « ${instr} ». Garde ${q.points} points.\nQuestion actuelle (version standard) : ${vOf(q, "standard").enonce}` :
         `Ajoute une nouvelle question différente de celles-ci : ${c.questions.map(x => vOf(x, "standard").enonce).join(" / ")}`;
-      try{
+      bgTask({key:"qai:" + c.id + ":" + (q ? q.id : "new" + Date.now()), label:q ? "Réécriture de la question " + (i + 1) : "Nouvelle question (IA)", btn:q ? `[data-qai="${i}"]` : null, run:async () => {
         const r = await ai(genPrompt(co, {...c, types:["cours","application","probleme"], difficulte:"moyen", consignes:""}, 1, extra) + `\nRéponds avec {"questions":[ une seule question ]}.`);
         const nq = (r?.questions || []).map(mapQ)[0]; if (!nq) throw {code:"invalid_json"};
-        if (q){ nq.id = q.id; nq.points = q.points; c.questions[i] = nq; } else c.questions.push(nq);
-        await saveCtrl(c);
-      }catch(e){ if (st) st.textContent = aiErr(e?.code); else toast(aiErr(e?.code)); t.disabled = false; }
+        const cur = structuredClone(ctrl(c.id) || c), k = q ? cur.questions.findIndex(x => x.id === q.id) : -1;   // contrôle relu : les modifications faites entre-temps sont gardées
+        if (q && k < 0) throw {code:"cancelled"};
+        if (q){ nq.id = q.id; nq.points = cur.questions[k].points; cur.questions[k] = nq; } else cur.questions.push(nq);
+        await saveCtrl(cur);
+        return {open:`#/controle/${c.id}/preparer`, msg:q ? "Question " + (k + 1) + " réécrite." : "Nouvelle question ajoutée."}; }});
       return;
     }
     if (t.id === "print") return printSheets(c, studentsOf(c));
@@ -1789,24 +1845,22 @@ document.addEventListener("click", async ev => {
       const csv = "﻿" + rows.map(r => r.map(x => `"${String(x).replace(/"/g, '""')}"`).join(";")).join("\n");
       if (!DL) return toast("Téléchargement indisponible dans cette vue.");
       try { await DL.save({filename:`Notes - ${C.titre}.csv`.replace(/[\\/:*?"<>|]/g, "-"), data:csv}); } catch(e){ if (e?.code !== "declined") toast("Téléchargement impossible."); } return; }
-    if (t.id === "mkRatt"){ t.disabled = true; t.textContent = "Création…";
-      try { const id = await createRattrapage(C, eleveOf(C, S.corrEleve)); S.editId = id; S.step = "preparer"; return go("edit"); } catch(e){ toast(aiErr(e?.code)); t.disabled = false; t.textContent = "Rattrapage"; } return; }
+    if (t.id === "mkRatt"){ const e = eleveOf(C, S.corrEleve); rattTask(C, e, "#mkRatt"); return; }
   }
 
   /* analyse */
   if (S.view === "analyse"){
     const C = ctrl(S.anCtrl);
-    if (d.ratt){ t.disabled = true; t.textContent = "Création…";
-      try { await createRattrapage(C, eleveOf(C, d.ratt)); toast("Rattrapage créé : ouvre-le pour l'imprimer."); } catch(e){ toast(aiErr(e?.code)); t.disabled = false; t.textContent = "Créer"; } return; }
-    if (t.id === "synth"){ const f = feuille(C.id), max = maxOf(C), st = $("#syn-st"); t.disabled = true; st.innerHTML = `<span class="thinking">Analyse de la classe…</span>`;
+    if (d.ratt){ rattTask(C, eleveOf(C, d.ratt), `[data-ratt="${d.ratt}"]`); return; }
+    if (t.id === "synth"){ const f = feuille(C.id), max = maxOf(C), st = $("#syn-st"); st.innerHTML = `<span class="thinking">Analyse de la classe.</span> ${TASK_WAIT}`;
       const rows = studentsOf(C).map(e => f.copies[e.id]).filter(k => copyDone(C, k));
       const lines = C.questions.map((q, k) => { const got = rows.map(r => noteOf(r.answers[q.id]) / q.points); const tags = {}; rows.forEach(r => (r.answers[q.id]?.erreurs || []).forEach(x => tags[x] = (tags[x] || 0) + 1));
         const coms = rows.map(r => r.answers[q.id]?.commentaire).filter(Boolean).slice(0, 6);
         return `Q${k + 1} — ${q.notion || ""} (${q.points} pts) : ${vOf(q, "standard").enonce}\nRéussite moyenne ${pct(got.reduce((a, b) => a + b, 0) / got.length)} ; erreurs : ${Object.entries(tags).map(([x, n]) => x + " ×" + n).join(", ") || "aucune"}\nExtraits de commentaires : ${coms.join(" | ")}`; }).join("\n\n");
-      try{
+      bgTask({key:"synth:" + C.id, label:"Synthèse de « " + C.titre + " »", btn:"#synth", run:async () => {
         const txt = await aiText(`Tu aides un professeur de ${C.matiere} (${C.niveau || ""}) à analyser les résultats de sa classe au contrôle « ${C.titre} » (${rows.length} copies, moyenne ${fmt(rows.reduce((a, r) => a + final20(C, r), 0) / rows.length)}/20).\n\n${lines}\n\nRédige en français, en texte simple sans markdown ni titres, 8 à 12 lignes : (1) les notions non comprises par une part importante de la classe, avec le chiffre ; (2) l'erreur la plus répandue et sa cause probable ; (3) trois actions concrètes pour le prochain cours. ${NOSRC}`);
-        C.analyse = txt.trim(); await saveCtrl(C);
-      }catch(e){ st.textContent = aiErr(e?.code); t.disabled = false; }
+        const cur = structuredClone(ctrl(C.id) || C); cur.analyse = txt.trim(); await saveCtrl(cur);
+        return {open:`#/controle/${C.id}/classe`, msg:"Synthèse de la classe prête."}; }});
       return; }
   }
 });

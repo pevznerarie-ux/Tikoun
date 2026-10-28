@@ -60,6 +60,7 @@ function salvageJSON(t){
   const titre = (t.slice(0, k).match(/"titre"\s*:\s*"((?:[^"\\]|\\.)*)"/) || [])[1];
   return {[key]:items, ...(titre ? {titre:JSON.parse('"' + titre + '"')} : {}), _partiel:true};
 }
+const waitVisible = () => document.visibilityState === "visible" ? Promise.resolve() : new Promise(ok => { const f = () => { if (document.visibilityState === "visible"){ document.removeEventListener("visibilitychange", f); ok(); } }; document.addEventListener("visibilitychange", f); });
 function apiSample(){
   async function call(input, opts = {}, asJson){
     const cc = cloudCfg(); if (!cc.endpoint) throw {code:"no_ai"};
@@ -69,9 +70,17 @@ function apiSample(){
     content.push({type:"text", text:String(input) + (asJson ? "\n\n(Réponds uniquement avec le JSON demandé, sans texte autour.)" : "")});
     const headers = {"content-type":"application/json", "x-tikoun-code":accessCode()};
     if (SB && SB_USER){ const {data} = await SB.auth.getSession(); headers.authorization = "Bearer " + data.session.access_token; }
-    let r;
-    try { r = await fetch(cc.endpoint, {method:"POST", signal:opts.signal || (AbortSignal.timeout ? AbortSignal.timeout(210000) : undefined), headers, body:JSON.stringify({tier:opts.modelTier || "default", feature:opts.feature || "", messages:[{role:"user", content}]})}); }
-    catch(e){ throw {code:e?.name === "TimeoutError" ? "timeout" : e?.name === "AbortError" ? "cancelled" : "upstream_error"}; }
+    let r; const rid = Math.random().toString(36).slice(2, 12) + Date.now().toString(36);
+    const payload = JSON.stringify({tier:opts.modelTier || "default", feature:opts.feature || "", rid, messages:[{role:"user", content}]});
+    for (let k = 0; ; k++){
+      try { r = await fetch(cc.endpoint, {method:"POST", signal:opts.signal || (AbortSignal.timeout ? AbortSignal.timeout(210000) : undefined), headers, body:payload}); break; }
+      catch(e){
+        if (opts.signal?.aborted) throw {code:"cancelled"};
+        if (k >= 5) throw {code:e?.name === "TimeoutError" ? "timeout" : "upstream_error"};
+        /* Connexion perdue (téléphone verrouillé, réseau) : on attend que la page revienne, puis on redemande le même résultat au serveur */
+        await waitVisible(); await sleep(1500 * (k + 1));
+      }
+    }
     if (!r.ok){
       if (r.status === 401 && window.TIKOUN_CONFIG?.accounts){ S.auth = "login"; scheduleRender(); }
       else if (r.status === 401 && !SB){ NEED_CODE = true; try { localStorage.removeItem("tikoun.code"); } catch(e){} scheduleRender(); }
