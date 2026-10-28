@@ -1746,5 +1746,7 @@
  "Réponds uniquement en JSON : {\"titre\":\"…\",\"remarques\":[\"…\"],\"questions\":[{\"notion\":\"…\",\"points\":4,\"lignes\":5,\"erreurs\":[\"…\"],\"versions\":{\"standard\":{\"enonce\":\"…\",\"corrige\":\"…\",\"criteres\":\"…\"}}}]}": "Reply only in JSON: {\"titre\":\"…\",\"remarques\":[\"…\"],\"questions\":[{\"notion\":\"…\",\"points\":4,\"lignes\":5,\"erreurs\":[\"…\"],\"versions\":{\"standard\":{\"enonce\":\"…\",\"corrige\":\"…\",\"criteres\":\"…\"}}}]}",
  "Réponds uniquement en JSON : {\"questions\":[{\"notion\":\"…\",\"points\":4,\"lignes\":6,\"erreurs\":[\"…\"],\"versions\":{": "Reply only in JSON: {\"questions\":[{\"notion\":\"…\",\"points\":4,\"lignes\":6,\"erreurs\":[\"…\"],\"versions\":{",
  "🎙 Dicter": "🎙 Dictate",
- "⧉ Variante (IA)": "⧉ Variant (AI)"
+ "⧉ Variante (IA)": "⧉ Variant (AI)",
+ "Dicter dans ce champ": "Dictate in this field",
+ "Dictée non disponible dans ce navigateur : utilise le micro de ton clavier.": "Dictation isn't available in this browser: use your keyboard's microphone."
 }

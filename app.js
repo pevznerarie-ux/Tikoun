@@ -410,7 +410,7 @@ function wizDicte(src){
 let REC = null, REC_FOR = "";
 const FR_FR = ["fr", "FR"].join("-");   // écrit ainsi pour que la traduction du site ne remplace pas ce code de langue
 const MIC_LANGS = [[FR_FR, "Français"], ["he-IL", "Hébreu"], ["en-US", "Anglais"], ["pt-BR", "Portugais"]];
-const micLang = () => S.micLang || ({en:"en-US", pt:"pt-BR"}[document.documentElement.lang.slice(0, 2)] || FR_FR);
+const micLang = () => S.micLang || (() => { try { return localStorage.getItem("mastery.micLang"); } catch(e){ return null; } })() || ({en:"en-US", pt:"pt-BR"}[document.documentElement.lang.slice(0, 2)] || FR_FR);
 const micBtn = id => `<span class="row" style="gap:6px"><select id="mic-lang" aria-label="Langue de la dictée" style="width:auto;padding:4px 8px;min-height:0">${selOpts(MIC_LANGS.map(x => x[0]), micLang(), x => MIC_LANGS.find(y => y[0] === x)[1])}</select><button class="btn sm${REC && REC_FOR === id ? " primary" : ""}" data-mic="${id}" type="button">${REC && REC_FOR === id ? "■ Arrêter la dictée" : "🎙 Dicter"}</button></span>`;
 function micToggle(id){
   if (REC){ const same = REC_FOR === id; REC.stop(); if (same) return; }
@@ -427,6 +427,40 @@ function micToggle(id){
   r.onend = () => { REC = null; REC_FOR = ""; render(); };
   try { r.start(); REC = r; REC_FOR = id; render(); } catch(e){ toast("Dictée impossible pour le moment : réessaie.", 5000); }
 }
+/* Micro flottant : dès qu'un champ de texte est actif (énoncé, corrigé, critères, consignes, commentaire…), un bouton 🎙 apparaît dans son coin pour dicter à l'endroit du curseur */
+const fmic = document.createElement("button"); fmic.type = "button"; fmic.id = "fmic"; fmic.hidden = true; fmic.title = "Dicter dans ce champ"; fmic.setAttribute("aria-label", "Dicter dans ce champ"); document.body.appendChild(fmic);
+let FREC = null, FTGT = null;
+const dictable = el => !!el && !!$("#view")?.contains(el) && !el.readOnly && !el.disabled && !["dc-texte", "c-texte"].includes(el.id)
+  && (el.tagName === "TEXTAREA" || (el.tagName === "INPUT" && ["text", "search", ""].includes(el.getAttribute("type") || "")));
+function fmicPlace(){
+  if (FTGT && !document.body.contains(FTGT) && FTGT.id) FTGT = document.getElementById(FTGT.id) || FTGT;   // champ redessiné entre-temps
+  if (!FTGT || !document.body.contains(FTGT)){ fmic.hidden = true; return; }
+  const r = FTGT.getBoundingClientRect(); fmic.hidden = false; fmic.textContent = FREC ? "■" : "🎙"; fmic.classList.toggle("on", !!FREC);
+  fmic.style.top = Math.max(4, r.top + 4) + "px"; fmic.style.left = Math.max(4, r.right - 4 - (fmic.offsetWidth || 34)) + "px"; }
+document.addEventListener("focusin", e => { if (dictable(e.target)){ if (FREC && e.target !== FTGT) FREC.stop(); FTGT = e.target; fmicPlace(); } });
+document.addEventListener("focusout", () => setTimeout(() => { if (!FREC && !dictable(document.activeElement)){ fmic.hidden = true; FTGT = null; } }, 200));
+addEventListener("scroll", fmicPlace, true); addEventListener("resize", fmicPlace);
+for (const ev of ["mousedown", "pointerdown"]) fmic.addEventListener(ev, e => e.preventDefault());   // garde le curseur (et le clavier) dans le champ
+fmic.addEventListener("click", () => {
+  if (FREC){ FREC.stop(); return; }
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition, el = FTGT;
+  if (!SR) return toast("Dictée non disponible dans ce navigateur : utilise le micro de ton clavier.", 7000);
+  if (!el) return;
+  const a = el.selectionStart ?? el.value.length, b = el.selectionEnd ?? a;
+  let pre = el.value.slice(0, a), post = el.value.slice(b), done = "";
+  if (pre && !/\s$/.test(pre)) pre += " ";
+  const box = () => (el.id && document.getElementById(el.id)) || el;
+  const r = new SR(); r.lang = micLang(); r.continuous = true; r.interimResults = true;
+  r.onresult = ev => { let fin = "", tmp = "";
+    for (let i = ev.resultIndex; i < ev.results.length; i++){ const t = ev.results[i][0].transcript; if (ev.results[i].isFinal) fin += t; else tmp += t; }
+    if (fin) done += fin.trim() + " ";
+    const x = box(), v = pre + done + tmp; x.value = v + post; try { x.setSelectionRange(v.length, v.length); } catch(e){} if (!post) x.scrollTop = x.scrollHeight;
+    x.dispatchEvent(new Event("input", {bubbles:true})); };
+  r.onerror = ev => { if (ev.error === "not-allowed" || ev.error === "service-not-allowed") toast("Autorise le micro pour ce site (réglages du navigateur), ou utilise le micro de ton clavier.", 8000);
+    else if (ev.error !== "no-speech" && ev.error !== "aborted") toast("Dictée interrompue : réessaie.", 5000); };
+  r.onend = () => { FREC = null; const x = box(); if (done) x.dispatchEvent(new Event("change", {bubbles:true})); fmicPlace(); };
+  try { r.start(); FREC = r; fmicPlace(); } catch(e){ toast("Dictée impossible pour le moment : réessaie.", 5000); }
+});
 /* Matière du cours : choisie toute seule si le prof n'enseigne qu'une matière */
 function matField(cur){ const ens = enseigne(); cur = cur || ens[0] || "Mathématiques";
   if (ens.length === 1 && !S.matChg && cur === ens[0]) return `<div class="field"><label>Matière</label><div class="row" style="min-height:40px"><b>${esc(cur)}</b><button class="btn sm ghost" id="c-matchg" type="button">Changer</button></div><input type="hidden" id="c-mat" value="${esc(cur)}"></div>`;
@@ -1811,7 +1845,7 @@ document.addEventListener("change", async ev => {
     S.coursDraft = {...(S.coursDraft || {}), titre:$("#c-titre").value, matiere:$("#c-mat").value, niveau:$("#c-niv").value, texte:$("#c-texte").value};
     if (!$("#c-titre").value) $("#c-titre").value = fs[0].name.replace(/\.[^.]+$/, "");
     try { await importCourseFiles(fs); } catch(e){ console.error(e); $("#c-st").textContent = e?.code ? aiErr(e.code) : "Lecture du fichier impossible."; } return; }
-  if (el.id === "mic-lang"){ S.micLang = el.value; return; }
+  if (el.id === "mic-lang"){ S.micLang = el.value; try { localStorage.setItem("mastery.micLang", el.value); } catch(e){} return; }
   if (el.id === "dc-cl" || el.id === "dc-dur"){ S.dict = {...(S.dict || {}), [el.id === "dc-cl" ? "classeId" : "duree"]:el.value}; return; }
   if (el.id === "c-mat" && S.src && S.src !== "cours"){ S.dict = {...(S.dict || {}), matiere:el.value}; return; }
   if (el.id === "dc-files"){ const fs = Array.from(el.files); el.value = ""; if (!fs.length) return;

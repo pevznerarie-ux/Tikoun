@@ -478,6 +478,8 @@ input[type=checkbox],input[type=radio]{accent-color:var(--blue)}
 .savest{font-weight:600}.savest.busy{color:var(--muted)}.savest.ok{color:var(--ok,#2f7d4f)}.savest.bad{color:var(--bad)}
 .foldh{all:unset;box-sizing:border-box;width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer}.foldh h3{margin:0}.foldh .chev{color:var(--muted);font-size:14px;padding:4px 8px;border-radius:8px}.foldh:hover .chev{background:var(--soft,rgba(0,0,0,.05))}.foldh:focus-visible{outline:2px solid var(--blue);outline-offset:4px;border-radius:8px}
 .srcs{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px;margin-bottom:14px}.src{all:unset;box-sizing:border-box;cursor:pointer;display:grid;gap:4px;padding:14px 16px;border:1px solid var(--line);border-radius:14px;background:var(--surface)}.src b{font-size:15px}.src span{font-size:13px;color:var(--muted)}.src:hover{border-color:var(--blue)}.src.on{border:2px solid var(--blue);padding:13px 15px;background:color-mix(in srgb,var(--blue) 6%,var(--surface))}.src:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+#fmic{position:fixed;z-index:60;width:34px;height:30px;border-radius:9px;border:1px solid var(--line);background:var(--surface);box-shadow:0 2px 8px rgba(0,0,0,.12);font-size:15px;line-height:1;cursor:pointer;display:grid;place-items:center;padding:0}#fmic[hidden]{display:none}#fmic.on{background:var(--blue);color:#fff;border-color:var(--blue);animation:fmicPulse 1.2s ease-in-out infinite}@keyframes fmicPulse{50%{box-shadow:0 0 0 6px color-mix(in srgb,var(--blue) 25%,transparent)}}
+#view textarea,#view input[type=text],#view input:not([type]){padding-right:44px}
 .tiers{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
 .tier{border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:6px;background:var(--surface)}
 .tier>.btn:first-of-type{margin-top:auto}
@@ -962,7 +964,7 @@ function wizDicte(src){
 let REC = null, REC_FOR = "";
 const FR_FR = ["fr", "FR"].join("-");   // écrit ainsi pour que la traduction du site ne remplace pas ce code de langue
 const MIC_LANGS = [[FR_FR, "Français"], ["he-IL", "Hébreu"], ["en-US", "Anglais"], ["pt-BR", "Portugais"]];
-const micLang = () => S.micLang || ({en:"en-US", pt:"pt-BR"}[document.documentElement.lang.slice(0, 2)] || FR_FR);
+const micLang = () => S.micLang || (() => { try { return localStorage.getItem("mastery.micLang"); } catch(e){ return null; } })() || ({en:"en-US", pt:"pt-BR"}[document.documentElement.lang.slice(0, 2)] || FR_FR);
 const micBtn = id => `<span class="row" style="gap:6px"><select id="mic-lang" aria-label="Langue de la dictée" style="width:auto;padding:4px 8px;min-height:0">${selOpts(MIC_LANGS.map(x => x[0]), micLang(), x => MIC_LANGS.find(y => y[0] === x)[1])}</select><button class="btn sm${REC && REC_FOR === id ? " primary" : ""}" data-mic="${id}" type="button">${REC && REC_FOR === id ? "■ Arrêter la dictée" : "🎙 Dicter"}</button></span>`;
 function micToggle(id){
   if (REC){ const same = REC_FOR === id; REC.stop(); if (same) return; }
@@ -979,6 +981,40 @@ function micToggle(id){
   r.onend = () => { REC = null; REC_FOR = ""; render(); };
   try { r.start(); REC = r; REC_FOR = id; render(); } catch(e){ toast("Dictée impossible pour le moment : réessaie.", 5000); }
 }
+/* Micro flottant : dès qu'un champ de texte est actif (énoncé, corrigé, critères, consignes, commentaire…), un bouton 🎙 apparaît dans son coin pour dicter à l'endroit du curseur */
+const fmic = document.createElement("button"); fmic.type = "button"; fmic.id = "fmic"; fmic.hidden = true; fmic.title = "Dicter dans ce champ"; fmic.setAttribute("aria-label", "Dicter dans ce champ"); document.body.appendChild(fmic);
+let FREC = null, FTGT = null;
+const dictable = el => !!el && !!$("#view")?.contains(el) && !el.readOnly && !el.disabled && !["dc-texte", "c-texte"].includes(el.id)
+  && (el.tagName === "TEXTAREA" || (el.tagName === "INPUT" && ["text", "search", ""].includes(el.getAttribute("type") || "")));
+function fmicPlace(){
+  if (FTGT && !document.body.contains(FTGT) && FTGT.id) FTGT = document.getElementById(FTGT.id) || FTGT;   // champ redessiné entre-temps
+  if (!FTGT || !document.body.contains(FTGT)){ fmic.hidden = true; return; }
+  const r = FTGT.getBoundingClientRect(); fmic.hidden = false; fmic.textContent = FREC ? "■" : "🎙"; fmic.classList.toggle("on", !!FREC);
+  fmic.style.top = Math.max(4, r.top + 4) + "px"; fmic.style.left = Math.max(4, r.right - 4 - (fmic.offsetWidth || 34)) + "px"; }
+document.addEventListener("focusin", e => { if (dictable(e.target)){ if (FREC && e.target !== FTGT) FREC.stop(); FTGT = e.target; fmicPlace(); } });
+document.addEventListener("focusout", () => setTimeout(() => { if (!FREC && !dictable(document.activeElement)){ fmic.hidden = true; FTGT = null; } }, 200));
+addEventListener("scroll", fmicPlace, true); addEventListener("resize", fmicPlace);
+for (const ev of ["mousedown", "pointerdown"]) fmic.addEventListener(ev, e => e.preventDefault());   // garde le curseur (et le clavier) dans le champ
+fmic.addEventListener("click", () => {
+  if (FREC){ FREC.stop(); return; }
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition, el = FTGT;
+  if (!SR) return toast("Dictée non disponible dans ce navigateur : utilise le micro de ton clavier.", 7000);
+  if (!el) return;
+  const a = el.selectionStart ?? el.value.length, b = el.selectionEnd ?? a;
+  let pre = el.value.slice(0, a), post = el.value.slice(b), done = "";
+  if (pre && !/\s$/.test(pre)) pre += " ";
+  const box = () => (el.id && document.getElementById(el.id)) || el;
+  const r = new SR(); r.lang = micLang(); r.continuous = true; r.interimResults = true;
+  r.onresult = ev => { let fin = "", tmp = "";
+    for (let i = ev.resultIndex; i < ev.results.length; i++){ const t = ev.results[i][0].transcript; if (ev.results[i].isFinal) fin += t; else tmp += t; }
+    if (fin) done += fin.trim() + " ";
+    const x = box(), v = pre + done + tmp; x.value = v + post; try { x.setSelectionRange(v.length, v.length); } catch(e){} if (!post) x.scrollTop = x.scrollHeight;
+    x.dispatchEvent(new Event("input", {bubbles:true})); };
+  r.onerror = ev => { if (ev.error === "not-allowed" || ev.error === "service-not-allowed") toast("Autorise le micro pour ce site (réglages du navigateur), ou utilise le micro de ton clavier.", 8000);
+    else if (ev.error !== "no-speech" && ev.error !== "aborted") toast("Dictée interrompue : réessaie.", 5000); };
+  r.onend = () => { FREC = null; const x = box(); if (done) x.dispatchEvent(new Event("change", {bubbles:true})); fmicPlace(); };
+  try { r.start(); FREC = r; fmicPlace(); } catch(e){ toast("Dictée impossible pour le moment : réessaie.", 5000); }
+});
 /* Matière du cours : choisie toute seule si le prof n'enseigne qu'une matière */
 function matField(cur){ const ens = enseigne(); cur = cur || ens[0] || "Mathématiques";
   if (ens.length === 1 && !S.matChg && cur === ens[0]) return `<div class="field"><label>Matière</label><div class="row" style="min-height:40px"><b>${esc(cur)}</b><button class="btn sm ghost" id="c-matchg" type="button">Changer</button></div><input type="hidden" id="c-mat" value="${esc(cur)}"></div>`;
@@ -2363,7 +2399,7 @@ document.addEventListener("change", async ev => {
     S.coursDraft = {...(S.coursDraft || {}), titre:$("#c-titre").value, matiere:$("#c-mat").value, niveau:$("#c-niv").value, texte:$("#c-texte").value};
     if (!$("#c-titre").value) $("#c-titre").value = fs[0].name.replace(/\.[^.]+$/, "");
     try { await importCourseFiles(fs); } catch(e){ console.error(e); $("#c-st").textContent = e?.code ? aiErr(e.code) : "Lecture du fichier impossible."; } return; }
-  if (el.id === "mic-lang"){ S.micLang = el.value; return; }
+  if (el.id === "mic-lang"){ S.micLang = el.value; try { localStorage.setItem("mastery.micLang", el.value); } catch(e){} return; }
   if (el.id === "dc-cl" || el.id === "dc-dur"){ S.dict = {...(S.dict || {}), [el.id === "dc-cl" ? "classeId" : "duree"]:el.value}; return; }
   if (el.id === "c-mat" && S.src && S.src !== "cours"){ S.dict = {...(S.dict || {}), matiere:el.value}; return; }
   if (el.id === "dc-files"){ const fs = Array.from(el.files); el.value = ""; if (!fs.length) return;
@@ -2784,7 +2820,7 @@ function go(v){
   if (location.hash !== h) location.hash = h; else { render(); window.scrollTo({top:0}); }
 }
 function openCtrl(id, step){ const c = ctrl(id); location.hash = `#/controle/${id}/${step || defaultStep(c)}`; }
-window.addEventListener("hashchange", () => { const a = document.activeElement; if (a && a !== document.body && $("#view")?.contains(a)) a.blur(); flushEdit(); applyRoute(); render(); window.scrollTo({top:0}); });
+window.addEventListener("hashchange", () => { if (FREC) FREC.stop(); const a = document.activeElement; if (a && a !== document.body && $("#view")?.contains(a)) a.blur(); flushEdit(); applyRoute(); render(); window.scrollTo({top:0}); });
 
 function navKey(){ if (S.inCtrl || S.view === "edit" || S.view === "new") return "controles"; return {home:"accueil", quiznew:"exercices", quiz:"exercices", scan:"scanner", reglages:"sauvegarde", correct:"controles", analyse:"controles"}[S.view] || S.view; }
 
