@@ -283,7 +283,7 @@ Prénom : ${e.prenom}
 Notes : ${hist.map(x => `${x.c.titre} : ${noteS(isCtrl(x.c) ? noteRetenue(x.c, e)?.retenue ?? final20(x.c, x.cp) : final20(x.c, x.cp))}${x.c.type === "rattrapage" ? " (rattrapage)" : x.c.type === "exercices" ? " (exercices)" : ""}`).join(" ; ")}
 Maîtrise par notion : ${notions}
 Extraits de commentaires de correction : ${coms}
-Style bulletin scolaire français : 2 à 3 phrases, 300 caractères maximum, à la 3e personne avec le prénom, juste et encourageante, avec un point fort et un conseil précis. Uniquement l'appréciation, sans guillemets. N'invente rien qui ne soit pas dans ces données.`, {modelTier:"quick"});
+Style bulletin scolaire français : 2 à 3 phrases, 300 caractères maximum, à la 3e personne avec le prénom, juste, ton ${TON_P[prefs().ton] || TON_P.bienveillant}, avec un point fort et un conseil précis. Uniquement l'appréciation, sans guillemets. N'invente rien qui ne soit pas dans ces données.`, {modelTier:"quick"});
       await write("bilans/" + `${cl.id}_${e.id}_${slug(mat)}`, {texte:txt.trim(), classeId:cl.id, eleveId:e.id, matiere:mat, at:new Date().toISOString()});
     }catch(x){ st.textContent = aiErr(x?.code); t.disabled = false; }
     return; }

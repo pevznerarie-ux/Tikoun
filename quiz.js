@@ -245,7 +245,7 @@ document.addEventListener("click", async ev => {
       if (t.id === "qz-redai"){ const st = $("#qz-redst"); const items = []; repsOf(q.id).forEach(r => (r.redigees || []).forEach((a, i) => { const x = (q.questions || []).find(y => y.id === a.qid); if (a.note == null && x) items.push({r, i, x, a}); }));
         if (!items.length) return; t.disabled = true; st.innerHTML = `<span class="thinking">Correction de ${Math.min(items.length, 30)} réponse(s)…</span>`;
         try { const batch = items.slice(0, 30);
-          const res = await ai(`Tu corriges des réponses rédigées d'élèves (${q.matiere}, ${q.niveau}) à un quiz d'entraînement. Sois juste et bienveillant ; une réponse vide ou « je ne sais pas » est fausse.
+          const res = await ai(`Tu corriges des réponses rédigées d'élèves (${q.matiere}, ${q.niveau}) à un quiz d'entraînement. Sois juste. Commentaires : ${tonTxt(q.niveau)}. Une réponse vide ou « je ne sais pas » est fausse.
 ${batch.map((o, k) => `#${k}\nQuestion : ${o.x.enonce}\nCorrigé : ${o.x.corrige || ""}\nCritères : ${o.x.criteres || ""}\nRéponse de l'élève : ${o.a.rep}`).join("\n\n")}
 Réponds uniquement en JSON : {"notes":[{"k":0,"juste":true,"commentaire":"…"}]}`, {feature:"exercices", modelTier:"quick"});
           const byDoc = {}; (res?.notes || []).forEach(n => { const o = batch[+n.k]; if (!o) return; const key = q.id + "_" + o.r.eleveId; byDoc[key] = byDoc[key] || structuredClone(o.r.redigees || []); byDoc[key][o.i] = {...byDoc[key][o.i], note:n.juste ? 1 : 0, commentaire:String(n.commentaire || "")}; });

@@ -43,14 +43,30 @@ document.addEventListener("change", async ev => { const el = ev.target; if (el.t
   const n = (prompt("Nom de la nouvelle matière (ex. Guémara) :") || "").trim();
   if (n){ await saveMatieres([...(S.me?.matieres || lsGet("mastery.matieres")), n]); }
   const v = n || myMatieres()[0]; el.innerHTML = matOpts(v, true); el.value = v; el.dispatchEvent(new Event("change", {bubbles:true})); }, true);
-const NIVEAUX = ["6e","5e","4e","3e","2de","1re","Terminale"];
+const PRIMAIRE = ["CP","CE1","CE2","CM1","CM2"];
+const NIVEAUX = [...PRIMAIRE, "6e","5e","4e","3e","2de","1re","Terminale"];
+const isPrim = niv => PRIMAIRE.includes(niv);
+/* Réglure des cadres de réponse : Seyès (grands carreaux) pour l'école primaire */
+const REGLURES = {lignes:"Lignes simples", seyes:"Seyès (grands carreaux, primaire)", carreaux:"Petits carreaux (calcul)", aucune:"Aucune (cadre vide)"};
+const LH_LAB = {26:"Serré", 30:"Normal", 34:"Large", 38:"Très large", 46:"Primaire (CP, CE1)"};
+/* Ton des commentaires de l'IA (Mon compte) */
+const TONS = {bienveillant:"Bienveillant et encourageant", neutre:"Neutre et factuel", exigeant:"Exigeant et direct", chaleureux:"Très chaleureux et simple"};
+const TON_P = {bienveillant:"bienveillant et encourageant", neutre:"neutre et factuel, sans formule d'encouragement", exigeant:"exigeant et direct, sans détour mais respectueux", chaleureux:"très chaleureux, avec des mots simples"};
+const tonTxt = niv => { const P = prefs(); return `${P.adresse === "vous" ? "vouvoiement" : "tutoiement"}, ton ${TON_P[P.ton] || TON_P.bienveillant}${isPrim(niv) ? ", phrases très courtes et mots faciles (élève de 6 à 11 ans)" : ""}`; };
+const TON_EX = {bienveillant:{tu:"Bonne idée de citer la règle ! Il manque l'exemple : relis le paragraphe 2 et ajoute-le.", vous:"Bonne idée de citer la règle ! Il manque l'exemple : relisez le paragraphe 2 et ajoutez-le."},
+  neutre:{tu:"La règle est citée. L'exemple manque : voir le paragraphe 2.", vous:"La règle est citée. L'exemple manque : voir le paragraphe 2."},
+  exigeant:{tu:"La règle seule ne suffit pas : un exemple précis était attendu. Relis le paragraphe 2.", vous:"La règle seule ne suffit pas : un exemple précis était attendu. Relisez le paragraphe 2."},
+  chaleureux:{tu:"Bravo, tu connais la règle ! Il manque juste un exemple. Tu vas y arriver !", vous:"Bravo, vous connaissez la règle ! Il manque juste un exemple. Vous allez y arriver !"}};
+/* Mise en page d'un nouveau contrôle : préférences du prof, réglure Seyès et interligne large au primaire */
+const miseDef = (niv, extra) => { const P = prefs(), prim = isPrim(niv);
+  return {affiche:S.me?.affichage || "les2", police:P.police, lh:prim ? Math.max(P.lh, 38) : P.lh, reglure:prim && P.reglure === "lignes" ? "seyes" : P.reglure, bareme:P.bareme, consignes:P.consignes, ...(extra || {})}; };
 const LEVELS = ["socle","standard","approfondi"];
 const LVL = {socle:"Socle", standard:"Standard", approfondi:"Approfondi"};
 const OLD_ENTETE = "Collège-Lycée Beth Mena'hem · Levallois-Perret";
 /* En-tête des feuilles : choisi par le prof (école, son nom, ou les deux) ; un texte libre saisi dans la mise en page reste prioritaire. */
 const AFFICHE = {les2:"École et mon nom", ecole:"École seulement", nom:"Mon nom seulement"};
 /* Préférences du prof (Mon compte) : mise en page par défaut des feuilles et style des questions */
-const PREF_DEF = {police:15, lh:30, bareme:true, consignes:"Écris uniquement dans les cadres.", q:{format:"mixte", justif:true, profondeur:"standard", longueur:"moyenne"}, ratt:{seuil:10, regle:"meilleure", plafond:10, bonus:3}};
+const PREF_DEF = {police:15, lh:30, reglure:"lignes", ton:"bienveillant", adresse:"tu", bareme:true, consignes:"Écris uniquement dans les cadres.", q:{format:"mixte", justif:true, profondeur:"standard", longueur:"moyenne"}, ratt:{seuil:10, regle:"meilleure", plafond:10, bonus:3}};
 function prefs(){ let p = S.me?.prefs; if (!p){ try { p = JSON.parse(localStorage.getItem("mastery.prefs") || "null"); } catch(e){} }
   return {...PREF_DEF, ...(p || {}), q:{...PREF_DEF.q, ...(p?.q || {})}, ratt:{...PREF_DEF.ratt, ...(p?.ratt || {})}}; }
 async function savePrefs(patch){ const cur = prefs(), next = {...cur, ...patch, q:{...cur.q, ...(patch.q || {})}, ratt:{...cur.ratt, ...(patch.ratt || {})}};
@@ -609,7 +625,8 @@ function vEdit(){
       <div class="field"><label for="m-aff">En-tête affiché</label><select id="m-aff" data-m="affiche">${selOpts(Object.keys(AFFICHE), m.affiche || S.me?.affichage || "les2", x => AFFICHE[x])}</select></div>
       <div class="field"><label for="m-ent">Texte d'en-tête libre (facultatif)</label><input id="m-ent" data-m="entete" data-live value="${esc(m.entete && m.entete !== OLD_ENTETE ? m.entete : "")}" placeholder="${esc(headerFrom(m.affiche || S.me?.affichage || "les2"))}"></div>
       <div class="field"><label for="m-pol">Taille du texte</label><select id="m-pol" data-m="police">${selOpts(["13","14","15","16","17"], String(m.police || 15), x => x + " pt")}</select></div>
-      <div class="field"><label for="m-lh">Interligne des cadres</label><select id="m-lh" data-m="lh">${selOpts(["26","30","34","38"], String(m.lh || 30), x => ({26:"Serré",30:"Normal",34:"Large",38:"Très large"}[x]))}</select></div>
+      <div class="field"><label for="m-lh">Interligne des cadres</label><select id="m-lh" data-m="lh">${selOpts(["26","30","34","38","46"], String(m.lh || 30), x => LH_LAB[x])}</select></div>
+      <div class="field"><label for="m-reg">Réglure des cadres</label><select id="m-reg" data-m="reglure">${selOpts(Object.keys(REGLURES), m.reglure || "lignes", x => REGLURES[x])}</select></div>
     </div>
     <div class="field"><label for="m-cons">Consignes imprimées en haut de la feuille</label><textarea id="m-cons" data-m="consignes" data-live>${esc(m.consignes ?? "Calculatrice interdite. Écris uniquement dans les cadres.")}</textarea></div>
     <label class="row small" style="gap:6px"><input type="checkbox" id="m-bar"${m.bareme !== false ? " checked" : ""}> Afficher le barème de chaque question</label>
@@ -694,7 +711,7 @@ function sheetPages(c, e){
     b.innerHTML = `<div class="sh-qh"><span>Question ${i + 1}${isQ ? " · coche la ou les bonnes réponses" : ""}</span>${m.bareme !== false ? `<span>/ ${fmt(+q.points)}</span>` : ""}</div>
       <div class="sh-qt" dir="auto">${esc(v.enonce)}</div>
       ${isQ ? `<div class="sh-qcm">${(v.choix || []).map((ch, j) => `<div class="sh-opt"><span class="sh-case"></span><b>${"ABCDEFGH"[j]}</b><span dir="auto">${esc(ch)}</span></div>`).join("")}</div>`
-        : `<div class="sh-box" data-tag="Q${i + 1}" style="--lh:${lh}px;height:${(+q.lignes || 5) * (lh + 1) + 8}px"></div>`}`;
+        : `<div class="sh-box r-${m.reglure || "lignes"}" data-tag="Q${i + 1}" style="--lh:${lh}px;height:${(+q.lignes || 5) * (lh + 1) + 8}px"></div>`}`;
     page.insertBefore(b, page.querySelector(".sh-foot"));
     if (b.offsetTop + b.offsetHeight > limit() && layout[layout.length - 1].length){
       b.remove(); page = newPage(false); page.insertBefore(b, page.querySelector(".sh-foot"));
@@ -1195,7 +1212,7 @@ function gradePrompt(c, cp, qids, mode){
   const bm = bonusMax(c);
   const how = mode === "crops" ? `Tu reçois ${qids.length} image(s), dans l'ordre : ${qids.map((id, k) => `image ${k + 1} = cadre de réponse de la question id=${id}`).join(" ; ")}. Chaque image est le cadre ligné découpé, agrandi.`
     : mode === "halves" ? "Les deux images montrent la même page : la moitié haute puis la moitié basse (elles se chevauchent un peu). Chaque réponse est dans un cadre ligné repéré « Q1 », « Q2 »… en haut à droite." : "L'image montre la page entière. Chaque réponse est dans un cadre ligné repéré « Q1 », « Q2 »… en haut à droite.";
-  return `Tu lis puis corriges une page de copie manuscrite d'élève (collège-lycée, ${c.matiere}, niveau ${c.niveau || ""}).
+  return `Tu lis puis corriges une page de copie manuscrite d'élève (${isPrim(c.niveau) ? "école primaire" : "collège-lycée"}, ${c.matiere}, niveau ${c.niveau || ""}).${isPrim(c.niveau) ? "\nÉcriture d'enfant : lettres parfois mal formées ou inversées, orthographe phonétique. Transcris ce qui est écrit tel quel ; les lignes et carreaux du cadre ne font pas partie de la réponse." : ""}
 ${how}
 
 Questions présentes sur cette page :
@@ -1205,7 +1222,7 @@ Consignes :
 1. Transcris fidèlement ce que l'élève a écrit dans chaque cadre, sans corriger l'orthographe, ligne par ligne. ${MATH_RULE} Hébreu en caractères hébreux, dans l'ordre de lecture (l'écriture manuscrite hébraïque est souvent cursive : lis-la avec soin, lettre par lettre). Passage illisible : [illisible]. Cadre vide : "". Ignore ce qui est barré.
 2. "fautes" : liste des passages erronés, recopiés exactement tels qu'ils figurent dans la transcription (courts : quelques mots). Liste vide si tout est juste.
 3. Note par pas de 0,5, strictement selon les critères : chaque demi-point doit correspondre à un élément juste réellement écrit par l'élève. Jamais de point « d'encouragement ». Réponse vide, « je ne sais pas », « ? », énoncé recopié, hors sujet ou sans aucun élément juste = 0.
-4. "commentaire" : 1 ou 2 phrases courtes (40 mots maximum), tutoiement, bienveillant : ce qui est réussi, puis l'erreur précise et comment la corriger.
+4. "commentaire" : 1 ou 2 phrases courtes (40 mots maximum), ${tonTxt(c.niveau)} : ce qui est réussi, puis l'erreur précise et comment la corriger.
 5. "erreurs" : choisis dans les erreurs types (texte exact) ; sinon une étiquette de 2 à 5 mots. "acquis" : 1 à 3 étiquettes courtes.
 6. "lisible" : false si tu as dû deviner une partie importante de la réponse.
 7. ${NOSRC}
@@ -1603,7 +1620,7 @@ async function importCourseFiles(files, o = {}){
 /* ================= Generation ================= */
 function genPrompt(co, p, n, extra){
   const T = {cours:"questions de cours", application:"exercices d'application", probleme:"problème ou rédaction", texte:"lecture / explication de texte", traduction:"traduction", qcm:"QCM"};
-  return `Tu es un professeur expérimenté de ${p.matiere} en France. Prépare ${n === 1 ? "UNE question" : "un contrôle"} pour une classe de ${p.niveau}, à partir du cours ci-dessous.
+  return `Tu es un professeur expérimenté de ${p.matiere} en France. Prépare ${n === 1 ? "UNE question" : "un contrôle"} pour une classe de ${p.niveau}, à partir du cours ci-dessous.${isPrim(p.niveau) ? "\nÉcole primaire (élèves de 6 à 11 ans) : consignes très courtes et concrètes, une seule tâche par question, vocabulaire simple, réponses de quelques mots ou d'une phrase (2 à 4 lignes de cadre)." : ""}
 
 Durée : ${p.duree} minutes · Difficulté : ${p.difficulte} · Types : ${(p.types || []).map(t => T[t]).join(", ") || "variés"}${(p.types || []).length > 1 && n > 1 ? " (chaque type demandé apparaît au moins une fois si le nombre de questions le permet)" : ""}
 ${n > 1 ? `Nombre de questions : ${n}. Total des points : 20 exactement.` : ""}
@@ -1807,7 +1824,7 @@ document.addEventListener("click", async ev => {
     const mat = $("#c-mat").value, cl = classe($("#dc-cl").value), niveau = nivOf(cl) || "", langue = langueDef(texte), photo = S.src === "photo", st = $("#dc-st2");
     const titre = $("#dc-titre").value.trim(), duree = +$("#dc-dur").value || 30;
     const dBase = {type:"controle", gen:{source:photo ? "photo" : "dictee"}, source:texte.slice(0, 20000), matiere:mat, niveau, classeId:cl?.id || "", coursId:null, duree, differencie:false, langue, statut:"brouillon", date:"",
-      mise:{affiche:S.me?.affichage || "les2", police:prefs().police, lh:prefs().lh, bareme:prefs().bareme, consignes:prefs().consignes}};
+      mise:miseDef(niveau)};
     if (await aiTask({key:"dictee", label:"Mise au propre du contrôle dicté", btn:"#dc-go",
       spec:() => { learnMatiere(mat); S.matChg = false; S.dict = null; S.src = "cours"; return {prompt:dictPrompt(texte, mat, niveau, langue, photo), n:0, path:"controles/" + uid(12), mode:"create", base:dBase, titre:{fixe:titre, defaut:"Contrôle"}, remarques:true, msgOk:"Contrôle prêt"}; },
       run:async () => {
@@ -1815,7 +1832,7 @@ document.addEventListener("click", async ev => {
       const id = uid(12), ti = titre || r.titre || "Contrôle";
       await write("controles/" + id, {type:"controle", titre:ti, gen:{source:photo ? "photo" : "dictee"}, source:texte.slice(0, 20000), remarques:(r.remarques || []).map(String).filter(Boolean).slice(0, 12),
         matiere:mat, niveau, classeId:cl?.id || "", coursId:null, duree, differencie:false, langue, statut:"brouillon", date:"",
-        mise:{affiche:S.me?.affichage || "les2", police:prefs().police, lh:prefs().lh, bareme:prefs().bareme, consignes:prefs().consignes}, questions:qs, createdAt:new Date().toISOString()});
+        mise:miseDef(niveau), questions:qs, createdAt:new Date().toISOString()});
       learnMatiere(mat); S.matChg = false; S.dict = null; S.src = "cours";
       return {open:`#/controle/${id}/preparer`, msg:`Contrôle prêt : « ${ti} ». Relis-le avant d'imprimer.`}; }}))
       st.innerHTML = `<span class="thinking">L'IA met ton contrôle au propre (environ 1 minute).</span> ${TASK_WAIT}`;
@@ -1837,7 +1854,7 @@ document.addEventListener("click", async ev => {
     const p = S.params, co = store.cours.find(c => c.id === S.coursId), st = $("#gen-st");
     const EXO = p.kind === "exercices" && canEx();
     const id = uid(12); const base = {type:EXO ? "exercices" : "controle", titre:p.titre || (EXO ? "Exercices · " : "") + (co?.titre || "Contrôle"), gen:{types:p.types, difficulte:p.difficulte, consignes:p.consignes || ""}, matiere:p.matiere, niveau:p.niveau, classeId:p.classeId, coursId:S.coursId, duree:+p.duree || 55,
-      differencie:!!p.differencie, langue:p.langue || "", statut:"brouillon", date:"", mise:{affiche:S.me?.affichage || "les2", police:prefs().police, lh:prefs().lh, bareme:prefs().bareme, consignes:EXO ? "Feuille d'exercices d'entraînement. Écris uniquement dans les cadres." : prefs().consignes}, questions:[], createdAt:new Date().toISOString()};
+      differencie:!!p.differencie, langue:p.langue || "", statut:"brouillon", date:"", mise:miseDef(p.niveau, EXO ? {consignes:"Feuille d'exercices d'entraînement. Écris uniquement dans les cadres."} : null), questions:[], createdAt:new Date().toISOString()};
     if (t.id === "genBlank"){ base.questions = [mapQ({points:4, lignes:6})]; await write("controles/" + id, base); S.editId = id; S.wizStep = 1; S.step = "preparer"; return go("edit"); }
     const P = structuredClone(p);
     const nq = clamp(+P.nbq || 5, 1, 10);
@@ -1942,7 +1959,7 @@ document.addEventListener("click", async ev => {
         const blob = await getBlob(a.crop);
         const i = C.questions.indexOf(q);
         const smp = await sampleImages(S.corrEleve, C.matiere);
-        const r = await ai(`Relis très attentivement ce cadre de réponse manuscrit d'un élève (${C.matiere}, ${C.niveau || ""}), puis corrige. L'image 1 est le cadre à lire.${smp.txt}${lectureTips()}\n${qBlockPrompt(C, q, cp.version?.[qid] || "standard", i)}${S.recropped?.[qid + "|" + S.corrEleve] ? "" : `\n\nUne première lecture a donné : """${a.transcription}""" (jugée incertaine).`}\nTranscris ligne par ligne, sans corriger l'orthographe. ${MATH_RULE} Hébreu en caractères hébreux. Passage vraiment illisible : [illisible]. "annotee" = transcription avec chaque passage erroné entouré de ⟦ ⟧ (hors des $…$). Note par pas de 0,5. Commentaire 2 à 3 phrases, tutoiement. ${NOSRC}\nRéponds uniquement en JSON : {"transcription":"…","annotee":"…","lisible":true,"note":0,"commentaire":"…","erreurs":["…"],"acquis":["…"]}`, {images:[blob, ...smp.blobs], modelTier:"complex"});
+        const r = await ai(`Relis très attentivement ce cadre de réponse manuscrit d'un élève (${C.matiere}, ${C.niveau || ""}), puis corrige. L'image 1 est le cadre à lire.${smp.txt}${lectureTips()}\n${qBlockPrompt(C, q, cp.version?.[qid] || "standard", i)}${S.recropped?.[qid + "|" + S.corrEleve] ? "" : `\n\nUne première lecture a donné : """${a.transcription}""" (jugée incertaine).`}\nTranscris ligne par ligne, sans corriger l'orthographe. ${MATH_RULE} Hébreu en caractères hébreux. Passage vraiment illisible : [illisible]. "annotee" = transcription avec chaque passage erroné entouré de ⟦ ⟧ (hors des $…$). Note par pas de 0,5. Commentaire 2 à 3 phrases, ${tonTxt(C.niveau)}. ${NOSRC}\nRéponds uniquement en JSON : {"transcription":"…","annotee":"…","lisible":true,"note":0,"commentaire":"…","erreurs":["…"],"acquis":["…"]}`, {images:[blob, ...smp.blobs], modelTier:"complex"});
         await write("feuilles/" + C.id, {copies:{[S.corrEleve]:{validee:false, answers:{[qid]:{transcription:String(r.transcription || ""), transcriptionIA:String(r.transcription || ""), annot:String(r.annotee || r.transcription || ""), lisible:r.lisible !== false,
           noteIA:clamp(half(+r.note || 0), 0, +q.points), note:null, commentaire:String(r.commentaire || ""), erreurs:(r.erreurs || []).map(String).slice(0, 4), acquis:(r.acquis || []).map(String).slice(0, 4), valide:false}}}}}, "update");
       }catch(e){ st.textContent = e?.code ? aiErr(e.code) : "Image du cadre introuvable."; t.disabled = false; }
@@ -1953,7 +1970,7 @@ document.addEventListener("click", async ev => {
       t.disabled = true; st.innerHTML = `<span class="thinking">Correction…</span>`;
       try{
         const i = C.questions.indexOf(q);
-        const r = await ai(`Corrige la réponse d'un élève (${C.matiere}, ${C.niveau || ""}).\n${qBlockPrompt(C, q, cp.version?.[qid] || "standard", i)}\n\nRéponse de l'élève (transcrite et vérifiée par le professeur) :\n"""${text}"""\n\nNote par pas de 0,5. "annotee" = la réponse avec chaque passage erroné entouré de ⟦ ⟧ (hors des $…$). ${MATH_RULE} Commentaire 2 à 3 phrases, tutoiement, bienveillant. "erreurs" choisies dans les erreurs types si possible. ${NOSRC}\nRéponds uniquement en JSON : {"annotee":"…","note":0,"commentaire":"…","erreurs":["…"],"acquis":["…"]}`);
+        const r = await ai(`Corrige la réponse d'un élève (${C.matiere}, ${C.niveau || ""}).\n${qBlockPrompt(C, q, cp.version?.[qid] || "standard", i)}\n\nRéponse de l'élève (transcrite et vérifiée par le professeur) :\n"""${text}"""\n\nNote par pas de 0,5. "annotee" = la réponse avec chaque passage erroné entouré de ⟦ ⟧ (hors des $…$). ${MATH_RULE} Commentaire 2 à 3 phrases, ${tonTxt(C.niveau)}. "erreurs" choisies dans les erreurs types si possible. ${NOSRC}\nRéponds uniquement en JSON : {"annotee":"…","note":0,"commentaire":"…","erreurs":["…"],"acquis":["…"]}`);
         await write("feuilles/" + C.id, {copies:{[S.corrEleve]:{validee:false, answers:{[qid]:{transcription:text, annot:String(r.annotee || text), lisible:true, noteIA:clamp(half(+r.note || 0), 0, +q.points), note:null,
           commentaire:String(r.commentaire || ""), erreurs:(r.erreurs || []).map(String).slice(0, 4), acquis:(r.acquis || []).map(String).slice(0, 4), valide:false}}}}}, "update");
         delete S.editTr[qid];
@@ -2041,6 +2058,7 @@ document.addEventListener("change", async ev => {
   if (["rr-regle", "rr-bonus", "rr-plaf"].includes(el.id) && S.view === "edit"){ const c = ctrl(S.editId); if (!c) return;
     const R = {...rattRule(c), ...(el.id === "rr-regle" ? {regle:el.value} : el.id === "rr-bonus" ? {bonus:+el.value} : {plafond:+el.value})};
     await saveCtrl({...c, regle:R}); return; }
+  if (el.id === "tp-ton" || el.id === "tp-adr"){ await savePrefs(el.id === "tp-ton" ? {ton:el.value} : {adresse:el.value}); render(); toast("Ton enregistré"); return; }
   if (["rp-seuil", "rp-regle", "rp-bonus", "rp-plaf"].includes(el.id)){ const k = {"rp-seuil":"seuil", "rp-regle":"regle", "rp-bonus":"bonus", "rp-plaf":"plafond"}[el.id];
     await savePrefs({ratt:{[k]:el.id === "rp-regle" ? el.value : +el.value}}); render(); toast("Règle de rattrapage enregistrée"); return; }
   if (el.id === "mic-lang"){ S.micLang = el.value; try { localStorage.setItem("mastery.micLang", el.value); } catch(e){} return; }

@@ -116,7 +116,9 @@ function vCompte(){
     <div class="field"><label>En-tête des feuilles</label>${affRadios(S.me?.affichage)}</div>
     <p class="small muted" style="margin:0">Aperçu : <b id="me-prev">${esc(headerFrom(S.me?.affichage || "les2"))}</b></p>
     <div class="form-row"><div class="field"><label for="mp-pol">Taille du texte</label><select id="mp-pol">${selOpts(["13","14","15","16","17"], String(P.police), x => x + " pt")}</select></div>
-      <div class="field"><label for="mp-lh">Interligne des cadres</label><select id="mp-lh">${selOpts(["26","30","34","38"], String(P.lh), x => ({26:"Serré",30:"Normal",34:"Large",38:"Très large"}[x]))}</select></div></div>
+      <div class="field"><label for="mp-lh">Interligne des cadres</label><select id="mp-lh">${selOpts(["26","30","34","38","46"], String(P.lh), x => LH_LAB[x])}</select></div></div>
+    <div class="field"><label for="mp-reg">Réglure des cadres</label><select id="mp-reg">${selOpts(Object.keys(REGLURES), P.reglure, x => REGLURES[x])}</select></div>
+    <p class="small muted" style="margin:0">Pour une classe de primaire (CP à CM2), les nouveaux contrôles passent automatiquement en Seyès, interligne très large.</p>
     <div class="field"><label for="mp-cons">Consignes imprimées en haut de la feuille</label><textarea id="mp-cons">${esc(P.consignes)}</textarea></div>
     <label class="row small" style="gap:6px"><input type="checkbox" id="mp-bar"${P.bareme ? " checked" : ""}> Afficher le barème de chaque question</label>
     <div class="row"><button class="btn primary" id="mp-save">Enregistrer</button></div></section>
@@ -127,6 +129,11 @@ function vCompte(){
     <div class="field"><label for="qp-long">Longueur des réponses</label><select id="qp-long">${selOpts(["courte","moyenne","developpee"], Q.longueur, x => ({courte:"Courtes (3 à 5 lignes)", moyenne:"Moyennes (5 à 8 lignes)", developpee:"Développées (8 à 14 lignes)"}[x]))}</select></div>
     <label class="row small" style="gap:6px"><input type="checkbox" id="qp-just"${Q.justif ? " checked" : ""}> <span>Questions à choix : toujours laisser un cadre pour justifier la réponse (corrigé par l'IA)</span></label>
     <div class="row"><button class="btn primary" id="qp-save">Enregistrer</button></div></section>
+  <section class="panel grid" style="max-width:640px" id="ton-pref"><h3>Ton des commentaires</h3>
+    <p class="small muted" style="margin:0">La façon dont l'IA s'adresse aux élèves dans les commentaires de correction et des quiz, et le ton des appréciations de bulletin.</p>
+    <div class="form-row"><div class="field"><label for="tp-ton">Ton</label><select id="tp-ton">${selOpts(Object.keys(TONS), P.ton, x => TONS[x])}</select></div>
+      <div class="field"><label for="tp-adr">S'adresser à l'élève</label><select id="tp-adr">${selOpts(["tu","vous"], P.adresse, x => x === "vous" ? "En le vouvoyant" : "En le tutoyant")}</select></div></div>
+    <p class="small" style="margin:0;padding:10px 12px;border-radius:10px;background:var(--surface-2)">Exemple : <i>${esc(TON_EX[P.ton]?.[P.adresse] || "")}</i></p></section>
   <section class="panel grid" style="max-width:640px" id="ratt-regles"><h3>Rattrapage</h3>
     <p class="small muted" style="margin:0">Qui peut avoir un rattrapage, et comment sa note compte. Chaque rattrapage peut avoir sa propre règle (bouton « ⚙ Règles » sur la page du rattrapage).</p>
     <div class="form-row"><div class="field"><label for="rp-seuil">Rattrapage proposé sous</label><select id="rp-seuil">${selOpts(["8","9","10","11","12"], String(P.ratt.seuil), x => noteS(+x))}</select></div>
@@ -217,7 +224,7 @@ document.addEventListener("click", async ev => {
       const j = await api("/api/register", {method:"POST", body:JSON.stringify({nom:$("#rg-nom").value, email:$("#rg-mail").value, password:$("#rg-pw").value, affichage:affValue(), plan:document.querySelector('input[name="plan"]:checked')?.dataset.plan || "essentiel", ecole:S.ec.sel, cgu:true})});
       S.pend = j.user; S.auth = "pending"; history.replaceState(null, "", "#/connexion"); return render(); }
     if (t.id === "mp-save"){ const j = await api("/api/me", {method:"PATCH", body:JSON.stringify({affichage:affValue()})}); S.me = j.user;
-      await savePrefs({police:+$("#mp-pol").value, lh:+$("#mp-lh").value, consignes:$("#mp-cons").value.trim(), bareme:$("#mp-bar").checked}); render(); toast("Enregistré"); return; }
+      await savePrefs({police:+$("#mp-pol").value, lh:+$("#mp-lh").value, reglure:$("#mp-reg").value, consignes:$("#mp-cons").value.trim(), bareme:$("#mp-bar").checked}); render(); toast("Enregistré"); return; }
     if (t.id === "qp-save"){ await savePrefs({q:{format:$("#qp-fmt").value, profondeur:$("#qp-prof").value, longueur:$("#qp-long").value, justif:$("#qp-just").checked}}); S.params._pref = false; render(); toast("Enregistré"); return; }
     if (t.id === "me-save"){ const body = {nom:$("#me-nom").value}, e = ecoleVal();
       if (e.nom && e.ville && (e.nom !== S.me.ecole?.nom || e.ville !== S.me.ecole?.ville)) body.ecole = e;
