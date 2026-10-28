@@ -207,7 +207,10 @@ td.c,th.c{text-align:center}
 .sh-q{margin-bottom:14px}
 .sh-qh{display:flex;justify-content:space-between;gap:10px;font-weight:700}
 .sh-qt{margin:3px 0 6px;white-space:pre-wrap}
-.sh-box{border:1.5px solid #222;border-radius:6px;background-image:repeating-linear-gradient(transparent 0 var(--lh,30px),#c9cdd6 var(--lh,30px) calc(var(--lh,30px) + 1px));position:relative}
+.sh-box{border:1.5px solid #222;border-radius:6px;background-image:linear-gradient(to bottom,transparent var(--lh,30px),#c9cdd6 var(--lh,30px));background-size:100% calc(var(--lh,30px) + 1px);position:relative}
+.sh-box.r-seyes{background-image:linear-gradient(to bottom,transparent calc(var(--lh,30px) - 1px),#9fa6d2 calc(var(--lh,30px) - 1px)),linear-gradient(to bottom,transparent calc(var(--lh,30px) / 4 - 1px),#dcdff0 calc(var(--lh,30px) / 4 - 1px)),linear-gradient(to right,transparent calc(var(--lh,30px) - 1px),#e3e5f2 calc(var(--lh,30px) - 1px));background-size:100% var(--lh,30px),100% calc(var(--lh,30px) / 4),var(--lh,30px) 100%;background-repeat:repeat}
+.sh-box.r-carreaux{background-image:linear-gradient(to bottom,transparent 18px,#cfd3dc 18px),linear-gradient(to right,transparent 18px,#cfd3dc 18px);background-size:100% 19px,19px 100%;background-repeat:repeat}
+.sh-box.r-aucune{background-image:none}
 .sh-box::before{content:attr(data-tag);position:absolute;top:2px;right:6px;font-size:9px;color:#888;font-family:"JetBrains Mono",monospace}
 .sh-foot{position:absolute;left:84px;right:84px;bottom:30px;display:flex;justify-content:space-between;font-size:10px;color:#666;font-family:"JetBrains Mono",monospace}
 .sh-corner{position:absolute;image-rendering:pixelated}
@@ -615,14 +618,30 @@ document.addEventListener("change", async ev => { const el = ev.target; if (el.t
   const n = (prompt("Name of the new subject (e.g. Talmud):") || "").trim();
   if (n){ await saveMatieres([...(S.me?.matieres || lsGet("mastery.matieres")), n]); }
   const v = n || myMatieres()[0]; el.innerHTML = matOpts(v, true); el.value = v; el.dispatchEvent(new Event("change", {bubbles:true})); }, true);
+const PRIMAIRE = ["CP","CE1","CE2","CM1","CM2"];
 const NIVEAUX = ["6th grade","7th grade","8th grade","9th grade","10th grade","11th grade","12th grade"];
+const isPrim = niv => PRIMAIRE.includes(niv);
+/* Réglure des cadres de réponse : Seyès (grands carreaux) pour l'école primaire */
+const REGLURES = {lignes:"Plain lines", seyes:"French ruled (Seyès, primary school)", carreaux:"Small squares (math)", aucune:"None (blank box)"};
+const LH_LAB = {26:"Tight", 30:"Normal", 34:"Wide", 38:"Very wide", 46:"Primary (ages 6-7)"};
+/* Ton des commentaires de l'IA (Mon compte) */
+const TONS = {bienveillant:"Kind and encouraging", neutre:"Neutral and factual", exigeant:"Demanding and direct", chaleureux:"Very warm and simple"};
+const TON_P = {bienveillant:"kind and encouraging", neutre:"neutral and factual, without words of encouragement", exigeant:"demanding and direct, straightforward but respectful", chaleureux:"very warm, with simple words"};
+const tonTxt = niv => { const P = prefs(); return `${P.adresse === "vous" ? "addressed to the student in a formal register" : "addressed directly to the student as \"you\""}, tone: ${TON_P[P.ton] || TON_P.bienveillant}${isPrim(niv) ? ", very short sentences and easy words (student aged 6 to 11)" : ""}`; };
+const TON_EX = {bienveillant:{tu:"Good idea to state the rule! The example is missing: reread paragraph 2 and add it.", vous:"Good idea to state the rule! The example is missing: please reread paragraph 2 and add it."},
+  neutre:{tu:"The rule is stated. The example is missing: see paragraph 2.", vous:"The rule is stated. The example is missing: see paragraph 2."},
+  exigeant:{tu:"The rule alone is not enough: a specific example was expected. Reread paragraph 2.", vous:"The rule alone is not enough: a specific example was expected. Please reread paragraph 2."},
+  chaleureux:{tu:"Well done, you know the rule! Just one example is missing. You can do it!", vous:"Well done, you know the rule! Just one example is missing. You can do it!"}};
+/* Mise en page d'un nouveau contrôle : préférences du prof, réglure Seyès et interligne large au primaire */
+const miseDef = (niv, extra) => { const P = prefs(), prim = isPrim(niv);
+  return {affiche:S.me?.affichage || "les2", police:P.police, lh:prim ? Math.max(P.lh, 38) : P.lh, reglure:prim && P.reglure === "lignes" ? "seyes" : P.reglure, bareme:P.bareme, consignes:P.consignes, ...(extra || {})}; };
 const LEVELS = ["socle","standard","approfondi"];
 const LVL = {socle:"Foundational", standard:"Standard", approfondi:"Advanced"};
 const OLD_ENTETE = "Collège-Lycée Beth Mena'hem · Levallois-Perret";
 /* En-tête des feuilles : choisi par le prof (école, son nom, ou les deux) ; un texte libre saisi dans la mise en page reste prioritaire. */
 const AFFICHE = {les2:"School and my name", ecole:"School only", nom:"My name only"};
 /* Préférences du prof (Mon compte) : mise en page par défaut des feuilles et style des questions */
-const PREF_DEF = {police:15, lh:30, bareme:true, consignes:"Write only inside the boxes.", q:{format:"mixte", justif:true, profondeur:"standard", longueur:"moyenne"}, ratt:{seuil:10, regle:"meilleure", plafond:10, bonus:3}};
+const PREF_DEF = {police:15, lh:30, reglure:"lignes", ton:"bienveillant", adresse:"tu", bareme:true, consignes:"Write only inside the boxes.", q:{format:"mixte", justif:true, profondeur:"standard", longueur:"moyenne"}, ratt:{seuil:10, regle:"meilleure", plafond:10, bonus:3}};
 function prefs(){ let p = S.me?.prefs; if (!p){ try { p = JSON.parse(localStorage.getItem("mastery.prefs") || "null"); } catch(e){} }
   return {...PREF_DEF, ...(p || {}), q:{...PREF_DEF.q, ...(p?.q || {})}, ratt:{...PREF_DEF.ratt, ...(p?.ratt || {})}}; }
 async function savePrefs(patch){ const cur = prefs(), next = {...cur, ...patch, q:{...cur.q, ...(patch.q || {})}, ratt:{...cur.ratt, ...(patch.ratt || {})}};
@@ -1181,7 +1200,8 @@ function vEdit(){
       <div class="field"><label for="m-aff">Header shown</label><select id="m-aff" data-m="affiche">${selOpts(Object.keys(AFFICHE), m.affiche || S.me?.affichage || "les2", x => AFFICHE[x])}</select></div>
       <div class="field"><label for="m-ent">Custom header text (optional)</label><input id="m-ent" data-m="entete" data-live value="${esc(m.entete && m.entete !== OLD_ENTETE ? m.entete : "")}" placeholder="${esc(headerFrom(m.affiche || S.me?.affichage || "les2"))}"></div>
       <div class="field"><label for="m-pol">Text size</label><select id="m-pol" data-m="police">${selOpts(["13","14","15","16","17"], String(m.police || 15), x => x + " pt")}</select></div>
-      <div class="field"><label for="m-lh">Frame line spacing</label><select id="m-lh" data-m="lh">${selOpts(["26","30","34","38"], String(m.lh || 30), x => ({26:"Tight",30:"Normal",34:"Wide",38:"Very wide"}[x]))}</select></div>
+      <div class="field"><label for="m-lh">Frame line spacing</label><select id="m-lh" data-m="lh">${selOpts(["26","30","34","38","46"], String(m.lh || 30), x => LH_LAB[x])}</select></div>
+      <div class="field"><label for="m-reg">Box ruling</label><select id="m-reg" data-m="reglure">${selOpts(Object.keys(REGLURES), m.reglure || "lignes", x => REGLURES[x])}</select></div>
     </div>
     <div class="field"><label for="m-cons">Instructions printed at the top of the sheet</label><textarea id="m-cons" data-m="consignes" data-live>${esc(m.consignes ?? "No calculator allowed. Write only inside the boxes.")}</textarea></div>
     <label class="row small" style="gap:6px"><input type="checkbox" id="m-bar"${m.bareme !== false ? " checked" : ""}> Show points for each question</label>
@@ -1266,7 +1286,7 @@ function sheetPages(c, e){
     b.innerHTML = `<div class="sh-qh"><span>Question ${i + 1}${isQ ? " · check the correct answer(s)" : ""}</span>${m.bareme !== false ? `<span>/ ${fmt(+q.points)}</span>` : ""}</div>
       <div class="sh-qt" dir="auto">${esc(v.enonce)}</div>
       ${isQ ? `<div class="sh-qcm">${(v.choix || []).map((ch, j) => `<div class="sh-opt"><span class="sh-case"></span><b>${"ABCDEFGH"[j]}</b><span dir="auto">${esc(ch)}</span></div>`).join("")}</div>`
-        : `<div class="sh-box" data-tag="Q${i + 1}" style="--lh:${lh}px;height:${(+q.lignes || 5) * (lh + 1) + 8}px"></div>`}`;
+        : `<div class="sh-box r-${m.reglure || "lignes"}" data-tag="Q${i + 1}" style="--lh:${lh}px;height:${(+q.lignes || 5) * (lh + 1) + 8}px"></div>`}`;
     page.insertBefore(b, page.querySelector(".sh-foot"));
     if (b.offsetTop + b.offsetHeight > limit() && layout[layout.length - 1].length){
       b.remove(); page = newPage(false); page.insertBefore(b, page.querySelector(".sh-foot"));
@@ -1767,7 +1787,7 @@ function gradePrompt(c, cp, qids, mode){
   const bm = bonusMax(c);
   const how = mode === "crops" ? `You are given ${qids.length} image(s), in order: ${qids.map((id, k) => `image ${k + 1} = answer frame for question id=${id}`).join(" ; ")}. Each image is the cropped, enlarged ruled answer frame.`
     : mode === "halves" ? "The two images show the same page: the top half then the bottom half (they overlap slightly). Each answer is in a ruled frame labeled \"Q1\", \"Q2\"… in the top right corner." : "The image shows the full page. Each answer is in a ruled frame labeled \"Q1\", \"Q2\"… in the top right corner.";
-  return `You read, then grade, a page of a student's handwritten paper (middle/high school, ${c.matiere}, grade ${c.niveau || ""}).
+  return `You read, then grade, a page of a student's handwritten paper (${isPrim(c.niveau) ? "elementary school" : "middle/high school"}, ${c.matiere}, grade ${c.niveau || ""}).${isPrim(c.niveau) ? "\nA child's handwriting: letters may be poorly formed or reversed, spelling may be phonetic. Transcribe exactly what is written; the lines and squares of the box are not part of the answer." : ""}
 ${how}
 
 Questions on this page:
@@ -1777,7 +1797,7 @@ Instructions:
 1. Faithfully transcribe what the student wrote in each frame, without correcting spelling, line by line. ${MATH_RULE} Hebrew in Hebrew characters, in reading order (handwritten Hebrew is often cursive: read it carefully, letter by letter). Illegible passage: [illegible]. Empty box: "". Ignore anything crossed out.
 2. "fautes": list of incorrect passages, copied exactly as they appear in the transcription (short: a few words). Empty list if everything is correct.
 3. Score in steps of 0.5, strictly according to the criteria: every half point must correspond to a correct element actually written by the student. Never give "encouragement" points. Empty answer, "I don't know", "?", copied prompt, off-topic or no correct element = 0.
-4. "commentaire": 1 or 2 short sentences (40 words max), addressing the student as "you", kind: what went well, then the precise mistake and how to fix it. Write it in English.
+4. "commentaire": 1 or 2 short sentences (40 words max), ${tonTxt(c.niveau)} : what went well, then the precise mistake and how to fix it. Write it in English.
 5. "erreurs": pick from the common mistakes (exact text); otherwise a 2-to-5-word label. "acquis": 1 to 3 short labels.
 6. "lisible": false if you had to guess a significant part of the answer.
 7. ${NOSRC}
@@ -2175,7 +2195,7 @@ async function importCourseFiles(files, o = {}){
 /* ================= Generation ================= */
 function genPrompt(co, p, n, extra){
   const T = {cours:"lesson questions", application:"application exercises", probleme:"problem or essay", texte:"reading / text analysis", traduction:"traduction", qcm:"QCM"};
-  return `You are an experienced teacher of ${p.matiere} in the US. Prepare ${n === 1 ? "ONE question" : "a test"} for a class of ${p.niveau}, based on the lesson below.
+  return `You are an experienced teacher of ${p.matiere} in the US. Prepare ${n === 1 ? "ONE question" : "a test"} for a class of ${p.niveau}, based on the lesson below.${isPrim(p.niveau) ? "\nElementary school (students aged 6 to 11): very short, concrete instructions, one task per question, simple vocabulary, answers of a few words or one sentence (2 to 4 lines of answer box)." : ""}
 
 Duration: ${p.duree} minutes · Difficulty: ${p.difficulte} · Types: ${(p.types || []).map(t => T[t]).join(", ") || "varied"}${(p.types || []).length > 1 && n > 1 ? " (each requested type appears at least once if the number of questions allows)" : ""}
 ${n > 1 ? `Number of questions: ${n}. Total points: exactly 20.` : ""}
@@ -2379,7 +2399,7 @@ document.addEventListener("click", async ev => {
     const mat = $("#c-mat").value, cl = classe($("#dc-cl").value), niveau = nivOf(cl) || "", langue = langueDef(texte), photo = S.src === "photo", st = $("#dc-st2");
     const titre = $("#dc-titre").value.trim(), duree = +$("#dc-dur").value || 30;
     const dBase = {type:"controle", gen:{source:photo ? "photo" : "dictee"}, source:texte.slice(0, 20000), matiere:mat, niveau, classeId:cl?.id || "", coursId:null, duree, differencie:false, langue, statut:"brouillon", date:"",
-      mise:{affiche:S.me?.affichage || "les2", police:prefs().police, lh:prefs().lh, bareme:prefs().bareme, consignes:prefs().consignes}};
+      mise:miseDef(niveau)};
     if (await aiTask({key:"dictee", label:"Tidying up the dictated test", btn:"#dc-go",
       spec:() => { learnMatiere(mat); S.matChg = false; S.dict = null; S.src = "cours"; return {prompt:dictPrompt(texte, mat, niveau, langue, photo), n:0, path:"controles/" + uid(12), mode:"create", base:dBase, titre:{fixe:titre, defaut:"Test"}, remarques:true, msgOk:"Test ready"}; },
       run:async () => {
@@ -2387,7 +2407,7 @@ document.addEventListener("click", async ev => {
       const id = uid(12), ti = titre || r.titre || "Test";
       await write("controles/" + id, {type:"controle", titre:ti, gen:{source:photo ? "photo" : "dictee"}, source:texte.slice(0, 20000), remarques:(r.remarques || []).map(String).filter(Boolean).slice(0, 12),
         matiere:mat, niveau, classeId:cl?.id || "", coursId:null, duree, differencie:false, langue, statut:"brouillon", date:"",
-        mise:{affiche:S.me?.affichage || "les2", police:prefs().police, lh:prefs().lh, bareme:prefs().bareme, consignes:prefs().consignes}, questions:qs, createdAt:new Date().toISOString()});
+        mise:miseDef(niveau), questions:qs, createdAt:new Date().toISOString()});
       learnMatiere(mat); S.matChg = false; S.dict = null; S.src = "cours";
       return {open:`#/controle/${id}/preparer`, msg:`Test ready: “ ${ti} ”. Check it before printing.`}; }}))
       st.innerHTML = `<span class="thinking">The AI is tidying up your test (about 1 minute).</span> ${TASK_WAIT}`;
@@ -2409,7 +2429,7 @@ document.addEventListener("click", async ev => {
     const p = S.params, co = store.cours.find(c => c.id === S.coursId), st = $("#gen-st");
     const EXO = p.kind === "exercices" && canEx();
     const id = uid(12); const base = {type:EXO ? "exercices" : "controle", titre:p.titre || (EXO ? "Practice · " : "") + (co?.titre || "Test"), gen:{types:p.types, difficulte:p.difficulte, consignes:p.consignes || ""}, matiere:p.matiere, niveau:p.niveau, classeId:p.classeId, coursId:S.coursId, duree:+p.duree || 55,
-      differencie:!!p.differencie, langue:p.langue || "", statut:"brouillon", date:"", mise:{affiche:S.me?.affichage || "les2", police:prefs().police, lh:prefs().lh, bareme:prefs().bareme, consignes:EXO ? "Practice exercise sheet. Write only inside the boxes." : prefs().consignes}, questions:[], createdAt:new Date().toISOString()};
+      differencie:!!p.differencie, langue:p.langue || "", statut:"brouillon", date:"", mise:miseDef(p.niveau, EXO ? {consignes:"Practice exercise sheet. Write only inside the boxes."} : null), questions:[], createdAt:new Date().toISOString()};
     if (t.id === "genBlank"){ base.questions = [mapQ({points:4, lignes:6})]; await write("controles/" + id, base); S.editId = id; S.wizStep = 1; S.step = "preparer"; return go("edit"); }
     const P = structuredClone(p);
     const nq = clamp(+P.nbq || 5, 1, 10);
@@ -2514,7 +2534,7 @@ document.addEventListener("click", async ev => {
         const blob = await getBlob(a.crop);
         const i = C.questions.indexOf(q);
         const smp = await sampleImages(S.corrEleve, C.matiere);
-        const r = await ai(`Read this student's handwritten answer box very carefully (${C.matiere}, ${C.niveau || ""}), then grade it. Image 1 is the box to read.${smp.txt}${lectureTips()}\n${qBlockPrompt(C, q, cp.version?.[qid] || "standard", i)}${S.recropped?.[qid + "|" + S.corrEleve] ? "" : `\n\nA first reading gave: """${a.transcription}""" (deemed uncertain).`}\nTranscribe line by line, without correcting spelling. ${MATH_RULE} Hebrew in Hebrew characters. Truly illegible passage: [illegible]. "annotee" = transcription with each incorrect passage surrounded by ⟦ ⟧ (outside of $…$). Grade in increments of 0.5. Comment 2 to 3 sentences, addressed directly to the student. ${NOSRC}\nRespond only in JSON, in English for a US school: {"transcription":"…","annotee":"…","lisible":true,"note":0,"commentaire":"…","erreurs":["…"],"acquis":["…"]}`, {images:[blob, ...smp.blobs], modelTier:"complex"});
+        const r = await ai(`Read this student's handwritten answer box very carefully (${C.matiere}, ${C.niveau || ""}), then grade it. Image 1 is the box to read.${smp.txt}${lectureTips()}\n${qBlockPrompt(C, q, cp.version?.[qid] || "standard", i)}${S.recropped?.[qid + "|" + S.corrEleve] ? "" : `\n\nA first reading gave: """${a.transcription}""" (deemed uncertain).`}\nTranscribe line by line, without correcting spelling. ${MATH_RULE} Hebrew in Hebrew characters. Truly illegible passage: [illegible]. "annotee" = transcription with each incorrect passage surrounded by ⟦ ⟧ (outside of $…$). Grade in increments of 0.5. Comment 2 to 3 sentences, ${tonTxt(C.niveau)}. ${NOSRC}\nRespond only in JSON, in English for a US school: {"transcription":"…","annotee":"…","lisible":true,"note":0,"commentaire":"…","erreurs":["…"],"acquis":["…"]}`, {images:[blob, ...smp.blobs], modelTier:"complex"});
         await write("feuilles/" + C.id, {copies:{[S.corrEleve]:{validee:false, answers:{[qid]:{transcription:String(r.transcription || ""), transcriptionIA:String(r.transcription || ""), annot:String(r.annotee || r.transcription || ""), lisible:r.lisible !== false,
           noteIA:clamp(half(+r.note || 0), 0, +q.points), note:null, commentaire:String(r.commentaire || ""), erreurs:(r.erreurs || []).map(String).slice(0, 4), acquis:(r.acquis || []).map(String).slice(0, 4), valide:false}}}}}, "update");
       }catch(e){ st.textContent = e?.code ? aiErr(e.code) : "Box image not found."; t.disabled = false; }
@@ -2525,7 +2545,7 @@ document.addEventListener("click", async ev => {
       t.disabled = true; st.innerHTML = `<span class="thinking">Grading…</span>`;
       try{
         const i = C.questions.indexOf(q);
-        const r = await ai(`Grade a student's answer (${C.matiere}, ${C.niveau || ""}).\n${qBlockPrompt(C, q, cp.version?.[qid] || "standard", i)}\n\nStudent's answer (transcribed and verified by the teacher):\n"""${text}"""\n\nGrade in increments of 0.5. "annotee" = the answer with each incorrect passage surrounded by ⟦ ⟧ (outside of $…$). ${MATH_RULE} Comment 2 to 3 sentences, addressed directly to the student, kind and encouraging. Choose "erreurs" from the common error types when possible. ${NOSRC}\nRespond only in JSON, in English for a US school: {"annotee":"…","note":0,"commentaire":"…","erreurs":["…"],"acquis":["…"]}`);
+        const r = await ai(`Grade a student's answer (${C.matiere}, ${C.niveau || ""}).\n${qBlockPrompt(C, q, cp.version?.[qid] || "standard", i)}\n\nStudent's answer (transcribed and verified by the teacher):\n"""${text}"""\n\nGrade in increments of 0.5. "annotee" = the answer with each incorrect passage surrounded by ⟦ ⟧ (outside of $…$). ${MATH_RULE} Comment 2 to 3 sentences, ${tonTxt(C.niveau)}. Choose "erreurs" from the common error types when possible. ${NOSRC}\nRespond only in JSON, in English for a US school: {"annotee":"…","note":0,"commentaire":"…","erreurs":["…"],"acquis":["…"]}`);
         await write("feuilles/" + C.id, {copies:{[S.corrEleve]:{validee:false, answers:{[qid]:{transcription:text, annot:String(r.annotee || text), lisible:true, noteIA:clamp(half(+r.note || 0), 0, +q.points), note:null,
           commentaire:String(r.commentaire || ""), erreurs:(r.erreurs || []).map(String).slice(0, 4), acquis:(r.acquis || []).map(String).slice(0, 4), valide:false}}}}}, "update");
         delete S.editTr[qid];
@@ -2613,6 +2633,7 @@ document.addEventListener("change", async ev => {
   if (["rr-regle", "rr-bonus", "rr-plaf"].includes(el.id) && S.view === "edit"){ const c = ctrl(S.editId); if (!c) return;
     const R = {...rattRule(c), ...(el.id === "rr-regle" ? {regle:el.value} : el.id === "rr-bonus" ? {bonus:+el.value} : {plafond:+el.value})};
     await saveCtrl({...c, regle:R}); return; }
+  if (el.id === "tp-ton" || el.id === "tp-adr"){ await savePrefs(el.id === "tp-ton" ? {ton:el.value} : {adresse:el.value}); render(); toast("Tone saved"); return; }
   if (["rp-seuil", "rp-regle", "rp-bonus", "rp-plaf"].includes(el.id)){ const k = {"rp-seuil":"seuil", "rp-regle":"regle", "rp-bonus":"bonus", "rp-plaf":"plafond"}[el.id];
     await savePrefs({ratt:{[k]:el.id === "rp-regle" ? el.value : +el.value}}); render(); toast("Retake rule saved"); return; }
   if (el.id === "mic-lang"){ S.micLang = el.value; try { localStorage.setItem("mastery.micLang", el.value); } catch(e){} return; }
@@ -3284,7 +3305,9 @@ function vCompte(){
     <div class="field"><label>Sheet header</label>${affRadios(S.me?.affichage)}</div>
     <p class="small muted" style="margin:0">Preview: <b id="me-prev">${esc(headerFrom(S.me?.affichage || "les2"))}</b></p>
     <div class="form-row"><div class="field"><label for="mp-pol">Text size</label><select id="mp-pol">${selOpts(["13","14","15","16","17"], String(P.police), x => x + " pt")}</select></div>
-      <div class="field"><label for="mp-lh">Frame line spacing</label><select id="mp-lh">${selOpts(["26","30","34","38"], String(P.lh), x => ({26:"Tight",30:"Normal",34:"Wide",38:"Very wide"}[x]))}</select></div></div>
+      <div class="field"><label for="mp-lh">Frame line spacing</label><select id="mp-lh">${selOpts(["26","30","34","38","46"], String(P.lh), x => LH_LAB[x])}</select></div></div>
+    <div class="field"><label for="mp-reg">Box ruling</label><select id="mp-reg">${selOpts(Object.keys(REGLURES), P.reglure, x => REGLURES[x])}</select></div>
+    <p class="small muted" style="margin:0">For an elementary class (ages 6 to 11), new tests automatically use French ruling with extra-wide line spacing.</p>
     <div class="field"><label for="mp-cons">Instructions printed at the top of the sheet</label><textarea id="mp-cons">${esc(P.consignes)}</textarea></div>
     <label class="row small" style="gap:6px"><input type="checkbox" id="mp-bar"${P.bareme ? " checked" : ""}> Show points for each question</label>
     <div class="row"><button class="btn primary" id="mp-save">Save</button></div></section>
@@ -3295,6 +3318,11 @@ function vCompte(){
     <div class="field"><label for="qp-long">Answer length</label><select id="qp-long">${selOpts(["courte","moyenne","developpee"], Q.longueur, x => ({courte:"Short (3 to 5 lines)", moyenne:"Medium (5 to 8 lines)", developpee:"Developed (8 to 14 lines)"}[x]))}</select></div>
     <label class="row small" style="gap:6px"><input type="checkbox" id="qp-just"${Q.justif ? " checked" : ""}> <span>Multiple-choice questions: always leave a box to justify the answer (graded by AI)</span></label>
     <div class="row"><button class="btn primary" id="qp-save">Save</button></div></section>
+  <section class="panel grid" style="max-width:640px" id="ton-pref"><h3>Comment tone</h3>
+    <p class="small muted" style="margin:0">How the AI addresses students in grading and quiz comments, and the tone of report card comments.</p>
+    <div class="form-row"><div class="field"><label for="tp-ton">Tone</label><select id="tp-ton">${selOpts(Object.keys(TONS), P.ton, x => TONS[x])}</select></div>
+      <div class="field"><label for="tp-adr">Address the student</label><select id="tp-adr">${selOpts(["tu","vous"], P.adresse, x => x === "vous" ? "Formal" : "Informal")}</select></div></div>
+    <p class="small" style="margin:0;padding:10px 12px;border-radius:10px;background:var(--surface-2)">Example: <i>${esc(TON_EX[P.ton]?.[P.adresse] || "")}</i></p></section>
   <section class="panel grid" style="max-width:640px" id="ratt-regles"><h3>Remediation</h3>
     <p class="small muted" style="margin:0">Who can get a retake, and how its score counts. Each retake can have its own rule (“⚙ Rules” button on the retake page).</p>
     <div class="form-row"><div class="field"><label for="rp-seuil">Retake offered below</label><select id="rp-seuil">${selOpts(["8","9","10","11","12"], String(P.ratt.seuil), x => noteS(+x))}</select></div>
@@ -3385,7 +3413,7 @@ document.addEventListener("click", async ev => {
       const j = await api("/api/register", {method:"POST", body:JSON.stringify({nom:$("#rg-nom").value, email:$("#rg-mail").value, password:$("#rg-pw").value, affichage:affValue(), plan:document.querySelector('input[name="plan"]:checked')?.dataset.plan || "essentiel", ecole:S.ec.sel, cgu:true})});
       S.pend = j.user; S.auth = "pending"; history.replaceState(null, "", "#/connexion"); return render(); }
     if (t.id === "mp-save"){ const j = await api("/api/me", {method:"PATCH", body:JSON.stringify({affichage:affValue()})}); S.me = j.user;
-      await savePrefs({police:+$("#mp-pol").value, lh:+$("#mp-lh").value, consignes:$("#mp-cons").value.trim(), bareme:$("#mp-bar").checked}); render(); toast("Saved"); return; }
+      await savePrefs({police:+$("#mp-pol").value, lh:+$("#mp-lh").value, reglure:$("#mp-reg").value, consignes:$("#mp-cons").value.trim(), bareme:$("#mp-bar").checked}); render(); toast("Saved"); return; }
     if (t.id === "qp-save"){ await savePrefs({q:{format:$("#qp-fmt").value, profondeur:$("#qp-prof").value, longueur:$("#qp-long").value, justif:$("#qp-just").checked}}); S.params._pref = false; render(); toast("Saved"); return; }
     if (t.id === "me-save"){ const body = {nom:$("#me-nom").value}, e = ecoleVal();
       if (e.nom && e.ville && (e.nom !== S.me.ecole?.nom || e.ville !== S.me.ecole?.ville)) body.ecole = e;
@@ -3797,7 +3825,7 @@ First name: ${e.prenom}
 Grades: ${hist.map(x => `${x.c.titre} : ${noteS(isCtrl(x.c) ? noteRetenue(x.c, e)?.retenue ?? final20(x.c, x.cp) : final20(x.c, x.cp))}${x.c.type === "rattrapage" ? " (rattrapage)" : x.c.type === "exercices" ? " (exercices)" : ""}`).join(" ; ")}
 Mastery by skill: ${notions}
 Excerpts from grading comments: ${coms}
-US report card style: 2 to 3 sentences, 300 characters maximum, in the third person using the student's first name, fair and encouraging, with one strength and one specific suggestion. Respond in English. Just the comment, no quotation marks. Don't invent anything that isn't in this data.`, {modelTier:"quick"});
+US report card style: 2 to 3 sentences, 300 characters maximum, in the third person using the student's first name, fair, tone: ${TON_P[prefs().ton] || TON_P.bienveillant}, with one strength and one specific suggestion. Respond in English. Just the comment, no quotation marks. Don't invent anything that isn't in this data.`, {modelTier:"quick"});
       await write("bilans/" + `${cl.id}_${e.id}_${slug(mat)}`, {texte:txt.trim(), classeId:cl.id, eleveId:e.id, matiere:mat, at:new Date().toISOString()});
     }catch(x){ st.textContent = aiErr(x?.code); t.disabled = false; }
     return; }
@@ -4065,7 +4093,7 @@ document.addEventListener("click", async ev => {
       if (t.id === "qz-redai"){ const st = $("#qz-redst"); const items = []; repsOf(q.id).forEach(r => (r.redigees || []).forEach((a, i) => { const x = (q.questions || []).find(y => y.id === a.qid); if (a.note == null && x) items.push({r, i, x, a}); }));
         if (!items.length) return; t.disabled = true; st.innerHTML = `<span class="thinking">Grading ${Math.min(items.length, 30)} answer(s)…</span>`;
         try { const batch = items.slice(0, 30);
-          const res = await ai(`You are grading students' written answers (${q.matiere}, ${q.niveau}) to a practice quiz. Be fair and kind; an empty answer or "I don't know" is wrong.
+          const res = await ai(`You are grading students' written answers (${q.matiere}, ${q.niveau}) to a practice quiz. Be fair. Comments: ${tonTxt(q.niveau)}. An empty answer or "I don't know" is wrong.
 ${batch.map((o, k) => `#${k}\nQuestion: ${o.x.enonce}\nAnswer key: ${o.x.corrige || ""}\nCriteria: ${o.x.criteres || ""}\nStudent's answer: ${o.a.rep}`).join("\n\n")}
 Reply in JSON only: {"notes":[{"k":0,"juste":true,"commentaire":"…"}]}`, {feature:"exercices", modelTier:"quick"});
           const byDoc = {}; (res?.notes || []).forEach(n => { const o = batch[+n.k]; if (!o) return; const key = q.id + "_" + o.r.eleveId; byDoc[key] = byDoc[key] || structuredClone(o.r.redigees || []); byDoc[key][o.i] = {...byDoc[key][o.i], note:n.juste ? 1 : 0, commentaire:String(n.commentaire || "")}; });

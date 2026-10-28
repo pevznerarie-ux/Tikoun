@@ -197,7 +197,10 @@ td.c,th.c{text-align:center}
 .sh-q{margin-bottom:14px}
 .sh-qh{display:flex;justify-content:space-between;gap:10px;font-weight:700}
 .sh-qt{margin:3px 0 6px;white-space:pre-wrap}
-.sh-box{border:1.5px solid #222;border-radius:6px;background-image:repeating-linear-gradient(transparent 0 var(--lh,30px),#c9cdd6 var(--lh,30px) calc(var(--lh,30px) + 1px));position:relative}
+.sh-box{border:1.5px solid #222;border-radius:6px;background-image:linear-gradient(to bottom,transparent var(--lh,30px),#c9cdd6 var(--lh,30px));background-size:100% calc(var(--lh,30px) + 1px);position:relative}
+.sh-box.r-seyes{background-image:linear-gradient(to bottom,transparent calc(var(--lh,30px) - 1px),#9fa6d2 calc(var(--lh,30px) - 1px)),linear-gradient(to bottom,transparent calc(var(--lh,30px) / 4 - 1px),#dcdff0 calc(var(--lh,30px) / 4 - 1px)),linear-gradient(to right,transparent calc(var(--lh,30px) - 1px),#e3e5f2 calc(var(--lh,30px) - 1px));background-size:100% var(--lh,30px),100% calc(var(--lh,30px) / 4),var(--lh,30px) 100%;background-repeat:repeat}
+.sh-box.r-carreaux{background-image:linear-gradient(to bottom,transparent 18px,#cfd3dc 18px),linear-gradient(to right,transparent 18px,#cfd3dc 18px);background-size:100% 19px,19px 100%;background-repeat:repeat}
+.sh-box.r-aucune{background-image:none}
 .sh-box::before{content:attr(data-tag);position:absolute;top:2px;right:6px;font-size:9px;color:#888;font-family:"JetBrains Mono",monospace}
 .sh-foot{position:absolute;left:84px;right:84px;bottom:30px;display:flex;justify-content:space-between;font-size:10px;color:#666;font-family:"JetBrains Mono",monospace}
 .sh-corner{position:absolute;image-rendering:pixelated}

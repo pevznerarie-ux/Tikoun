@@ -121,7 +121,8 @@ const AFF = ["ecole", "nom", "les2"];
 /* Préférences du prof : mise en page par défaut des feuilles et style des questions générées */
 const PREF_Q = {format:["redige","mixte","qcm"], profondeur:["simple","standard","exigeant"], longueur:["courte","moyenne","developpee"]};
 const cleanPrefs = p => { const n = (v, a, b, d) => { v = +v; return v >= a && v <= b ? v : d; }, q = isObj(p.q) ? p.q : {};
-  return {police:n(p.police, 13, 17, 15), lh:n(p.lh, 26, 38, 30), bareme:p.bareme !== false, consignes:String(p.consignes ?? "Écris uniquement dans les cadres.").slice(0, 400),
+  return {police:n(p.police, 13, 17, 15), lh:n(p.lh, 26, 46, 30), reglure:["lignes", "seyes", "carreaux", "aucune"].includes(p.reglure) ? p.reglure : "lignes",
+    ton:["bienveillant", "neutre", "exigeant", "chaleureux"].includes(p.ton) ? p.ton : "bienveillant", adresse:p.adresse === "vous" ? "vous" : "tu", bareme:p.bareme !== false, consignes:String(p.consignes ?? "Écris uniquement dans les cadres.").slice(0, 400),
     q:Object.fromEntries(Object.entries(PREF_Q).map(([k, l]) => [k, l.includes(q[k]) ? q[k] : l[1]]).concat([["justif", q.justif !== false]])),
     ratt:(r => ({seuil:n(r.seuil, 5, 15, 10), regle:["meilleure", "bonus", "moyenne", "remplace", "formatif"].includes(r.regle) ? r.regle : "meilleure", plafond:n(r.plafond, 10, 20, 10), bonus:n(r.bonus, 1, 5, 3)}))(isObj(p.ratt) ? p.ratt : {})}; };
 const pub = u => ({id:u.id, email:u.email, nom:u.nom, role:u.role, mustChange:!!u.mustChange, ecole:u.ecole || null, prefs:cleanPrefs(u.prefs || {}), quota:quota(u), matieres:u.matieres || [], enseigne:u.enseigne || [], affichage:AFF.includes(u.affichage) ? u.affichage : "les2", plan:u.plan || "essentiel", options:{exercices:!!u.options?.exercices}, can:{exercices:entitled(u)}, actif:u.actif !== false, statut:u.statut || "valide", planDemande:u.planDemande || null, createdAt:u.createdAt, bareme:u.bareme || null, partageEcriture:u.partageEcriture !== false, espace:u.espace, ref:refCode(u), acces:access(u), billing:BILLING(), parrainage:refStats(u), etab:etabPub(groupOf(u), u), inscription:u.inscription || "admin", resetDemande:u.resetDemande || null});
@@ -716,7 +717,10 @@ const day = () => new Date().toISOString().slice(0, 10);
 const USAGE_F = path.join(DATA, "ia-usage.json"); let USAGE = readJ(USAGE_F, {day:day(), users:{}, total:0});
 let usageTimer = null; const saveUsage = () => { clearTimeout(usageTimer); usageTimer = setTimeout(() => writeAtomic(USAGE_F, USAGE), 1000); };
 const PRICES = {quick:[1, 5], default:[1, 5], complex:[3, 15]};   // dollars par million de jetons (entrée, sortie), modifiables par AI_PRICE_<NIVEAU>="entrée,sortie"
-const priceOf = tier => { const e = env("AI_PRICE_" + String(tier).toUpperCase()).split(",").map(Number); return e.length === 2 && e.every(x => x > 0) ? e : PRICES[tier] || PRICES.default; };
+/* Tarifs publics Anthropic (octobre 2026), reconnus d'après le nom du modèle : changer de modèle par MODEL_<NIVEAU> garde un suivi des coûts juste */
+const MODEL_PRICES = [[/haiku-5/, [0.1, 0.5]], [/haiku-4/, [1, 5]], [/sonnet-5/, [2, 10]], [/sonnet-4/, [3, 15]], [/opus-5-5/, [4, 20]], [/opus/, [5, 25]]];
+const priceOf = tier => { const e = env("AI_PRICE_" + String(tier).toUpperCase()).split(",").map(Number); if (e.length === 2 && e.every(x => x > 0)) return e;
+  const m = MODELS()[tier] || ""; return (MODEL_PRICES.find(([r]) => r.test(m)) || [])[1] || PRICES[tier] || PRICES.default; };
 const usageReset = () => { const m = new Date().toISOString().slice(0, 7), mois = USAGE.mois?.key === m ? USAGE.mois : {key:m, users:{}};
   if (USAGE.day !== day()) USAGE = {day:day(), users:{}, total:0, mois}; else USAGE.mois = mois; };
 function budgetLeft(u){
