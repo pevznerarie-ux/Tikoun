@@ -215,7 +215,40 @@ function bgTask(o){   // o = {key, label, btn, run:async () => ({open, msg})}
   })();
   return true;
 }
-const TASK_WAIT = "C'est parti : tu peux continuer ailleurs, je te préviens quand c'est prêt.";
+/* Génération confiée au serveur quand il le permet : elle continue même application fermée ou téléphone verrouillé.
+   o = {key, label, btn, spec:() => corps de la tâche serveur, run:() => repli dans la page} */
+const SRV_GEN = () => !!(window.TIKOUN_CONFIG?.jobs && typeof SERVERSTORE !== "undefined" && SERVERSTORE);
+async function aiTask(o){
+  if (TASKS.some(x => x.key === o.key)){ toast("Déjà en cours : " + o.label + "."); return false; }
+  if (!SRV_GEN()) return bgTask(o);
+  let body; try { body = await o.spec(); } catch(e){ if (e?.code !== "cancelled") toast(aiErr(e?.code) + (e?.message ? " (" + e.message + ")" : ""), 7000); return false; }
+  askNotif();
+  try { const j = await api("/api/gen", {method:"POST", body:JSON.stringify({label:o.label, ...body})});
+    TASKS.push({key:o.key, label:o.label, btn:o.btn, gen:j.gen.id, hash:location.hash}); tasksUI(); markTaskBtns(); genPoll(); return true; }
+  catch(e){ toast(e?.message || "Impossible de lancer la génération : réessaie.", 7000); return false; }
+}
+let genTimer = null, genBusy = false, GEN_STARTED = false;
+async function genPoll(){
+  if (genBusy || !SRV_GEN() || !S.me) return; genBusy = true; clearTimeout(genTimer);
+  try {
+    const list = (await api("/api/gen")).gens || [];
+    for (const g of list){
+      const tk = TASKS.find(t => t.gen === g.id);
+      if (g.status === "attente" || g.status === "en_cours"){ if (!tk) TASKS.push({key:"gen:" + g.id, label:g.label, gen:g.id}); continue; }
+      if (tk) TASKS.splice(TASKS.indexOf(tk), 1);
+      if (g.seen) continue;
+      api("/api/gen/" + g.id + "/vu", {method:"POST"}).catch(() => {});
+      if (g.status === "erreur"){ notify(g.label + " : échec. " + (g.msg || ""), null, true); continue; }
+      if (typeof SYNC === "function") await SYNC();   // le document écrit par le serveur arrive avant qu'on l'ouvre
+      if (tk && g.open && location.hash === tk.hash && document.visibilityState === "visible"){ location.hash = g.open; toast(g.msg, 4000); }
+      else notify(g.msg, g.open);
+    }
+    tasksUI(); markTaskBtns(); scheduleRender();
+  } catch(e){} finally { genBusy = false; }
+  if (TASKS.some(t => t.gen)) genTimer = setTimeout(genPoll, document.visibilityState === "visible" ? 3000 : 15000);
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") genPoll(); });
+const TASK_WAIT = "C'est parti : tu peux continuer ailleurs, ou même fermer l'application. Je te préviens quand c'est prêt.";
 function markTaskBtns(){ for (const t of TASKS) if (t.btn) $$(t.btn).forEach(b => { b.disabled = true; if (!b.dataset.busy){ b.dataset.busy = 1; b.innerHTML = `<span class="thinking">En cours…</span>`; } }); }
 function tasksUI(){
   let el = document.getElementById("tasks-chip");
@@ -237,7 +270,7 @@ function notify(msg, open, bad){
   it.querySelector(".ntf-x").addEventListener("click", () => it.remove());
   box.append(it); setTimeout(() => it.remove(), 20000);
 }
-window.addEventListener("beforeunload", ev => { if (TASKS.length){ ev.preventDefault(); ev.returnValue = ""; } });
+window.addEventListener("beforeunload", ev => { if (TASKS.some(t => !t.gen)){ ev.preventDefault(); ev.returnValue = ""; } });
 
 /* ================= AI ================= */
 async function ai(prompt, opts = {}){
@@ -293,7 +326,7 @@ function render(){
   skipped = false;
   $$(".tab").forEach(t => t.setAttribute("aria-selected", t.dataset.r === navKey()));
   const LOADING = window.TIKOUN_CONFIG?.storage === "server" && !S.auth && (!S.me || typeof DATA_READY === "undefined" || !DATA_READY);
-  if (!LOADING) hideSplash();
+  if (!LOADING){ hideSplash(); if (S.me && !GEN_STARTED){ GEN_STARTED = true; setTimeout(genPoll, 1200); } }
   const V = LOADING ? vLoading : S.auth ? vAuth : (typeof SB !== "undefined" && SB && !SB_USER) ? vLogin : (typeof NEED_CODE !== "undefined" && NEED_CODE) ? vCode : {home:vHome, classes:vClasses, new:vNew, edit:vEdit, scan:vScan, correct:vCorrect, analyse:vAnalyse, suivi:vSuivi, banque:vBanque, direction:vDirection, reglages:vReglages, controles:vControles, exercices:vExercices, quiznew:vQuizNew, quiz:vQuiz, compte:vCompte, comptes:vComptes, entrainement:vEntrainement}[S.view] || vHome;
   $("#tabs").hidden = V === vLogin || V === vCode || V === vAuth || V === vLoading; $("#umenu").hidden = $("#tabs").hidden && !(V === vAuth && S.me);
   { const acc = !!window.TIKOUN_CONFIG?.accounts; const tg = (id, h) => { const e = document.getElementById(id); if (e) e.hidden = h; };
@@ -331,9 +364,9 @@ function vHome(){
     <div class="row"><button class="btn primary" data-go="classes">Créer une classe</button><button class="btn" id="demo">Charger une classe de démonstration</button></div>
   </section>`;
   const cs = [...store.controles].sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
-  const todo = cs.filter(c => c.statut !== "corrige"), done = cs.filter(c => c.statut === "corrige");
+  const items = groupRatt(cs), todo = items.filter(x => !rattDone(x)), done = items.filter(rattDone);   // les rattrapages d'un même contrôle tiennent sur une ligne
   let aValider = 0; cs.forEach(c => { const f = feuille(c.id); if (f) Object.values(f.copies || {}).forEach(cp => { if (!cp.validee && Object.keys(cp.answers || {}).length) aValider++; }); });
-  const line = c => ctrlRow(c, `${esc(c.matiere)} · ${esc(classe(c.classeId)?.nom || "?")}${c.type === "rattrapage" ? " · " + esc(studentsOf(c).map(e => e.prenom + " " + e.nom).join(", ")) : ""}${c.date ? " · " + esc(frDate(c.date)) : ""}`);
+  const line = c => c.rs ? rattGroupRow(c) : ctrlRow(c, `${esc(c.matiere)} · ${esc(classe(c.classeId)?.nom || "?")}${c.type === "rattrapage" ? " · " + esc(studentsOf(c).map(e => e.prenom + " " + e.nom).join(", ")) : ""}${c.date ? " · " + esc(frDate(c.date)) : ""}`);
   const nEx = cs.filter(c => c.type === "exercices").length, nCtrl = cs.filter(c => !c.type || c.type === "controle").length;
   const hour = new Date().getHours(), hello = hour < 18 ? "Bonjour" : "Bonsoir";
   return `
@@ -1422,12 +1455,33 @@ function vAnalyse(){
 }
 const rTitre = t => String(t).replace(/^(feuille de |fiche de )?rattrapage\s*[-:·–]?\s*/i, "").replace(/^contr[ôo]le de /i, "") || String(t);
 /* Deux énoncés trop proches : l'un contient l'autre, ou ils partagent la plupart de leurs mots significatifs */
-function tooClose(a, b){
+function tooClose(a, b, seuil = 0.6){
   const w = t => new Set(t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9\u0590-\u05ff ]+/g, " ").split(/\s+/).filter(x => x.length > 3).map(x => x.slice(0, 5)));
   const A = w(a), B = w(b); if (!A.size || !B.size) return false;
-  const inter = [...A].filter(x => B.has(x)).length; return inter / Math.min(A.size, B.size) >= 0.6;
+  const inter = [...A].filter(x => B.has(x)).length; return inter / Math.min(A.size, B.size) >= seuil;
 }
-async function createRattrapage(c, e, replaceId){
+/* Questions déjà posées (énoncé + réponse attendue) */
+const askedOf = ctrls => ctrls.flatMap(x => (x.questions || []).flatMap(q => [...new Set(Object.values(q.v || {}).map(v => v?.enonce).filter(Boolean))].map(en => ({enonce:en, corrige:Object.values(q.v).find(v => v?.enonce === en)?.corrige || ""}))));
+/* Indices des nouvelles questions qui demandent la même chose (ou attendent la même réponse) qu'une question déjà posée :
+   comparaison des mots, puis vérification du sens par l'IA */
+async function doublons(news, olds){
+  if (!news.length || !olds.length) return [];
+  const lex = seuil => news.map((n, i) => olds.some(o => tooClose(n.enonce, o.enonce, seuil)) ? i : -1).filter(i => i >= 0);
+  let sem = [], ok = false;
+  try { const r = await ai(`Tu contrôles qu'une feuille de rattrapage ne répète pas un contrôle.
+QUESTIONS DÉJÀ POSÉES :
+${olds.map((o, k) => `A${k + 1}. ${o.enonce.slice(0, 300)} → réponse attendue : ${o.corrige.slice(0, 200)}`).join("\n")}
+
+NOUVELLES QUESTIONS :
+${news.map((n, k) => `N${k + 1}. ${n.enonce.slice(0, 300)} → réponse attendue : ${n.corrige.slice(0, 200)}`).join("\n")}
+
+Une nouvelle question est un DOUBLON si elle demande la même information ou attend pour l'essentiel la même réponse qu'une question déjà posée, même formulée autrement (reformulation, vrai/faux, texte à trous, QCM, mise en situation qui revient à réciter la même chose). Elle n'est PAS un doublon si elle porte sur la même notion mais demande un autre élément, une application nouvelle ou une explication différente.
+Réponds uniquement en JSON : {"doublons":[numéros N des nouvelles questions en doublon]}`, {modelTier:"quick"});
+    sem = (r?.doublons || []).map(x => +String(x).replace(/\D/g, "") - 1).filter(i => i >= 0 && i < news.length); ok = Array.isArray(r?.doublons); } catch(e){ console.warn("vérification des doublons", e); }
+  /* Sans vérification de l'IA, la comparaison des mots décide seule ; avec elle, on n'ajoute que les copies quasi identiques */
+  return [...new Set([...lex(ok ? 0.85 : 0.6), ...sem])].sort((a, b) => a - b);
+}
+async function createRattrapage(c, e, replaceId, spec){
   const f = feuille(c.id), cp = f?.copies?.[e.id]; if (!cp) throw {code:"no_copy"};
   if (!copyDone(c, cp) || final20(c, cp) >= SEUIL) throw {code:"not_failed"};
   if (!cp.validee && !confirm(`La copie de ${e.prenom} n'est pas encore validée : le rattrapage serait basé sur la note proposée par l'IA. Continuer ?`)) throw {code:"cancelled"};
@@ -1435,29 +1489,45 @@ async function createRattrapage(c, e, replaceId){
   const weak = c.questions.map(q => ({q, a:cp.answers[q.id]})).filter(x => x.a && noteOf(x.a) / x.q.points < 0.6);
   const target = weak.length ? weak : c.questions.map(q => ({q, a:cp.answers[q.id]})).sort((x, y) => noteOf(x.a) / x.q.points - noteOf(y.a) / y.q.points).slice(0, 1);
   const lvl = levelOf(e, c.matiere);
-  const ctx = target.map(({q, a}) => { const v = vOf(q, cp.version?.[q.id] || "standard");
-    return `- Notion : ${q.notion || "?"}\n  Question : ${v.enonce}\n  Corrigé-type : ${v.corrige}\n  Réponse de l'élève (${fmt(noteOf(a))}/${q.points}) : ${a?.transcription || "(vide)"}\n  Erreurs relevées : ${(a?.erreurs || []).join(", ") || "?"}\n  Commentaire : ${a?.commentaire || ""}`; }).join("\n");
+  /* Ce que l'élève a raté : notions et erreurs seulement. Les questions du contrôle ne sont données qu'en liste INTERDITE,
+     jamais comme modèle : sinon l'IA les reformule au lieu d'en écrire de nouvelles */
+  const ctx = target.map(({q, a}) => `- Notion : ${q.notion || "?"} · note ${fmt(noteOf(a))}/${q.points} · erreurs relevées : ${(a?.erreurs || []).join(", ") || "?"}${a?.commentaire ? " · commentaire : " + a.commentaire : ""}`).join("\n");
   const co = c.coursId && (store.allCours || store.cours).find(x => x.id === c.coursId);
-  /* Énoncés déjà vus par l'élève (contrôle, toutes versions, et rattrapages précédents) : le rattrapage ne doit pas les reprendre */
-  const seen = [c, ...store.controles.filter(x => x.type === "rattrapage" && x.parentId === c.id)].flatMap(x => (x.questions || []).flatMap(q => Object.values(q.v || {}).map(v => v?.enonce || ""))).filter(Boolean);
-  const prompt = (refus) => `Tu prépares une feuille de rattrapage individuelle pour un élève de ${c.niveau || ""} en ${c.matiere}.
+  const olds = askedOf([c, ...store.controles.filter(x => x.type === "rattrapage" && x.parentId === c.id)]);
+  const prompt = (n, refus) => `Tu prépares une feuille de rattrapage individuelle pour un élève de ${c.niveau || ""} en ${c.matiere}.
 Niveau habituel de l'élève dans cette matière : ${LVL[lvl]}.
-Ses difficultés au contrôle « ${c.titre} » :
+Notions où il a échoué au contrôle « ${c.titre} » :
 ${ctx}
-${co?.texte ? `\nCOURS (pour varier les exemples et les angles) :\n"""${co.texte.slice(0, 12000)}"""\n` : ""}
+${co?.texte ? `\nCOURS (source principale des nouvelles questions) :\n"""${co.texte.slice(0, 14000)}"""\n` : ""}
+QUESTIONS DÉJÀ POSÉES À L'ÉLÈVE, TOUTES INTERDITES (avec leur réponse) :
+${[...olds, ...refus].map((o, k) => `${k + 1}. ${o.enonce.slice(0, 300)} → réponse : ${o.corrige.slice(0, 200)}`).join("\n")}
+
 ${langueRule(c.langue)}
-Crée exactement 3 exercices NOUVEAUX, de difficulté croissante, qui retravaillent les MÊMES notions sous un AUTRE angle :
-1 = découverte (plus simple que le niveau de l'élève), 2 = application, 3 = retour au niveau ${LVL[lvl].toLowerCase()} du contrôle.
-RÈGLE ABSOLUE : ne reprends jamais une question du contrôle, ni mot pour mot ni reformulée. Change la forme : cas pratique ou mise en situation, vrai/faux à justifier, phrase à compléter, erreur à corriger, comparaison, explication avec ses propres mots, exemple à trouver. Une question qui demande la même chose que celle du contrôle est refusée.
-Total 20 points (par ex. 5, 7, 8). Chaque exercice : un énoncé autonome (avec un coup de pouce entre parenthèses pour le 1), un corrigé-type, des critères de notation, 2 ou 3 erreurs types, un nombre de lignes de réponse (3 à 12).
+Crée exactement ${n} exercice(s) TOTALEMENT NOUVEAUX${n === 3 ? ", de difficulté croissante : 1 = découverte (plus simple que le niveau de l'élève), 2 = application, 3 = retour au niveau " + LVL[lvl].toLowerCase() + " du contrôle" : ""}.
+RÈGLE ABSOLUE : chaque exercice doit demander autre chose et attendre une réponse DIFFÉRENTE de toutes les questions interdites. Reformuler une question interdite, la transformer en vrai/faux, en texte à trous, en QCM ou en mise en situation qui revient à donner la même réponse, c'est un doublon : refusé.
+Pour rester sur les notions ratées sans répéter : appuie-toi sur d'autres éléments du cours (autre règle, autre détail, autre exemple, cas particulier, conséquence pratique, comparaison entre deux notions, application à une situation concrète nouvelle, explication du « pourquoi »).
+Total ${n === 3 ? "20 points (par ex. 5, 7, 8)" : "des points : " + n * 6 + " environ"}. Chaque exercice : un énoncé autonome${n === 3 ? " (avec un coup de pouce entre parenthèses pour le 1)" : ""}, un corrigé-type, des critères de notation, 2 ou 3 erreurs types, un nombre de lignes de réponse (3 à 12).
 ${NOSRC}
-${refus.length ? "Ces questions sont INTERDITES car l'élève les a déjà eues : " + refus.map(t => "« " + t.slice(0, 200) + " »").join(" / ") + "\n" : ""}Réponds uniquement en JSON : {"titre":"…","questions":[{"notion":"…","points":5,"lignes":5,"enonce":"…","corrige":"…","criteres":"…","erreurs":["…"]}]}`;
-  let r = await ai(prompt(replaceId ? (ctrl(replaceId)?.questions || []).map(q => vOf(q, "standard").enonce) : []));
-  const copies = rr => (rr?.questions || []).filter(x => seen.some(t => tooClose(String(x.enonce || ""), t)));
-  if (copies(r).length){ const r2 = await ai(prompt([...new Set([...copies(r).map(x => String(x.enonce)), ...target.map(({q}) => vOf(q, "standard").enonce)])]));
-    if ((r2?.questions || []).length && copies(r2).length < copies(r).length) r = r2; }
-  const qs = (r?.questions || []).slice(0, 3).map(x => ({id:"q" + uid(5), notion:String(x.notion || ""), points:+x.points || 5, lignes:clamp(+x.lignes || 6, 2, 20), erreurs:(x.erreurs || []).map(String),
-    v:{standard:{enonce:String(x.enonce || ""), corrige:String(x.corrige || ""), criteres:String(x.criteres || "")}}}));
+Réponds uniquement en JSON : {"titre":"…","questions":[{"notion":"…","points":5,"lignes":5,"enonce":"…","corrige":"…","criteres":"…","erreurs":["…"]}]}`;
+  const toQ = x => ({id:"q" + uid(5), notion:String(x.notion || ""), points:+x.points || 5, lignes:clamp(+x.lignes || 6, 2, 20), erreurs:(x.erreurs || []).map(String),
+    v:{standard:{enonce:String(x.enonce || ""), corrige:String(x.corrige || ""), criteres:String(x.criteres || "")}}});
+  const prev = replaceId ? askedOf([ctrl(replaceId)].filter(Boolean)) : [];
+  if (spec){   // tâche confiée au serveur : il génère, vérifie les doublons et enregistre lui-même
+    const old0 = replaceId && ctrl(replaceId), printed0 = old0 && feuille(replaceId) && Object.keys(feuille(replaceId).copies || {}).length;
+    if (old0 && !printed0) return {prompt:prompt(3, prev), n:3, olds:[...olds, ...prev], path:"controles/" + replaceId, mode:"update", titre:{fixe:old0.titre}, msgOk:"Nouveau rattrapage de " + e.prenom + " prêt"};
+    const round0 = store.controles.filter(x => x.type === "rattrapage" && x.parentId === c.id && x.eleves?.includes(e.id)).length;
+    return {prompt:prompt(3, prev), n:3, olds:[...olds, ...prev], path:"controles/" + uid(12), mode:"create", titre:{prefixe:"Rattrapage" + (round0 ? " " + (round0 + 1) : "") + " · ", defaut:"Rattrapage · " + rTitre(c.titre)},
+      base:{type:"rattrapage", parentId:c.id, matiere:c.matiere, niveau:c.niveau, classeId:c.classeId, eleves:[e.id], coursId:c.coursId || null, duree:30, differencie:false,
+        mise:{...(c.mise || {}), consignes:"Feuille de rattrapage personnelle. Prends ton temps et relis le coup de pouce."}, statut:"brouillon", date:today()}, msgOk:"Rattrapage de " + e.prenom + " prêt"};
+  }
+  const r = await ai(prompt(3, prev)); const qs = (r?.questions || []).slice(0, 3).map(toQ);
+  /* Vérification du sens par l'IA : une question qui demande la même chose qu'une question déjà posée est remplacée (2 essais) */
+  for (let k = 0; k < 2 && qs.length; k++){
+    const dup = await doublons(qs.map(q => vOf(q, "standard")), olds); if (!dup.length) break;
+    const keep = qs.filter((q, i) => !dup.includes(i)).map(q => vOf(q, "standard")), bad = dup.map(i => vOf(qs[i], "standard"));
+    const r2 = await ai(prompt(dup.length, [...prev, ...keep, ...bad])), add = (r2?.questions || []).slice(0, dup.length).map(toQ);
+    dup.forEach((i, j) => { if (add[j]){ add[j].points = qs[i].points; qs[i] = add[j]; } });
+  }
   if (!qs.length) throw {code:"invalid_json"};
   const old = replaceId && ctrl(replaceId), printed = old && feuille(replaceId) && Object.keys(feuille(replaceId).copies || {}).length;
   if (old && !printed){ const o = structuredClone(old); o.questions = qs; o.titre = "Rattrapage · " + rTitre(r.titre || c.titre); await saveCtrl(o); return replaceId; }
@@ -1471,7 +1541,7 @@ ${refus.length ? "Ces questions sont INTERDITES car l'élève les a déjà eues 
 
 /* Rattrapage préparé en tâche de fond */
 function rattTask(C, e, btn){
-  bgTask({key:"ratt:" + C.id + ":" + e.id, label:"Rattrapage de " + e.prenom, btn, run:async () => {
+  aiTask({key:"ratt:" + C.id + ":" + e.id, label:"Rattrapage de " + e.prenom, btn, spec:() => createRattrapage(C, e, null, true), run:async () => {
     const id = await createRattrapage(C, e); return {open:`#/controle/${id}/preparer`, msg:"Rattrapage de " + e.prenom + " prêt : relis-le avant d'imprimer."}; }});
 }
 /* ================= Classes: level suggestions ================= */
@@ -1570,12 +1640,19 @@ async function exercicesFrom(c){
     gen:{types:p.types, difficulte:p.difficulte, consignes:""}, statut:"brouillon", date:"", mise:{...(c.mise || {}), consignes:"Feuille d'exercices d'entraînement. Écris uniquement dans les cadres."}, questions:qs, createdAt:new Date().toISOString()});
   return id;
 }
-async function regenExercices(c){
+async function regenExercices(c, spec){
   const co = store.cours.find(x => x.id === c.coursId);
   if (!co) throw {code:"no_cours"};
   const EXO = c.type === "exercices";
   const g = c.gen || {}, p = {matiere:c.matiere, niveau:c.niveau, duree:c.duree || 55, difficulte:g.difficulte || "moyen", types:g.types || [], consignes:g.consignes || "", langue:c.langue || ""};
   const deja = (c.questions || []).map(q => vOf(q, "standard").enonce).join(" / ").slice(0, 3000);
+  const nq = clamp((c.questions || []).length || 5, 1, 10), extra = EXO ? EXO_TXT + "\nPropose des exercices NOUVEAUX et DIFFÉRENTS de ceux-ci : " + deja : "Propose des questions NOUVELLES et DIFFÉRENTES de celles-ci : " + deja;
+  if (spec){ const f0 = feuille(c.id), printed0 = f0 && Object.keys(f0.copies || {}).length, prompt = genPrompt(co, p, nq, extra), feature = EXO ? "exercices" : "";
+    if (!printed0) return {prompt, n:nq, path:"controles/" + c.id, mode:"update", titre:{ia:!EXO}, msgOk:EXO ? "Nouveaux exercices prêts" : "Nouveau contrôle généré", feature};
+    const n0 = store.controles.filter(x => (x.type || "controle") === (c.type || "controle") && (x.srcId || x.id) === (c.srcId || c.id)).length + 1;
+    const doc0 = structuredClone(c); delete doc0.id; delete doc0.owner; delete doc0.questions; Object.assign(doc0, {srcId:c.srcId || c.id, statut:"brouillon", date:""});
+    return {prompt, n:nq, path:"controles/" + uid(12), mode:"create", base:doc0, feature, msgOk:EXO ? "Feuille déjà imprimée : nouvelle feuille d'exercices prête" : "Feuilles déjà imprimées : nouvelle version prête",
+      titre:EXO ? {prefixe:"Exercices " + n0 + " · ", defaut:"Exercices " + n0 + " · " + co.titre} : {suffixe:" · version " + n0, defaut:c.titre + " · version " + n0}}; }
   const r = await genQuestions(co, p, clamp((c.questions || []).length || 5, 1, 10), EXO ? EXO_TXT + "\nPropose des exercices NOUVEAUX et DIFFÉRENTS de ceux-ci : " + deja : "Propose des questions NOUVELLES et DIFFÉRENTES de celles-ci : " + deja, EXO ? {feature:"exercices"} : {}), qs = r.questions;
   const f = feuille(c.id), printed = f && Object.keys(f.copies || {}).length;
   if (!printed){ const o = structuredClone(ctrl(c.id) || c); o.questions = qs; if (!EXO && r.titre) o.titre = r.titre; await saveCtrl(o); return c.id; }
@@ -1687,7 +1764,11 @@ document.addEventListener("click", async ev => {
     if (REC) REC.stop();
     const mat = $("#c-mat").value, cl = classe($("#dc-cl").value), niveau = nivOf(cl) || "", langue = langueDef(texte), photo = S.src === "photo", st = $("#dc-st2");
     const titre = $("#dc-titre").value.trim(), duree = +$("#dc-dur").value || 30;
-    if (bgTask({key:"dictee", label:"Mise au propre du contrôle dicté", btn:"#dc-go", run:async () => {
+    const dBase = {type:"controle", gen:{source:photo ? "photo" : "dictee"}, source:texte.slice(0, 20000), matiere:mat, niveau, classeId:cl?.id || "", coursId:null, duree, differencie:false, langue, statut:"brouillon", date:"",
+      mise:{affiche:S.me?.affichage || "les2", police:prefs().police, lh:prefs().lh, bareme:prefs().bareme, consignes:prefs().consignes}};
+    if (await aiTask({key:"dictee", label:"Mise au propre du contrôle dicté", btn:"#dc-go",
+      spec:() => { learnMatiere(mat); S.matChg = false; S.dict = null; S.src = "cours"; return {prompt:dictPrompt(texte, mat, niveau, langue, photo), n:0, path:"controles/" + uid(12), mode:"create", base:dBase, titre:{fixe:titre, defaut:"Contrôle"}, remarques:true, msgOk:"Contrôle prêt"}; },
+      run:async () => {
       const r = await ai(dictPrompt(texte, mat, niveau, langue, photo)), qs = (r?.questions || []).map(mapQ); if (!qs.length) throw {code:"invalid_json"};
       const id = uid(12), ti = titre || r.titre || "Contrôle";
       await write("controles/" + id, {type:"controle", titre:ti, gen:{source:photo ? "photo" : "dictee"}, source:texte.slice(0, 20000), remarques:(r.remarques || []).map(String).filter(Boolean).slice(0, 12),
@@ -1717,7 +1798,11 @@ document.addEventListener("click", async ev => {
       differencie:!!p.differencie, langue:p.langue || "", statut:"brouillon", date:"", mise:{affiche:S.me?.affichage || "les2", police:prefs().police, lh:prefs().lh, bareme:prefs().bareme, consignes:EXO ? "Feuille d'exercices d'entraînement. Écris uniquement dans les cadres." : prefs().consignes}, questions:[], createdAt:new Date().toISOString()};
     if (t.id === "genBlank"){ base.questions = [mapQ({points:4, lignes:6})]; await write("controles/" + id, base); S.editId = id; S.wizStep = 1; S.step = "preparer"; return go("edit"); }
     const P = structuredClone(p);
-    if (bgTask({key:"gen", label:EXO ? "Nouvelle feuille d'exercices" : "Nouveau contrôle", btn:"#gen", run:async () => {
+    const nq = clamp(+P.nbq || 5, 1, 10);
+    if (await aiTask({key:"gen", label:EXO ? "Nouvelle feuille d'exercices" : "Nouveau contrôle", btn:"#gen",
+      spec:() => { S.params.titre = ""; S.params._pref = false; const {questions:_q, ...b0} = base;
+        return {prompt:genPrompt(co, P, nq, EXO ? EXO_TXT : ""), n:nq, path:"controles/" + id, mode:"create", base:b0, titre:{fixe:P.titre || "", prefixe:EXO ? "Exercices · " : "", defaut:base.titre}, msgOk:EXO ? "Exercices prêts" : "Contrôle prêt", feature:EXO ? "exercices" : ""}; },
+      run:async () => {
       const r = await genQuestions(co, P, clamp(+P.nbq || 5, 1, 10), EXO ? EXO_TXT : "", EXO ? {feature:"exercices"} : {}), qs = r.questions;
       base.titre = P.titre || (EXO && r.titre ? "Exercices · " + r.titre : r.titre) || base.titre; base.questions = qs;
       await write("controles/" + id, base); S.params.titre = ""; S.params._pref = false; S.wizStep = 1;
@@ -1735,17 +1820,17 @@ document.addEventListener("click", async ev => {
     if (d.qdel !== undefined){ const printed = c.statut && c.statut !== "brouillon";
       if (!confirm(printed ? "Les feuilles sont déjà imprimées : supprimer cette question retire aussi les réponses et les notes des élèves pour cette question, et change les totaux. Continuer ?" : "Supprimer cette question ?")) return;
       c.questions.splice(+d.qdel, 1); await saveCtrl(c); return; }
-    if (t.id === "variante"){ bgTask({key:"var:" + c.id, label:"Variante de « " + c.titre + " »", btn:"#variante", run:async () => {
+    if (t.id === "variante"){ aiTask({key:"var:" + c.id, label:"Variante de « " + c.titre + " »", btn:"#variante", spec:() => createVariante(c, true), run:async () => {
         const nid = await createVariante(c); return {open:`#/controle/${nid}/preparer`, msg:"Variante prête : relis-la avant d'imprimer."}; }});
       return; }
     if (t.id === "remOk"){ c.remarques = []; await saveCtrl(c); return render(); }
     if (t.id === "regenCtrl"){ if (!confirm("Remplacer toutes les questions par un nouveau contrôle généré par l'IA ?")) return;
-      bgTask({key:"regen:" + c.id, label:"Régénération de « " + c.titre + " »", btn:"#regenCtrl", run:async () => {
+      aiTask({key:"regen:" + c.id, label:"Régénération de « " + c.titre + " »", btn:"#regenCtrl", spec:() => regenExercices(c, true), run:async () => {
         const nid = await regenExercices(c);
         return {open:`#/controle/${nid}/preparer`, msg:nid !== c.id ? "Feuilles déjà imprimées : une nouvelle version du contrôle est prête." : "Nouveau contrôle généré : « " + (ctrl(nid)?.titre || c.titre) + " »."}; }});
       return; }
     if (t.id === "regenEx"){ if (!canEx()) return toast(aiErr("no_option"));
-      bgTask({key:"regen:" + c.id, label:"Régénération des exercices", btn:"#regenEx", run:async () => {
+      aiTask({key:"regen:" + c.id, label:"Régénération des exercices", btn:"#regenEx", spec:() => regenExercices(c, true), run:async () => {
         const nid = await regenExercices(c);
         return {open:`#/controle/${nid}/preparer`, msg:nid !== c.id ? "Feuille déjà imprimée : une nouvelle feuille d'exercices est prête." : "Nouveaux exercices générés."}; }});
       return; }
@@ -1954,17 +2039,25 @@ ${NOSRC}
 Réponds uniquement en JSON : {"titre":"…","remarques":["…"],"questions":[{"notion":"…","points":4,"lignes":5,"erreurs":["…"],"versions":{"standard":{"enonce":"…","corrige":"…","criteres":"…"}}}]}`;
 }
 /* Variante d'un contrôle : même structure, mêmes notions et mêmes points, nouveaux énoncés */
-async function createVariante(c){
+async function createVariante(c, spec){
   const co = c.coursId && (store.allCours || store.cours).find(x => x.id === c.coursId), lv = c.differencie ? LEVELS : ["standard"];
   const list = c.questions.map((q, i) => { const v = vOf(q, "standard"); return `${i + 1}. [${q.points} pts${q.type === "qcm" ? ", QCM" : ""}] Notion : ${q.notion || "?"}\n   Énoncé : ${v.enonce}\n   Corrigé : ${v.corrige}`; }).join("\n");
-  const r = await ai(`Tu es un professeur de ${c.matiere}${c.niveau ? " en " + c.niveau : ""}. Voici un contrôle :
+  const ask = (refus) => ai(vprompt(refus)); const vprompt = (refus) => (`Tu es un professeur de ${c.matiere}${c.niveau ? " en " + c.niveau : ""}. Voici un contrôle :
 ${list}
 ${co?.texte ? `\nCOURS (pour trouver d'autres exemples) :\n"""${co.texte.slice(0, 12000)}"""\n` : ""}
-Rédige une VARIANTE de ce contrôle pour une autre classe ou un autre jour : exactement ${c.questions.length} questions, dans le même ordre, chacune sur la MÊME notion, avec les MÊMES points, le même type et la même difficulté, mais avec un énoncé différent (autres valeurs, autres exemples, autre situation). Pour une question de connaissance, demande la même connaissance autrement. Aucune question ne doit être identique à l'original.
+Rédige une VARIANTE de ce contrôle pour une autre classe ou un autre jour : exactement ${c.questions.length} questions, dans le même ordre, chacune sur la MÊME notion, avec les MÊMES points, le même type et la même difficulté, mais qui demande AUTRE CHOSE : autres valeurs, autre exemple, autre situation, ou un autre élément de la notion, avec une réponse attendue différente de l'original. Reformuler la question d'origine (ou la transformer en vrai/faux, texte à trous ou QCM qui attend la même réponse) est interdit.
 ${lv.length > 1 ? `Pour chaque question, 3 versions notées sur les mêmes points : "socle" (plus guidée), "standard", "approfondi" (plus exigeante).` : `Pour chaque question, une seule version "standard".`} Chaque version : énoncé, corrigé-type, critères de notation dont la somme fait les points.${c.questions.some(q => q.type === "qcm") ? ` Pour un QCM : "type":"qcm" et, dans chaque version, "choix" (propositions sans lettre) et "bonnes" (indices à partir de 0).` : ""}
-${langueRule(c.langue)}
+${refus.length ? "Ces questions sont INTERDITES (doublons d'une question du contrôle) : " + refus.map(t => "« " + t.slice(0, 200) + " »").join(" / ") + "\n" : ""}${langueRule(c.langue)}
 ${NOSRC}
 Réponds uniquement en JSON : {"questions":[{"notion":"…","points":4,"lignes":6,"erreurs":["…"],"versions":{${lv.map(l => `"${l}":{"enonce":"…","corrige":"…","criteres":"…"}`).join(",")}}}]}`);
+  const olds = askedOf([c]);
+  if (spec){ const {id:_0, owner:_1, ...rest0} = c;
+    return {prompt:vprompt([]), n:c.questions.length, olds, points:c.questions.map(q => +q.points), lignes:c.questions.map(q => q.lignes || 0), path:"controles/" + uid(12), mode:"create",
+      titre:{fixe:c.titre.replace(/ \(variante( \d+)?\)$/, "") + " (variante)"}, base:{...rest0, statut:"brouillon", date:"", varianteDe:c.id, remarques:[]}, msgOk:"Variante prête", feature:c.type === "exercices" ? "exercices" : ""}; }
+  let r = await ask([]);
+  /* Vérification du sens : si des questions ne font que reformuler l'original, on refait la variante en les interdisant */
+  const d1 = await doublons((r?.questions || []).map(mapQ).map(q => vOf(q, "standard")), olds);
+  if (d1.length){ const r2 = await ask(d1.map(k => String(r.questions[k]?.versions?.standard?.enonce || ""))); if ((r2?.questions || []).length) r = r2; }
   const qs = (r?.questions || []).map(mapQ); if (!qs.length) throw {code:"invalid_json"};
   qs.forEach((q, i) => { const o = c.questions[i]; if (o){ q.points = +o.points; q.lignes = o.lignes || q.lignes; } });
   const {id:_, ...rest} = c, id = uid(12);

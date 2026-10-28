@@ -841,6 +841,118 @@ async function runJob(j){
     + (jr0.missing.length ? " · " + jr0.missing.length + " question(s) non lue(s) : recadre-les ou relance" : "");
   if (!jr0.missing.length){ delete j.prompt; delete j.qs; }
 }
+/* ---------- Génération en arrière-plan (sur le serveur) ----------
+   Nouveau contrôle, dictée, régénération, variante, rattrapage : l'application prépare la consigne, puis le serveur fait tout
+   (appel à l'IA, suite si la réponse est coupée, vérification des doublons, enregistrement du document). Le professeur peut
+   fermer l'application ou verrouiller son téléphone : le résultat l'attend, et une notification s'affiche à son retour. */
+const GENS_F = path.join(DATA, "gens.json"); let GENS = readJ(GENS_F, []);
+let gensTimer = null; const saveGens = () => { clearTimeout(gensTimer); gensTimer = setTimeout(() => writeAtomic(GENS_F, GENS), 300); };
+const genPub = j => ({id:j.id, status:j.status, label:j.label, open:j.open || null, msg:j.msg || "", seen:!!j.seen, createdAt:j.createdAt, doneAt:j.doneAt || null});
+const LVLS = ["socle", "standard", "approfondi"];
+function genQ(x){
+  const id = "q" + crypto.randomBytes(4).toString("hex").slice(0, 5), qcm = x?.type === "qcm";
+  const one = y => { const o = {enonce:String(y?.enonce || ""), corrige:String(y?.corrige || ""), criteres:String(y?.criteres || "")};
+    if (qcm){ o.choix = (Array.isArray(y?.choix) ? y.choix : []).map(String).slice(0, 6); o.bonnes = (Array.isArray(y?.bonnes) ? y.bonnes : []).map(Number).filter(n => n >= 0 && n < o.choix.length);
+      o.corrige = "Bonne(s) réponse(s) : " + o.bonnes.map(n => "ABCDEF"[n]).join(", "); o.criteres = "Tout ou rien."; } return o; };
+  const v = isObj(x?.versions) ? Object.fromEntries(LVLS.filter(l => isObj(x.versions[l])).map(l => [l, one(x.versions[l])])) : {standard:one(x)};
+  if (!v.standard) v.standard = Object.values(v)[0] || one({});
+  return {id, ...(qcm ? {type:"qcm"} : {}), notion:String(x?.notion || "").slice(0, 120), points:+x?.points || 4, lignes:clampN(+x?.lignes || 6, 1, 30), erreurs:(Array.isArray(x?.erreurs) ? x.erreurs : []).map(String).slice(0, 5), v};
+}
+const stdOf = q => q.v.standard?.enonce ? q.v.standard : Object.values(q.v).find(y => y?.enonce) || {enonce:"", corrige:""};
+const tokOf = t => new Set(String(t).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9֐-׿ ]+/g, " ").split(/\s+/).filter(x => x.length > 3).map(x => x.slice(0, 5)));
+const closeTo = (a, b, seuil) => { const A = tokOf(a), B = tokOf(b); if (!A.size || !B.size) return false; return [...A].filter(x => B.has(x)).length / Math.min(A.size, B.size) >= seuil; };
+async function genAI(u, prompt, tier){
+  const stop = allowCall("gen:" + u.id, u.id); if (stop) throw new Error(stop);
+  let o = null;
+  for (let k = 0; k < 3; k++){ o = await aiCall({tier, messages:[{role:"user", content:[{type:"text", text:prompt + "\n\n(Réponds uniquement avec le JSON demandé, sans texte autour.)"}]}]}, u);
+    if (o.status === 200 || (o.status !== 429 && o.status < 500)) break; await new Promise(r => setTimeout(r, 8000 * (k + 1))); }
+  if (o.status !== 200) throw new Error(o.json?.error?.message || "IA indisponible (" + o.status + ")");
+  const jr = JSON.parse(o.txt || "{}"), txt = (jr.content || []).filter(b => b.type === "text").map(b => b.text).join("");
+  const res = looseJSON(txt); if (!res) throw new Error("Réponse de l'IA illisible"); return res;
+}
+async function dupCheck(u, news, olds){
+  if (!news.length || !olds.length) return [];
+  let sem = [], ok = false;
+  try { const r = await genAI(u, `Tu contrôles qu'une feuille ne répète pas un contrôle.
+QUESTIONS DÉJÀ POSÉES :
+${olds.map((o, k) => `A${k + 1}. ${String(o.enonce).slice(0, 300)} → réponse attendue : ${String(o.corrige || "").slice(0, 200)}`).join("\n")}
+
+NOUVELLES QUESTIONS :
+${news.map((n, k) => `N${k + 1}. ${String(n.enonce).slice(0, 300)} → réponse attendue : ${String(n.corrige || "").slice(0, 200)}`).join("\n")}
+
+Une nouvelle question est un DOUBLON si elle demande la même information ou attend pour l'essentiel la même réponse qu'une question déjà posée, même formulée autrement (reformulation, vrai/faux, texte à trous, QCM, mise en situation qui revient à réciter la même chose). Elle n'est PAS un doublon si elle porte sur la même notion mais demande un autre élément, une application nouvelle ou une explication différente.
+Réponds uniquement en JSON : {"doublons":[numéros N des nouvelles questions en doublon]}`, "quick");
+    sem = (Array.isArray(r?.doublons) ? r.doublons : []).map(x => +String(x).replace(/\D/g, "") - 1).filter(i => i >= 0 && i < news.length); ok = Array.isArray(r?.doublons); } catch(e){ console.warn("Doublons", e.message); }
+  const lex = news.map((n, i) => olds.some(o => closeTo(n.enonce, o.enonce, ok ? 0.85 : 0.6)) ? i : -1).filter(i => i >= 0);
+  return [...new Set([...lex, ...sem])].sort((a, b) => a - b);
+}
+async function runGen(j){
+  const u = USERS.find(x => x.id === j.user); if (!u) throw new Error("Compte introuvable");
+  if (!access(u).ok) throw new Error(NO_ACCESS);
+  let res = await genAI(u, j.prompt, j.tier); const titreIA = typeof res?.titre === "string" ? res.titre : "";
+  let qs = (Array.isArray(res?.questions) ? res.questions : []).map(genQ);
+  /* Réponse coupée (trop longue) : on demande la suite */
+  for (let k = 0; k < 3 && j.n && qs.length && qs.length < j.n; k++){
+    const reste = j.n - qs.length, deja = qs.map(q => stdOf(q).enonce).join(" / ").slice(0, 3000);
+    const r2 = await genAI(u, j.prompt + `\n\nCe contrôle contient déjà ces questions : ${deja}\nRédige UNIQUEMENT les ${reste} question(s) qui manquent, sur d'autres notions, avec le même format JSON.`, j.tier);
+    const add = (Array.isArray(r2?.questions) ? r2.questions : []).map(genQ); if (!add.length) break; qs = qs.concat(add.slice(0, reste)); }
+  if (j.n) qs = qs.slice(0, j.n);
+  if (!qs.length) throw new Error("L'IA n'a proposé aucune question : réessaie.");
+  /* Doublons d'une question déjà posée : remplacés (deux essais) */
+  if (Array.isArray(j.olds) && j.olds.length) for (let k = 0; k < 2; k++){
+    const dup = await dupCheck(u, qs.map(stdOf), j.olds); if (!dup.length) break;
+    const refus = dup.map(i => stdOf(qs[i]).enonce);
+    const r3 = await genAI(u, j.prompt + `\n\nCORRECTION : ces questions de ta réponse sont refusées car elles répètent une question déjà posée : ${refus.map(t => "« " + t.slice(0, 200) + " »").join(" / ")}.\nRédige UNIQUEMENT ${dup.length} nouvelle(s) question(s) pour les remplacer (questions n° ${dup.map(i => i + 1).join(", ")} de ta réponse : même notion et mêmes points), en respectant toutes les règles ci-dessus, sans répéter aucune question déjà posée. Même format JSON.`, j.tier);
+    const add = (Array.isArray(r3?.questions) ? r3.questions : []).map(genQ).slice(0, dup.length);
+    dup.forEach((i, m) => { if (add[m]){ add[m].points = qs[i].points; qs[i] = add[m]; } }); }
+  if (Array.isArray(j.points)) qs.forEach((q, i) => { if (j.points[i] != null) q.points = +j.points[i]; if (j.lignes?.[i]) q.lignes = +j.lignes[i]; });
+  const dp = j.path, cur = DOCS.get(dp);
+  if (!canWrite(u, dp)) throw new Error("Ce contrôle appartient à un autre professeur");
+  const tIA = /rattrapage/i.test(j.titre?.prefixe || "") ? titreIA.replace(/^(feuille de |fiche de )?rattrapage\s*[-:·–]?\s*/i, "") : titreIA;
+  const titre = j.titre?.fixe || (tIA ? (j.titre?.prefixe || "") + tIA + (j.titre?.suffixe || "") : "") || j.titre?.defaut || "Contrôle";
+  if (j.mode === "update"){ if (!cur) throw new Error("Contrôle introuvable");
+    persist(dp, {...cur, questions:qs, ...(j.titre?.ia && titreIA ? {titre:titreIA} : j.titre?.fixe ? {titre:j.titre.fixe} : {})}); }
+  else { const base = isObj(j.base) ? j.base : {};
+    persist(dp, {...base, titre, questions:qs, ...(j.remarques ? {remarques:(Array.isArray(res?.remarques) ? res.remarques : []).map(String).filter(Boolean).slice(0, 12)} : {}), owner:u.id, espace:espaceFor(dp, u), createdAt:new Date().toISOString()}); }
+  j.open = j.openHash || ("#/controle/" + dp.split("/")[1] + "/preparer");
+  j.msg = (j.msgOk || "Prêt") + (j.mode === "update" ? "" : " : « " + titre + " »") + ".";
+}
+let gensRunning = 0;
+async function pumpGens(){
+  while (gensRunning < (+env("AI_GEN_PARALLEL") || 4)){
+    const j = GENS.find(x => x.status === "attente"); if (!j) break;
+    j.status = "en_cours"; gensRunning++; saveGens();
+    runGen(j).then(() => { j.status = "fait"; j.doneAt = new Date().toISOString(); delete j.prompt; delete j.base; delete j.olds; })
+      .catch(e => { j.status = "erreur"; j.msg = String(e?.message || e).slice(0, 300); console.warn("Génération", j.id, j.msg); })
+      .finally(() => { gensRunning--; saveGens(); setTimeout(pumpGens, 50); });
+  }
+  const old = Date.now() - 7 * 864e5, n = GENS.length; GENS = GENS.filter(j => j.status === "attente" || j.status === "en_cours" || Date.parse(j.createdAt) > old); if (GENS.length !== n) saveGens();
+}
+for (const j of GENS) if (j.status === "en_cours") j.status = "attente";
+setInterval(pumpGens, 5000); setTimeout(pumpGens, 2000);
+async function genApi(req, res, p, u){
+  if (!u) return sendJ(res, 401, {error:{message:"Connexion requise"}});
+  if (p === "/api/gen" && req.method === "GET") return sendJ(res, 200, {gens:GENS.filter(j => j.user === u.id).slice(-40).map(genPub)});
+  if (p === "/api/gen" && req.method === "POST"){
+    if (!env("ANTHROPIC_API_KEY")) return sendJ(res, 503, {error:{message:"IA non configurée"}});
+    if (!access(u).ok) return sendJ(res, 402, {error:{message:NO_ACCESS, code:"no_access"}});
+    const b = await readJSON(req, 2e6) || {};
+    if (b.feature === "exercices" && !entitled(u)) return sendJ(res, 403, {error:{message:"Exercices en ligne non activés pour ce compte (à partir du forfait Essentiel)"}});
+    const dp = String(b.path || ""); if (!/^controles\/[A-Za-z0-9_-]{4,40}$/.test(dp) || !canWrite(u, dp)) return sendJ(res, 400, {error:{message:"Tâche invalide"}});
+    if (GENS.filter(j => j.user === u.id && (j.status === "attente" || j.status === "en_cours")).length >= 12) return sendJ(res, 429, {error:{message:"Trop de générations en cours : attends qu'une se termine."}});
+    const j = {id:crypto.randomBytes(8).toString("hex"), user:u.id, status:"attente", createdAt:new Date().toISOString(), label:String(b.label || "Génération").slice(0, 160),
+      prompt:String(b.prompt || "").slice(0, 120000), tier:tierOk(b.tier), n:clampN(+b.n || 0, 0, 12), path:dp, mode:b.mode === "update" ? "update" : "create",
+      base:isObj(b.base) ? b.base : null, titre:isObj(b.titre) ? {fixe:String(b.titre.fixe || "").slice(0, 200), prefixe:String(b.titre.prefixe || "").slice(0, 60), suffixe:String(b.titre.suffixe || "").slice(0, 60), defaut:String(b.titre.defaut || "").slice(0, 200), ia:!!b.titre.ia} : null,
+      remarques:!!b.remarques, points:Array.isArray(b.points) ? b.points.slice(0, 12).map(Number) : null, lignes:Array.isArray(b.lignes) ? b.lignes.slice(0, 12).map(Number) : null,
+      olds:(Array.isArray(b.olds) ? b.olds : []).slice(0, 60).map(o => ({enonce:String(o?.enonce || "").slice(0, 600), corrige:String(o?.corrige || "").slice(0, 400)})).filter(o => o.enonce),
+      msgOk:String(b.msgOk || "Prêt").slice(0, 120), openHash:/^#\/[\w\/-]{1,80}$/.test(b.open || "") ? b.open : null};
+    if (!j.prompt) return sendJ(res, 400, {error:{message:"Tâche vide"}});
+    GENS.push(j); saveGens(); setTimeout(pumpGens, 10); return sendJ(res, 200, {gen:genPub(j)});
+  }
+  const m = p.match(/^\/api\/gen\/([a-f0-9]{16})\/vu$/);
+  if (m && req.method === "POST"){ const j = GENS.find(x => x.id === m[1] && x.user === u.id); if (j){ j.seen = true; saveGens(); } return sendJ(res, 200, {}); }
+  return sendJ(res, 404, {error:{message:"Route inconnue"}});
+}
 /* « Recommencer le scan » : ce qui était en route pour ce contrôle (ou cet élève) avant la remise à zéro est abandonné */
 const CANCEL = {};
 const cancelled = (cid, eid, at) => { const t = Math.max(CANCEL[cid] || 0, CANCEL[cid + "|" + eid] || 0); return t && Date.parse(at) <= t; };
@@ -1214,6 +1326,7 @@ http.createServer(async (req, res) => {
       if (req.method === "POST" && p === "/api/ai") return await aiProxy(req, res, u);
       if (p.startsWith("/api/backups")) return backups(req, res, p, u);
       if (p === "/api/jobs" || p.startsWith("/api/jobs/")) return await jobsApi(req, res, url, p, u);
+      if (p === "/api/gen" || p.startsWith("/api/gen/")) return await genApi(req, res, p, u);
       if (p === "/api/lots" || p.startsWith("/api/lots/")) return await lotsApi(req, res, url, p, u);
       if (p === "/api/banque" || p.startsWith("/api/banque/")) return await banqueApi(req, res, url, p, u);
       if (p === "/api/devices" || p.startsWith("/api/devices/") || p.startsWith("/api/scan/")) return await scanApi(req, res, url, p, u);

@@ -79,7 +79,7 @@ document.addEventListener("click", async ev => {
 });
 
 /* ================= Stockage sur le serveur de l'école (Railway + Volume) ================= */
-let SERVERSTORE = false, SRV_PERSIST = true;
+let SERVERSTORE = false, SRV_PERSIST = true, SYNC = null;   // SYNC : synchronisation immédiate avec le serveur
 async function serverDB(){
   const r = await fetch("/api/db", {credentials:"same-origin"});
   if (r.status === 401){ NEED_CODE = true; throw {code:"need_code"}; }
@@ -109,7 +109,7 @@ async function serverDB(){
       if (!skip){ epoch = k.epoch; seq = k.seq; }   // un document ignoré sera relu à la prochaine synchronisation
     } catch(e){} finally { busy = false; }
   };
-  setInterval(pull, 8000); document.addEventListener("visibilitychange", pull);
+  setInterval(pull, 8000); document.addEventListener("visibilitychange", pull); SYNC = pull;
   return db;
 }
 const serverAssets = { upload: async (blob, want) => {
