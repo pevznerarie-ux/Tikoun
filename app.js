@@ -50,10 +50,10 @@ const OLD_ENTETE = "Collège-Lycée Beth Mena'hem · Levallois-Perret";
 /* En-tête des feuilles : choisi par le prof (école, son nom, ou les deux) ; un texte libre saisi dans la mise en page reste prioritaire. */
 const AFFICHE = {les2:"École et mon nom", ecole:"École seulement", nom:"Mon nom seulement"};
 /* Préférences du prof (Mon compte) : mise en page par défaut des feuilles et style des questions */
-const PREF_DEF = {police:15, lh:30, bareme:true, consignes:"Écris uniquement dans les cadres.", q:{format:"mixte", justif:true, profondeur:"standard", longueur:"moyenne"}};
+const PREF_DEF = {police:15, lh:30, bareme:true, consignes:"Écris uniquement dans les cadres.", q:{format:"mixte", justif:true, profondeur:"standard", longueur:"moyenne"}, ratt:{seuil:10, regle:"meilleure", plafond:10, bonus:3}};
 function prefs(){ let p = S.me?.prefs; if (!p){ try { p = JSON.parse(localStorage.getItem("mastery.prefs") || "null"); } catch(e){} }
-  return {...PREF_DEF, ...(p || {}), q:{...PREF_DEF.q, ...(p?.q || {})}}; }
-async function savePrefs(patch){ const cur = prefs(), next = {...cur, ...patch, q:{...cur.q, ...(patch.q || {})}};
+  return {...PREF_DEF, ...(p || {}), q:{...PREF_DEF.q, ...(p?.q || {})}, ratt:{...PREF_DEF.ratt, ...(p?.ratt || {})}}; }
+async function savePrefs(patch){ const cur = prefs(), next = {...cur, ...patch, q:{...cur.q, ...(patch.q || {})}, ratt:{...cur.ratt, ...(patch.ratt || {})}};
   if (window.TIKOUN_CONFIG?.accounts && S.me){ const j = await api("/api/me", {method:"PATCH", body:JSON.stringify({prefs:next})}); S.me = j.user; }
   else { try { localStorage.setItem("mastery.prefs", JSON.stringify(next)); } catch(e){} } }
 /* Les réglages d'un nouveau contrôle partent des préférences */
@@ -593,6 +593,11 @@ function vEdit(){
     </div>
     <label class="row small" style="gap:6px"><input type="checkbox" id="e-diff"${c.differencie ? " checked" : ""}> Feuilles différenciées selon le niveau de chaque élève</label>
   </section>
+  ${c.type === "rattrapage" ? (() => { const D = prefs().ratt, R = rattRule(c), own = !!c.regle; return `<section class="panel grid"><div class="row between"><h3 style="margin:0">⚙ Règles de ce rattrapage</h3>${own ? `<button class="btn sm ghost" id="rr-reset">Revenir à mes réglages</button>` : ""}</div>
+    <p class="small muted" style="margin:0">${own ? "Règle propre à ce rattrapage." : `Règle de tes réglages (Mon compte) : ${esc(ruleTxt(D))}.`} Elle décide de la note retenue pour l'élève.</p>
+    <div class="form-row"><div class="field"><label for="rr-regle">Note retenue</label><select id="rr-regle">${selOpts(Object.keys(RREGLES), R.regle, x => RREGLES[x])}</select></div>
+      ${R.regle === "bonus" ? `<div class="field"><label for="rr-bonus">Bonus maximum</label><select id="rr-bonus">${selOpts(["1","2","3","4","5"], String(R.bonus), x => "+" + x + " point" + (x > 1 ? "s" : ""))}</select></div>` : ""}
+      ${["meilleure", "bonus", "remplace"].includes(R.regle) ? `<div class="field"><label for="rr-plaf">Plafond</label><select id="rr-plaf">${selOpts(["10","12","14","16","20"], String(R.plafond), x => x === "20" ? "Aucun" : noteS(+x))}</select></div>` : ""}</div></section>`; })() : ""}
   ${c.remarques?.length ? `<section class="panel grid" style="border-color:var(--warn)"><div class="row between"><h3 style="margin:0">À vérifier</h3><button class="btn sm" id="remOk">C'est vérifié</button></div><ul class="small" style="margin:0;padding-left:18px">${c.remarques.map(x => `<li>${esc(x)}</li>`).join("")}</ul></section>` : ""}
   <div class="head"><h3>Questions <span class="muted num" style="font-weight:500">· total ${fmt(tot)} pts${tot !== 20 && bareme() === "20" ? " (ramené sur 20)" : ""}</span></h3>
     <div class="row">${c.type === "exercices" ? (canEx() ? `<button class="btn sm primary" id="regenEx">↻ Régénérer les exercices (IA)</button>` : lockChip()) : (!c.type || c.type === "controle") && c.coursId ? `<button class="btn sm primary" id="regenCtrl">↻ Régénérer le contrôle (IA)</button>` + (canEx() ? `<button class="btn sm" data-exfrom="${c.id}">+ Quiz d'exercices sur ce cours</button>` : lockChip()) : ""}${(!c.type || c.type === "controle") && c.questions?.length ? `<button class="btn sm" id="variante" title="Même structure, mêmes notions et mêmes points, nouveaux énoncés">⧉ Variante (IA)</button>` : ""}<button class="btn sm" id="addQ">+ Question vide</button><button class="btn sm" id="addQcm">+ QCM</button><button class="btn sm" id="addQai">+ Question (IA)</button><button class="btn sm" id="bankOpen">${S.bankOpen ? "Fermer la banque" : "+ Depuis la banque"}</button></div></div>
@@ -1387,7 +1392,7 @@ function copyView(c, e, cp, studs){
     <div class="copy-h"><div><div class="label">Copie${c.differencie ? ` · <span class="lvl ${versionFor(c, e)}">${LVL[versionFor(c, e)]}</span>` : ""}</div><h3 style="font-size:20px">${esc(e.prenom)} ${esc(e.nom)}</h3></div>
       <div class="row">${done ? `<div><div class="total num">${nv(final20(c, cp))}<small>${sfxN(final20(c, cp))}</small></div>${bonusMax(c) ? `<div class="small muted num">brute ${fmt(on20(copyTotal(c, cp), max))} + bonus ${fmt(bonusOf(c, cp).proprete + bonusOf(c, cp).orthographe)}</div>` : ""}</div>` : ""}
       <button class="btn ${cp?.validee ? "" : "primary"}" id="validate" ${has || done ? "" : "disabled"}>${cp?.validee ? "Validée ✓" : "Valider la copie"}</button>
-      ${done && final20(c, cp) < SEUIL ? `<button class="btn sm" id="mkRatt">Rattrapage</button>` : ""}${done ? `<button class="btn sm" id="rendu1">Copie rendue (PDF)</button>` : ""}</div><div class="status" id="rd-st" style="width:100%"></div></div>
+      ${done && final20(c, cp) < seuilR() ? `<button class="btn sm" id="mkRatt">Rattrapage</button>` : ""}${done ? `<button class="btn sm" id="rendu1">Copie rendue (PDF)</button>` : ""}</div><div class="status" id="rd-st" style="width:100%"></div></div>
     ${scans.length ? `<div class="scans">${scans.map(([p, s]) => `<img alt="Page ${p}" src="${esc(s.asset ? blobSrc(s.asset) : s.url)}" data-zoom="${esc(s.asset ? blobSrc(s.asset) : s.url)}">`).join("")}</div>` : ""}
     ${has && bonusMax(c) ? `<div class="row" style="padding:10px 16px;border-bottom:1px solid var(--line);gap:14px">${["proprete","orthographe"].filter(k => +c.bonus?.[k]).map(k => `<label class="row small" style="gap:6px">Bonus ${k === "proprete" ? "propreté" : "orthographe"} <input type="number" min="0" max="${c.bonus[k]}" step="0.5" id="bo-${k}" data-bonus="${k}" value="${bonusOf(c, cp)[k]}" style="width:70px"> / ${fmt(+c.bonus[k])}</label>`).join("")}</div>` : ""}
     ${!has ? `<div class="empty">Copie pas encore scannée. <button class="btn sm" data-go="scan">Scanner</button><br><span class="small">Tu peux aussi saisir les notes directement ci-dessous.</span></div>` : ""}
@@ -1431,7 +1436,7 @@ function vAnalyse(){
   <div class="head"><div><h2>Classe & rattrapage</h2><p>${rows.length} copie(s) corrigée(s) sur ${studs.length}${unval ? ` · <span style="color:var(--warn)">${unval} pas encore validée(s)</span>` : ""}</p></div>
     <select id="anSel" style="max-width:440px" aria-label="Contrôle">${selOpts(list, c.id, x => (x.type === "rattrapage" ? "Rattrapage · " : x.type === "exercices" ? "Exercices · " : "") + x.titre + " · " + (classe(x.classeId)?.nom || ""), x => x.id)}</select></div>
   <div class="grid g3">
-    <div class="panel"><div class="label">Moyenne</div><div class="total num" style="color:var(--ink)">${nv(avg)}<small>${sfxN(avg)}</small></div></div>
+    <div class="panel"><div class="label">Moyenne</div><div class="total num" style="color:var(--ink)">${nv(avg)}<small>${sfxN(avg)}</small></div>${(() => { const ret = rows.map(r => noteRetenue(c, r.e)?.retenue ?? 0), a2 = ret.reduce((a, b) => a + b, 0) / ret.length; return Math.abs(a2 - avg) > 0.005 ? `<div class="small muted">après rattrapages : <b>${noteS(a2)}</b></div>` : ""; })()}</div>
     <div class="panel"><div class="label">Min – max</div><div class="total num" style="color:var(--ink)">${nv(Math.min(...notes))} – ${nv(Math.max(...notes))}</div></div>
     <div class="panel"><div class="label">Sous ${noteS(10)}</div><div class="total num" style="color:var(--ink)">${notes.filter(n => n < 10).length}<small>/${notes.length}</small></div></div>
   </div>
@@ -1443,14 +1448,18 @@ function vAnalyse(){
   <section class="panel grid"><div class="row between"><h3>Synthèse pédagogique</h3><button class="btn sm" id="synth">${c.analyse ? "Actualiser" : "Rédiger"} (IA)</button></div>
     <div class="status" id="syn-st"></div>
     ${c.analyse ? `<div style="white-space:pre-wrap">${esc(c.analyse)}</div>` : `<p class="muted small">L'IA repère les notions non comprises et propose quoi reprendre en classe.</p>`}</section>
-  <section class="panel"><div class="row between"><h3>Élèves</h3><span class="small muted">Rattrapage individuel possible pour chaque élève sous ${noteS(SEUIL)}</span></div>
+  <section class="panel"><div class="row between"><h3>Élèves</h3><span class="small muted">Rattrapage possible sous ${noteS(seuilR())} · <a href="#/compte" class="rlink">⚙ Règles de rattrapage</a></span></div>
+    <p class="small muted" style="margin:4px 0 0">Note retenue : ${esc(ruleTxt(prefs().ratt))}.</p>
     <div class="status" id="ra-st"></div>
-    <div class="tbl-wrap" style="margin-top:6px"><table><thead><tr><th>Élève</th>${c.questions.map((q, k) => `<th class="c">Q${k + 1}</th>`).join("")}<th class="c">${bareme() === "AF" ? "A–F" : sfx().trim()}</th><th>Rattrapage</th></tr></thead><tbody>
-    ${studs.map(e => { const cp = f.copies[e.id]; const ok = copyDone(c, cp); const r = ratts.find(x => x.eleves?.includes(e.id));
+    <div class="tbl-wrap" style="margin-top:6px"><table class="rtab"><thead><tr><th>Élève</th>${c.questions.map((q, k) => `<th class="c">Q${k + 1}</th>`).join("")}<th class="c">Note</th><th class="c">Rattrapage</th><th class="c">Retenue</th><th></th></tr></thead><tbody>
+    ${studs.map(e => { const cp = f.copies[e.id]; const ok = copyDone(c, cp), N = ok ? noteRetenue(c, e) : null, r = N?.r || ratts.find(x => x.eleves?.includes(e.id));
+      const up = N && N.ratt != null && Math.abs(N.retenue - N.base) > 0.001;
       return `<tr><td><b>${esc(e.prenom)} ${esc(e.nom)}</b>${c.differencie ? ` <span class="lvl ${versionFor(c, e)}">${LVL[versionFor(c, e)][0]}</span>` : ""}</td>
       ${c.questions.map(q => { const n = noteOf(cp?.answers?.[q.id]); return `<td class="c"><span class="cell ${n == null ? "none" : tone(n / q.points)}">${fmt(n)}</span></td>`; }).join("")}
-      <td class="c num"><b>${ok ? noteS(final20(c, cp)) : "—"}</b></td>
-      <td>${r ? `<button class="btn sm" data-edit="${r.id}">${STATUT[r.statut]?.[0] || "Voir"}</button>` : ok && final20(c, cp) < SEUIL ? `<button class="btn sm" data-ratt="${e.id}">Créer</button>` : ok ? `<span class="small muted">—</span>` : ""}</td></tr>`; }).join("")}
+      <td class="c num">${ok ? noteS(N.base) : "—"}</td>
+      <td class="c num">${N?.ratt != null ? noteS(N.ratt) : r ? `<span class="small muted">${esc(STATUT[r.statut]?.[0] || "")}</span>` : "—"}</td>
+      <td class="c num"><b>${ok ? noteS(N.retenue) : "—"}</b>${up ? ` <span class="chip blue" title="${esc(ruleTxt(N.R))}">↺</span>` : ""}</td>
+      <td>${r ? `<button class="btn sm" data-edit="${r.id}">${N?.ratt != null ? "Voir" : STATUT[r.statut]?.[0] || "Voir"}</button>` : ok && N.base < seuilR() ? `<button class="btn sm" data-ratt="${e.id}">Créer</button>` : ok ? `<span class="small muted">—</span>` : ""}</td></tr>`; }).join("")}
     </tbody></table></div></section>`;
 }
 const rTitre = t => String(t).replace(/^(feuille de |fiche de )?rattrapage\s*[-:·–]?\s*/i, "").replace(/^contr[ôo]le de /i, "") || String(t);
@@ -1483,7 +1492,7 @@ Réponds uniquement en JSON : {"doublons":[numéros N des nouvelles questions en
 }
 async function createRattrapage(c, e, replaceId, spec){
   const f = feuille(c.id), cp = f?.copies?.[e.id]; if (!cp) throw {code:"no_copy"};
-  if (!copyDone(c, cp) || final20(c, cp) >= SEUIL) throw {code:"not_failed"};
+  if (!copyDone(c, cp) || final20(c, cp) >= seuilR()) throw {code:"not_failed"};
   if (!cp.validee && !confirm(`La copie de ${e.prenom} n'est pas encore validée : le rattrapage serait basé sur la note proposée par l'IA. Continuer ?`)) throw {code:"cancelled"};
   if (!replaceId && store.controles.some(x => x.type === "rattrapage" && x.parentId === c.id && x.eleves?.includes(e.id))) throw {code:"ratt_exists"};
   const weak = c.questions.map(q => ({q, a:cp.answers[q.id]})).filter(x => x.a && noteOf(x.a) / x.q.points < 0.6);
@@ -1630,7 +1639,24 @@ async function genQuestions(co, p, n, extra, opts = {}){
   if (!qs.length) throw {code:"invalid_json"};
   return {titre, questions:qs};
 }
-const SEUIL = 10;
+/* ================= Règles de rattrapage =================
+   Réglage par défaut dans Mon compte, exception possible sur chaque rattrapage. Les calculs restent sur 20. */
+const RREGLES = {meilleure:"Meilleure des deux notes", bonus:"Bonus selon la note du rattrapage", moyenne:"Moyenne des deux notes", remplace:"La note du rattrapage remplace", formatif:"Formatif : la note ne change pas"};
+const seuilR = () => prefs().ratt.seuil;
+const rattRule = r => ({...prefs().ratt, ...(r?.regle || {})});
+const plafTxt = R => R.plafond < 20 ? `, plafonnée à ${noteS(R.plafond)}` : "";
+const ruleTxt = R => R.regle === "bonus" ? `Bonus : jusqu'à +${fmt(R.bonus)} point${R.bonus > 1 ? "s" : ""} (20/20 au rattrapage)${plafTxt(R)}` : R.regle === "formatif" ? RREGLES.formatif : RREGLES[R.regle] + (R.regle === "moyenne" ? "" : plafTxt(R));
+/* Note retenue d'un élève : contrôle d'origine + dernier rattrapage corrigé, selon la règle */
+function noteRetenue(c, e){
+  const cp = feuille(c.id)?.copies?.[e.id]; if (!copyDone(c, cp)) return null;
+  const base = final20(c, cp);
+  const rs = store.controles.filter(x => x.type === "rattrapage" && x.parentId === c.id && x.eleves?.includes(e.id)).sort((a, b) => (a.createdAt || "").localeCompare(b.createdAt || ""));
+  const r = [...rs].reverse().find(x => copyDone(x, feuille(x.id)?.copies?.[e.id])) || null, R = rattRule(r || rs[rs.length - 1]);
+  if (!r) return {base, ratt:null, retenue:base, R, r:rs[rs.length - 1] || null};
+  const n = final20(r, feuille(r.id).copies[e.id]), cap = v => Math.min(v, R.plafond);
+  const v = R.regle === "bonus" ? Math.max(base, cap(base + R.bonus * n / 20)) : R.regle === "moyenne" ? (base + n) / 2 : R.regle === "remplace" ? cap(n) : R.regle === "formatif" ? base : Math.max(base, cap(n));
+  return {base, ratt:n, retenue:Math.round(v * 100) / 100, R, r};
+}
 const isCtrl = c => !c.type || c.type === "controle";
 const EXO_TXT = "IMPORTANT : il s'agit d'une FEUILLE D'EXERCICES D'ENTRAÎNEMENT (pas d'un contrôle) : exercices progressifs, du plus simple au plus complet, pour pratiquer les notions du cours. Le mot « contrôle » ne doit pas apparaître.";
 async function exercicesFrom(c){
@@ -1825,6 +1851,7 @@ document.addEventListener("click", async ev => {
     if (t.id === "variante"){ aiTask({key:"var:" + c.id, label:"Variante de « " + c.titre + " »", btn:"#variante", spec:() => createVariante(c, true), run:async () => {
         const nid = await createVariante(c); return {open:`#/controle/${nid}/preparer`, msg:"Variante prête : relis-la avant d'imprimer."}; }});
       return; }
+    if (t.id === "rr-reset"){ const {regle:_r, ...rest} = c; await saveCtrl(rest); return render(); }
     if (t.id === "remOk"){ c.remarques = []; await saveCtrl(c); return render(); }
     if (t.id === "regenCtrl"){ if (!confirm("Remplacer toutes les questions par un nouveau contrôle généré par l'IA ?")) return;
       aiTask({key:"regen:" + c.id, label:"Régénération de « " + c.titre + " »", btn:"#regenCtrl", spec:() => regenExercices(c, true), run:async () => {
@@ -1934,8 +1961,8 @@ document.addEventListener("click", async ev => {
       studentsOf(C).forEach(e => { const k = f.copies[e.id]; if (k && !k.validee && copyDone(C, k) && !Object.values(k.answers || {}).some(a => !a.lisible)) upd.copies[e.id] = {validee:true, answers:Object.fromEntries(C.questions.map(q => [q.id, {valide:true}]))}; });
       await write("feuilles/" + C.id, upd, "update"); toast(Object.keys(upd.copies).length + " copie(s) validée(s)."); return; }
     if (t.id === "csv"){ const f = feuille(C.id) || {copies:{}}, max = maxOf(C);
-      const rows = [["Élève", ...C.questions.map((q, k) => `Q${k + 1} (/${q.points})`), "Total", "Sur 20 (brute)", "Note finale /20", "Validée"]];
-      studentsOf(C).forEach(e => { const k = f.copies[e.id]; rows.push([e.prenom + " " + e.nom, ...C.questions.map(q => fmt(noteOf(k?.answers?.[q.id]))), copyDone(C, k) ? fmt(copyTotal(C, k)) : "", copyDone(C, k) ? fmt(on20(copyTotal(C, k), max)) : "", copyDone(C, k) ? fmt(final20(C, k)) : "", k?.validee ? "oui" : "non"]); });
+      const rows = [["Élève", ...C.questions.map((q, k) => `Q${k + 1} (/${q.points})`), "Total", "Sur 20 (brute)", "Note finale /20", "Rattrapage /20", "Note retenue /20", "Validée"]];
+      studentsOf(C).forEach(e => { const k = f.copies[e.id]; rows.push([e.prenom + " " + e.nom, ...C.questions.map(q => fmt(noteOf(k?.answers?.[q.id]))), copyDone(C, k) ? fmt(copyTotal(C, k)) : "", copyDone(C, k) ? fmt(on20(copyTotal(C, k), max)) : "", copyDone(C, k) ? fmt(final20(C, k)) : "", ...(N => [N?.ratt != null ? fmt(N.ratt) : "", N ? fmt(N.retenue) : ""])(isCtrl(C) ? noteRetenue(C, e) : null), k?.validee ? "oui" : "non"]); });
       const csv = "﻿" + rows.map(r => r.map(x => `"${String(x).replace(/"/g, '""')}"`).join(";")).join("\n");
       if (!DL) return toast("Téléchargement indisponible dans cette vue.");
       try { await DL.save({filename:`Notes - ${C.titre}.csv`.replace(/[\\/:*?"<>|]/g, "-"), data:csv}); } catch(e){ if (e?.code !== "declined") toast("Téléchargement impossible."); } return; }
@@ -1993,6 +2020,11 @@ document.addEventListener("change", async ev => {
     S.coursDraft = {...(S.coursDraft || {}), titre:$("#c-titre").value, matiere:$("#c-mat").value, niveau:$("#c-niv").value, texte:$("#c-texte").value};
     if (!$("#c-titre").value) $("#c-titre").value = fs[0].name.replace(/\.[^.]+$/, "");
     try { await importCourseFiles(fs); } catch(e){ console.error(e); $("#c-st").textContent = e?.code ? aiErr(e.code) : "Lecture du fichier impossible."; } return; }
+  if (["rr-regle", "rr-bonus", "rr-plaf"].includes(el.id) && S.view === "edit"){ const c = ctrl(S.editId); if (!c) return;
+    const R = {...rattRule(c), ...(el.id === "rr-regle" ? {regle:el.value} : el.id === "rr-bonus" ? {bonus:+el.value} : {plafond:+el.value})};
+    await saveCtrl({...c, regle:R}); return; }
+  if (["rp-seuil", "rp-regle", "rp-bonus", "rp-plaf"].includes(el.id)){ const k = {"rp-seuil":"seuil", "rp-regle":"regle", "rp-bonus":"bonus", "rp-plaf":"plafond"}[el.id];
+    await savePrefs({ratt:{[k]:el.id === "rp-regle" ? el.value : +el.value}}); render(); toast("Règle de rattrapage enregistrée"); return; }
   if (el.id === "mic-lang"){ S.micLang = el.value; try { localStorage.setItem("mastery.micLang", el.value); } catch(e){} return; }
   if (el.id === "dc-cl" || el.id === "dc-dur"){ S.dict = {...(S.dict || {}), [el.id === "dc-cl" ? "classeId" : "duree"]:el.value}; return; }
   if (el.id === "c-mat" && S.src && S.src !== "cours"){ S.dict = {...(S.dict || {}), matiere:el.value}; return; }

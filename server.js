@@ -122,7 +122,8 @@ const AFF = ["ecole", "nom", "les2"];
 const PREF_Q = {format:["redige","mixte","qcm"], profondeur:["simple","standard","exigeant"], longueur:["courte","moyenne","developpee"]};
 const cleanPrefs = p => { const n = (v, a, b, d) => { v = +v; return v >= a && v <= b ? v : d; }, q = isObj(p.q) ? p.q : {};
   return {police:n(p.police, 13, 17, 15), lh:n(p.lh, 26, 38, 30), bareme:p.bareme !== false, consignes:String(p.consignes ?? "Écris uniquement dans les cadres.").slice(0, 400),
-    q:Object.fromEntries(Object.entries(PREF_Q).map(([k, l]) => [k, l.includes(q[k]) ? q[k] : l[1]]).concat([["justif", q.justif !== false]]))}; };
+    q:Object.fromEntries(Object.entries(PREF_Q).map(([k, l]) => [k, l.includes(q[k]) ? q[k] : l[1]]).concat([["justif", q.justif !== false]])),
+    ratt:(r => ({seuil:n(r.seuil, 5, 15, 10), regle:["meilleure", "bonus", "moyenne", "remplace", "formatif"].includes(r.regle) ? r.regle : "meilleure", plafond:n(r.plafond, 10, 20, 10), bonus:n(r.bonus, 1, 5, 3)}))(isObj(p.ratt) ? p.ratt : {})}; };
 const pub = u => ({id:u.id, email:u.email, nom:u.nom, role:u.role, mustChange:!!u.mustChange, ecole:u.ecole || null, prefs:cleanPrefs(u.prefs || {}), quota:quota(u), matieres:u.matieres || [], enseigne:u.enseigne || [], affichage:AFF.includes(u.affichage) ? u.affichage : "les2", plan:u.plan || "essentiel", options:{exercices:!!u.options?.exercices}, can:{exercices:entitled(u)}, actif:u.actif !== false, statut:u.statut || "valide", planDemande:u.planDemande || null, createdAt:u.createdAt, bareme:u.bareme || null, partageEcriture:!!u.partageEcriture, espace:u.espace, ref:refCode(u), acces:access(u), billing:BILLING(), parrainage:refStats(u), etab:etabPub(groupOf(u), u), inscription:u.inscription || "admin", resetDemande:u.resetDemande || null});
 const sidOf = req => ((req.headers.cookie || "").match(/(?:^|;\s*)sid=([a-f0-9]{64})/) || [])[1] || "";
 const SESSION_DAYS = 30;

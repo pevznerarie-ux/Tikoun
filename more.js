@@ -97,7 +97,7 @@ function vSuiviBase(){
   const e = (cl.eleves || []).find(x => x.id === S.su.el);
   let detail = "";
   if (e){
-    const hist = studentCtrls(cl, mat, e), avg = hist.filter(x => isCtrl(x.c)).map(x => final20(x.c, x.cp));
+    const hist = studentCtrls(cl, mat, e), avg = hist.filter(x => isCtrl(x.c)).map(x => noteRetenue(x.c, e)?.retenue ?? final20(x.c, x.cp));   // note retenue : rattrapage compris
     const bil = store.bilans[`${cl.id}_${e.id}_${slug(mat)}`];
     const nl = st.notions.map(k => ({k, r:ms(e.id, k), n:st.per[e.id]?.[k]?.n || 0})).filter(x => x.r != null).sort((a, b) => a.r - b.r);
     detail = `<section class="panel grid">
@@ -106,7 +106,8 @@ function vSuiviBase(){
       <div class="grid g2">
         <div><div class="label" style="margin-bottom:6px">Notions, de la plus fragile à la plus solide</div>
           <div class="bars">${nl.map(x => `<div class="bar" style="grid-template-columns:1fr 90px 44px"><span class="small">${esc(st.labels[x.k])} <span class="muted">(${x.n})</span></span><div class="track"><div class="fill" style="width:${Math.round(x.r * 100)}%;background:var(--${tone(x.r)})"></div></div><span class="num small" style="text-align:right">${pct(x.r)}</span></div>`).join("") || `<p class="muted small">Aucune copie validée.</p>`}</div></div>
-        <div><div class="label" style="margin-bottom:6px">Contrôles</div>${hist.map(x => `<div class="item"><div><div class="t small">${x.c.type === "rattrapage" ? "↺ " : ""}${esc(x.c.titre)}</div><div class="s">${esc(frDate(x.c.date) || "")}</div></div><span class="cell ${tone(final20(x.c, x.cp) / 20)}">${noteS(final20(x.c, x.cp))}</span></div>`).join("") || `<p class="muted small">Aucun.</p>`}</div>
+        <div><div class="label" style="margin-bottom:6px">Contrôles</div>${hist.map(x => `<div class="item"><div><div class="t small">${x.c.type === "rattrapage" ? "↺ " : ""}${esc(x.c.titre)}</div><div class="s">${esc(frDate(x.c.date) || "")}</div></div>${(() => { const N = isCtrl(x.c) ? noteRetenue(x.c, e) : null, v = N ? N.retenue : final20(x.c, x.cp), up = N && N.ratt != null && Math.abs(N.retenue - N.base) > 0.001;
+          return `<span class="cell ${tone(v / 20)}" title="${up ? esc("Note initiale " + noteS(N.base) + " · " + ruleTxt(N.R)) : ""}">${noteS(v)}${up ? " ↺" : ""}</span>`; })()}</div>`).join("") || `<p class="muted small">Aucun.</p>`}</div>
       </div>
       <div class="grid" style="gap:8px"><div class="row between"><div class="label">Appréciation pour le bulletin</div><button class="btn sm" id="appr" data-e="${e.id}">${bil ? "Réécrire" : "Rédiger"} (IA)</button></div>
         <div class="status" id="appr-st"></div>
@@ -123,7 +124,7 @@ function vSuiviBase(){
 function vDirection_0(){
   const cls = store.classes; if (!cls.length) return `<div class="head"><h2>Direction</h2></div><div class="panel empty">Aucune classe.</div>`;
   const mats = [...new Set(store.controles.filter(isCtrl).map(c => c.matiere))];
-  const avgOf = (cl, mat, e) => { const v = studentCtrls(cl, mat, e).filter(x => isCtrl(x.c) && x.cp.validee).slice(-3).map(x => final20(x.c, x.cp)); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+  const avgOf = (cl, mat, e) => { const v = studentCtrls(cl, mat, e).filter(x => isCtrl(x.c) && x.cp.validee).slice(-3).map(x => noteRetenue(x.c, e)?.retenue ?? final20(x.c, x.cp)); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
   const grid = cls.map(cl => ({cl, m:Object.fromEntries(mats.map(mat => { const v = (cl.eleves || []).map(e => avgOf(cl, mat, e)).filter(x => x != null); return [mat, v.length ? v.reduce((a, b) => a + b, 0) / v.length : null]; }))}));
   const risk = []; cls.forEach(cl => (cl.eleves || []).forEach(e => { const low = mats.map(m => [m, avgOf(cl, m, e)]).filter(([, a]) => a != null && a < 10); if (low.length >= 2) risk.push({cl, e, low}); }));
   const weak = []; cls.forEach(cl => mats.forEach(mat => { const st = notionStats(cl, mat); st.notions.forEach(k => { const v = Object.values(st.per).map(p => p[k]).filter(Boolean); if (v.length >= 3){ const r = v.reduce((a, o) => a + o.s / o.n, 0) / v.length; if (r < .5) weak.push({cl, mat, label:st.labels[k], r, n:v.length}); } }); }));
@@ -279,7 +280,7 @@ document.addEventListener("click", async ev => {
     try{
       const txt = await aiText(`Rédige l'appréciation de bulletin trimestriel d'un élève en ${mat} (classe de ${cl.niveau}).
 Prénom : ${e.prenom}
-Notes : ${hist.map(x => `${x.c.titre} : ${noteS(final20(x.c, x.cp))}${x.c.type === "rattrapage" ? " (rattrapage)" : x.c.type === "exercices" ? " (exercices)" : ""}`).join(" ; ")}
+Notes : ${hist.map(x => `${x.c.titre} : ${noteS(isCtrl(x.c) ? noteRetenue(x.c, e)?.retenue ?? final20(x.c, x.cp) : final20(x.c, x.cp))}${x.c.type === "rattrapage" ? " (rattrapage)" : x.c.type === "exercices" ? " (exercices)" : ""}`).join(" ; ")}
 Maîtrise par notion : ${notions}
 Extraits de commentaires de correction : ${coms}
 Style bulletin scolaire français : 2 à 3 phrases, 300 caractères maximum, à la 3e personne avec le prénom, juste et encourageante, avec un point fort et un conseil précis. Uniquement l'appréciation, sans guillemets. N'invente rien qui ne soit pas dans ces données.`, {modelTier:"quick"});
