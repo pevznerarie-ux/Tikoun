@@ -72,7 +72,7 @@ function vExercices(){
       <div class="row"><span class="chip ${QSTAT[q.statut]?.[1] || ""}">${QSTAT[q.statut]?.[0] || q.statut}</span>${q.statut !== "brouillon" ? `<span class="chip">${act}/${n} élèves</span><span class="chip">${Math.round(acq * 100)} % des notions acquises</span>` : ""}</div></a>`; };
   const sum = cl => { const qs = list.filter(q => q.classeId === cl.id), op = qs.filter(q => q.statut === "ouvert").length; return `${qs.length} quiz${op ? ` · <b style="color:var(--ok)">${op} ouvert(s)</b>` : ""} · ${(cl.eleves || []).length} élèves`; };
   return head + (list.length ? classAcc("quiz", quizClasses(), sum, cl => `<div>${list.filter(q => q.classeId === cl.id).map(row).join("")}</div>`) : `<section class="panel"><div class="empty">Aucun quiz pour l'instant. <a class="btn sm primary" href="#/exercices/nouveau">Créer mon premier quiz</a></div></section>`) + `
-  <section class="panel grid" style="gap:6px"><div class="label">Accès des élèves</div><p>Chaque élève se connecte sur <b>${esc(location.origin)}/eleve</b> avec son code personnel. Génère et imprime les cartes dans <a href="#/classes">Classes → Codes élèves</a>.</p></section>`;
+  <section class="panel grid" style="gap:6px"><div class="label">Accès des élèves</div><p>Chaque élève se connecte sur <b>${esc(location.origin)}/eleve</b> avec son code personnel et son nom de famille. Génère et imprime les cartes dans <a href="#/classes">Classes → Codes élèves</a>.</p></section>`;
 }
 
 /* ---------- Création ---------- */
@@ -193,14 +193,14 @@ const newCode = () => { let s = ""; for (const b of crypto.getRandomValues(new U
 function codesPanel(cl){
   if (!cl || !window.TIKOUN_CONFIG?.accounts) return "";
   const n = (cl.eleves || []).filter(e => e.code).length, tot = (cl.eleves || []).length;
-  return `<section class="panel grid" style="gap:10px"><div class="row between"><div><h3>Codes élèves</h3><p class="small muted">Pour les exercices en ligne : chaque élève se connecte sur <b>${esc(location.origin)}/eleve</b> avec son code personnel (sans e-mail).</p></div>
+  return `<section class="panel grid" style="gap:10px"><div class="row between"><div><h3>Codes élèves</h3><p class="small muted">Espace élève (résultats publiés, rattrapages, exercices en ligne) : chaque élève se connecte sur <b>${esc(location.origin)}/eleve</b> avec son code personnel et son nom de famille (sans e-mail).</p></div>
     <div class="row"><button class="btn sm" id="codes-gen"${n < tot ? "" : " disabled"}>${n < tot ? "Générer les codes manquants" : "Codes à jour"}</button>${n ? `<button class="btn sm primary" id="codes-print">Imprimer les cartes</button>` : ""}</div></div>
     ${n ? `<div class="row">${(cl.eleves || []).map(e => `<span class="chip">${esc(e.prenom)} ${esc((e.nom || "").slice(0, 1))}. · <b class="num">${esc(e.code || "—")}</b>${e.code ? ` <button class="btn sm ghost" style="padding:0 4px" data-recode="${e.id}" title="Nouveau code">↻</button>` : ""}</span>`).join("")}</div>` : ""}</section>`;
 }
 function printCards(cl){
   const url = location.origin + "/eleve?c=";
   const card = e => { let svg = ""; try { const qr = qrcode(0, "M"); qr.addData(url + e.code); qr.make(); svg = qr.createSvgTag({cellSize:3, margin:0}); } catch(err){}
-    return `<div class="c"><div class="h"><b>Mastery</b><span>${esc(cl.nom)}</span></div><div class="n">${esc(e.prenom)} ${esc(e.nom)}</div><div class="b"><div>${svg}</div><div><div class="l">Ton code</div><div class="k">${esc(e.code)}</div><div class="u">${esc(location.host)}/eleve</div></div></div></div>`; };
+    return `<div class="c"><div class="h"><b>Mastery</b><span>${esc(cl.nom)}</span></div><div class="n">${esc(e.prenom)} ${esc(e.nom)}</div><div class="b"><div>${svg}</div><div><div class="l">Ton code</div><div class="k">${esc(e.code)}</div><div class="u">${esc(location.host)}/eleve · code + nom de famille</div></div></div></div>`; };
   const w = window.open("", "_blank"); if (!w) return toast("Autorise les fenêtres pour imprimer les cartes.");
   w.document.write(`<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Cartes élèves · ${esc(cl.nom)}</title><style>
     body{font-family:Inter,Arial,sans-serif;margin:0;padding:10mm;color:#15233F}.g{display:grid;grid-template-columns:1fr 1fr;gap:6mm}

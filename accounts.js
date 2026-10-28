@@ -86,6 +86,7 @@ function vAuth(){
 }
 const KEEP = ["rg-nom","rg-mail","rg-pw","me-nom","ec-nom","ec-ville"]; let kept = {}; S.form = {};
 document.addEventListener("change", async ev => { if (ev.target.id === "rg-cgu") S.regCgu = ev.target.checked;
+  if (ev.target.id === "et-collecte"){ try { await api("/api/etab/reglages", {method:"POST", body:JSON.stringify({collecte:ev.target.checked})}); toast("Enregistré"); refreshMe(); } catch(e){ toast(e.message || "Impossible"); } return; }
   if (ev.target.id === "me-partage"){ try { const j = await api("/api/me", {method:"PATCH", body:JSON.stringify({partageEcriture:ev.target.checked})}); S.me = j.user; toast("Enregistré"); } catch(e){ toast(e.message); } }
   if (ev.target.id === "me-bareme"){ try { const j = await api("/api/me", {method:"PATCH", body:JSON.stringify({bareme:ev.target.value})}); S.me = j.user; toast("Enregistré"); render(); } catch(e){ toast(e.message); } } });
 document.addEventListener("input", ev => { const el = ev.target; if (KEEP.includes(el.id)) S.form[el.id] = el.value; });
@@ -125,7 +126,14 @@ function vCompte(){
       <div class="field"><label for="qp-prof">Profondeur</label><select id="qp-prof">${selOpts(["simple","standard","exigeant"], Q.profondeur, x => ({simple:"Simple : appliquer le cours", standard:"Standard : comprendre et expliquer", exigeant:"Exigeant : raisonner et argumenter"}[x]))}</select></div></div>
     <div class="field"><label for="qp-long">Longueur des réponses</label><select id="qp-long">${selOpts(["courte","moyenne","developpee"], Q.longueur, x => ({courte:"Courtes (3 à 5 lignes)", moyenne:"Moyennes (5 à 8 lignes)", developpee:"Développées (8 à 14 lignes)"}[x]))}</select></div>
     <label class="row small" style="gap:6px"><input type="checkbox" id="qp-just"${Q.justif ? " checked" : ""}> <span>Questions à choix : toujours laisser un cadre pour justifier la réponse (corrigé par l'IA)</span></label>
-    <div class="row"><button class="btn primary" id="qp-save">Enregistrer</button></div></section>`; })()}
+    <div class="row"><button class="btn primary" id="qp-save">Enregistrer</button></div></section>
+  <section class="panel grid" style="max-width:640px" id="ratt-regles"><h3>Rattrapage</h3>
+    <p class="small muted" style="margin:0">Qui peut avoir un rattrapage, et comment sa note compte. Chaque rattrapage peut avoir sa propre règle (bouton « ⚙ Règles » sur la page du rattrapage).</p>
+    <div class="form-row"><div class="field"><label for="rp-seuil">Rattrapage proposé sous</label><select id="rp-seuil">${selOpts(["8","9","10","11","12"], String(P.ratt.seuil), x => noteS(+x))}</select></div>
+      <div class="field"><label for="rp-regle">Note retenue</label><select id="rp-regle">${selOpts(Object.keys(RREGLES), P.ratt.regle, x => RREGLES[x])}</select></div></div>
+    <div class="form-row">${P.ratt.regle === "bonus" ? `<div class="field"><label for="rp-bonus">Bonus maximum (20/20 au rattrapage)</label><select id="rp-bonus">${selOpts(["1","2","3","4","5"], String(P.ratt.bonus), x => "+" + x + " point" + (x > 1 ? "s" : ""))}</select></div>` : ""}
+      ${["meilleure", "bonus", "remplace"].includes(P.ratt.regle) ? `<div class="field"><label for="rp-plaf">Plafond de la note retenue</label><select id="rp-plaf">${selOpts(["10","12","14","16","20"], String(P.ratt.plafond), x => x === "20" ? "Aucun" : noteS(+x))}</select></div>` : ""}</div>
+    <p class="small" style="margin:0;padding:10px 12px;border-radius:10px;background:var(--surface-2)">Exemple : 6 au contrôle et 16 au rattrapage → note retenue <b>${(() => { const R = P.ratt, b = 6, n = 16, cap = v => Math.min(v, R.plafond); return noteS(R.regle === "bonus" ? Math.max(b, cap(b + R.bonus * n / 20)) : R.regle === "moyenne" ? (b + n) / 2 : R.regle === "remplace" ? cap(n) : R.regle === "formatif" ? b : Math.max(b, cap(n))); })()}</b> (${esc(ruleTxt(P.ratt))}).</p></section>`; })()}
   <section class="panel grid" style="max-width:640px"><h3>Les matières que j'enseigne</h3>
     <p class="small muted" style="margin:0">Seules ces matières te seront proposées. Si tu n'en enseignes qu'une, elle est choisie toute seule quand tu prépares un contrôle.</p>
     <div class="row">${enseigne().map(m => `<span class="chip">${esc(m)} <button class="btn sm ghost" style="padding:0 4px" data-ensdel="${esc(m)}" aria-label="Retirer">×</button></span>`).join("") || `<span class="small muted">Aucune matière choisie : toute la liste est proposée.</span>`}</div>
@@ -133,7 +141,8 @@ function vCompte(){
     <div class="row"><input id="mat-new" placeholder="Matière absente de la liste" style="max-width:260px"><button class="btn sm" id="mat-go">Ajouter</button></div></section>
   ${abonnementPanel()}${etabPanel()}${devicesPanel()}${parrainagePanel()}
   <section class="panel grid" style="max-width:640px"><h3>Amélioration de la lecture</h3>
-    <label class="row small" style="gap:8px;align-items:flex-start"><input type="checkbox" id="me-partage" style="width:auto;margin-top:3px"${S.me?.partageEcriture ? " checked" : ""}${isAdmin() ? " disabled" : ""}><span>Partager anonymement mes corrections de lecture (image du cadre de réponse et texte corrigé, jamais le nom de l'élève) pour améliorer la lecture de l'écriture manuscrite.</span></label></section>
+    <label class="row small" style="gap:8px;align-items:flex-start"><input type="checkbox" id="me-partage" style="width:auto;margin-top:3px"${S.me?.partageEcriture ? " checked" : ""}${isAdmin() ? " disabled" : ""}><span>Aider Mastery à mieux lire l'écriture manuscrite : quand je corrige une lecture, l'image du cadre de réponse et mon texte corrigé sont conservés, sans nom d'élève, de classe, de note ni d'établissement, 2 ans au plus, uniquement pour améliorer la lecture de Mastery.</span></label>
+    ${S.me?.etab && S.me.etab.collecte === false ? `<p class="small muted" style="margin:0">Désactivé par la direction de ton établissement.</p>` : ""}</section>
   <section class="panel grid" style="max-width:640px"><h3>Notes affichées</h3>
     <p class="small muted" style="margin:0">Les calculs restent identiques ; seul l'affichage des notes change.</p>
     <select id="me-bareme" style="max-width:320px">${[["20","Sur 20 (France)"],["10","Sur 10 (Brésil)"],["100","Pourcentage (%)"],["AF","Lettres A à F (États-Unis)"]].map(([k, t]) => `<option value="${k}"${bareme() === k ? " selected" : ""}>${t}</option>`).join("")}</select></section>
@@ -310,6 +319,7 @@ function etabPanel(){
       <p class="small muted" style="margin:0;align-self:end">${P.ecole ? esc(P.ecole) + " · " : ""}tous les professeurs sont inclus.</p></div>
     <div class="row"><button class="btn sm" id="et-save">Enregistrer</button>${S.me?.billing ? (ab && ["active","trialing","past_due"].includes(ab.status) ? `<button class="btn sm" id="et-portal">Gérer l'abonnement de l'établissement</button>` : `<button class="btn sm primary" id="et-pay-go">Payer le forfait établissement</button>`) : ""}</div>
     ${ab?.fin ? `<p class="small muted" style="margin:0">${ab.annule ? "Se termine" : "Renouvellement"} le ${frDate(ab.fin.slice(0, 10))}.</p>` : ""}
+    <label class="row small" style="gap:8px;align-items:flex-start"><input type="checkbox" id="et-collecte" style="width:auto;margin-top:3px"${e.collecte !== false ? " checked" : ""}><span>Les corrections de lecture des professeurs aident Mastery à mieux lire l'écriture manuscrite (sans nom d'élève, de classe, de note ni d'établissement). Décoche pour l'arrêter dans tout l'établissement.</span></label>
     <div><b class="small">Professeurs (${(e.membres || []).length})</b>${(e.membres || []).map(m => `<div class="item"><div><div class="t">${esc(m.nom)}</div><div class="s">${esc(m.email)}</div></div><button class="btn sm ghost" data-etout="${m.id}">Retirer</button></div>`).join("") || `<p class="small muted">Aucun professeur pour l'instant : donne-leur le code.</p>`}</div>
     ${(e.membres || []).length ? "" : `<div class="row"><button class="btn sm ghost danger" id="et-quit">Supprimer cet établissement</button></div>`}<div class="status" id="et-st"></div></section>`;
 }
