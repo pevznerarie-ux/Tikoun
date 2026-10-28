@@ -123,6 +123,8 @@ const PREF_Q = {format:["redige","mixte","qcm"], profondeur:["simple","standard"
 const cleanPrefs = p => { const n = (v, a, b, d) => { v = +v; return v >= a && v <= b ? v : d; }, q = isObj(p.q) ? p.q : {};
   return {police:n(p.police, 13, 17, 15), lh:n(p.lh, 26, 46, 30), reglure:["lignes", "seyes", "carreaux", "aucune"].includes(p.reglure) ? p.reglure : "lignes",
     ton:["bienveillant", "neutre", "exigeant", "chaleureux"].includes(p.ton) ? p.ton : "bienveillant", adresse:p.adresse === "vous" ? "vous" : "tu",
+    ...(isObj(p.notation) && ["sur", "pct", "lettres"].includes(p.notation.type) ? {notation:(N => ({type:N.type, sur:Math.round(n(N.sur, 1, 1000, 20)), pas:[1, 0.5, 0.25, 0.1, 0.01].includes(+N.pas) ? +N.pas : N.type === "pct" ? 1 : 0.1,
+      lettres:(Array.isArray(N.lettres) ? N.lettres : []).slice(0, 20).map(x => ({l:String(x?.l || "").trim().slice(0, 30), min:n(x?.min, 0, 100, 0)})).filter(x => x.l), pctLettre:N.pctLettre !== false}))(p.notation)} : {}),
     periodes:(r => { const md = (v, d) => /^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(v || "") ? v : d; return {mode:r.mode === "sem" ? "sem" : "trim", t2:md(r.t2, "12-01"), t3:md(r.t3, "03-15"), s2:md(r.s2, "02-01")}; })(isObj(p.periodes) ? p.periodes : {}), bareme:p.bareme !== false, consignes:String(p.consignes ?? "Écris uniquement dans les cadres.").slice(0, 400),
     q:Object.fromEntries(Object.entries(PREF_Q).map(([k, l]) => [k, l.includes(q[k]) ? q[k] : l[1]]).concat([["justif", q.justif !== false]])),
     ratt:(r => ({seuil:n(r.seuil, 5, 15, 10), regle:["meilleure", "bonus", "moyenne", "remplace", "formatif"].includes(r.regle) ? r.regle : "meilleure", plafond:n(r.plafond, 10, 20, 10), bonus:n(r.bonus, 1, 5, 3)}))(isObj(p.ratt) ? p.ratt : {})}; };

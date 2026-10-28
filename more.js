@@ -409,8 +409,8 @@ document.addEventListener("click", async ev => {
   if (d.sutab){ S.su.tab = d.sutab; return render(); }
   if (d.vu){ const cl = classe(S.su.cl); if (!cl) return; const cur = vusOf(cl); await write("bilans/vus_" + cl.id, {classeId:cl.id, k:{...cur, [d.vu]:new Date().toISOString()}}); return; }
   if (t.id === "an-csv"){ const cl = classe(S.su.cl), mat = S.su.mat, y = S.su.y, els = cl.eleves || [], cs = yearCtrls(cl, mat, y).filter(c => els.some(e => noteDe(c, e) != null));
-    const np = bornes().length + 1, f = v => v == null ? "" : String(Math.round(v * 100) / 100).replace(".", ","), q = x => '"' + String(x).replace(/"/g, '""') + '"';
-    const head = ["Élève", ...cs.map(c => `${c.titre} (${ctrlDay(c)}, coef ${coefOf(c)})`), ...Array.from({length:np}, (_, i) => "Moyenne " + perAbr(i)), "Moyenne annuelle"];
+    const np = bornes().length + 1, f = v => v == null ? "" : nv(v), q = x => '"' + String(x).replace(/"/g, '""') + '"';
+    const head = [`Élève (notes ${sfx() || "en niveaux"})`, ...cs.map(c => `${c.titre} (${ctrlDay(c)}, coef ${coefOf(c)})`), ...Array.from({length:np}, (_, i) => "Moyenne " + perAbr(i)), "Moyenne annuelle"];
     const rows = els.map(e => { const M = moyennes(cs, e); return [e.prenom + " " + e.nom, ...cs.map(c => isAbs(c, e) ? "ABS" : f(noteDe(c, e))), ...M.per.map(f), f(M.an)]; });
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["\ufeff" + [head, ...rows].map(r => r.map(q).join(";")).join("\r\n")], {type:"text/csv;charset=utf-8"}));
     a.download = `Suivi ${cl.nom} - ${mat} - ${yearLab(y)}.csv`; a.click(); return; }
