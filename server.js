@@ -737,19 +737,29 @@ async function aiProxy(req, res, u){
   if (!Array.isArray(body?.messages) || body.messages.length > 40) return sendJ(res, 400, {error:{message:"Requête invalide"}});
   if (body?.feature === "exercices" && !entitled(u)) return sendJ(res, 403, {error:{message:"Exercices en ligne non activés pour ce compte (à partir du forfait Essentiel)"}});
   if (!access(u).ok) return sendJ(res, 402, {error:{message:NO_ACCESS, code:"no_access"}});
+  /* Numéro de demande : si la page perd la connexion (téléphone verrouillé, changement d'application), elle redemande
+     avec le même numéro et reçoit le résultat déjà calculé, sans nouvel appel ni nouveau coût */
+  const rid = /^[a-z0-9]{8,40}$/.test(String(body.rid || "")) ? u.id + ":" + body.rid : null;
+  if (rid && AIR.has(rid)){ const o = await AIR.get(rid).p; return o.json ? sendJ(res, o.status, o.json) : send(res, o.status, o.txt, TYPES[".json"]); }
   const stop = allowCall(ipOf(req), u.id); if (stop) return sendJ(res, 429, {error:{message:stop}});
+  const job = aiCall(body, u); if (rid){ AIR.set(rid, {p:job, at:Date.now()}); job.then(o => { if (o.status !== 200) AIR.delete(rid); }); }
+  const o = await job; return o.json ? sendJ(res, o.status, o.json) : send(res, o.status, o.txt, TYPES[".json"]);
+}
+const AIR = new Map();
+setInterval(() => { const old = Date.now() - 20 * 60e3; for (const [k, v] of AIR) if (v.at < old) AIR.delete(k); }, 60e3).unref();
+async function aiCall(body, u){
   scrubNames(body, u);
   const tier = tierOk(body?.tier), M = MODELS(), model = M[tier];
   const r = await fetch((env("ANTHROPIC_BASE_URL") || "https://api.anthropic.com") + "/v1/messages", {method:"POST", signal:AbortSignal.timeout(200000),
     headers:{"content-type":"application/json", "x-api-key":env("ANTHROPIC_API_KEY"), "anthropic-version":"2023-06-01"},
     body:JSON.stringify({model, max_tokens:Math.min(+env("AI_MAX_TOKENS") || 32000, MAXTOK[tier]), messages:body.messages})}).catch(() => null);
-  if (!r) return sendJ(res, 502, {error:{message:"IA injoignable"}});
-  const txt = await r.text();
+  if (!r) return {status:502, json:{error:{message:"IA injoignable"}}};
+  const txt = await r.text().catch(() => "");
   if (r.ok){ try { const us = JSON.parse(txt).usage; spend(u, tier, us); console.log(`IA ${model} · ${u.id} · entrée ${us?.input_tokens} · sortie ${us?.output_tokens}`); } catch(e){} }
   else console.warn("IA erreur", r.status, txt.slice(0, 300));
   // Clé IA refusée par Anthropic : ce n'est pas la session du professeur (401 le renverrait à la connexion)
-  if (r.status === 401 || r.status === 403) return sendJ(res, 502, {error:{message:"Clé IA du serveur refusée : vérifie ANTHROPIC_API_KEY sur Railway."}});
-  send(res, r.status, txt, TYPES[".json"]);
+  if (r.status === 401 || r.status === 403) return {status:502, json:{error:{message:"Clé IA du serveur refusée : vérifie ANTHROPIC_API_KEY sur Railway."}}};
+  return {status:r.status, txt};
 }
 
 /* ---------- Correction en arrière-plan (sur le serveur) ----------

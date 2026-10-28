@@ -218,11 +218,14 @@ document.addEventListener("click", async ev => {
     if (t.id === "qn-import"){ S.params.kind = "quiz"; S.wizStep = 1; return go("new"); }
     if (t.id === "qn-go"){ const o = S.qn, co = store.cours.find(c => c.id === o.coursId), cl = classe(o.classeId), st = $("#qn-st");
       if (!o.types.length) return toast("Choisis au moins un type de question.");
-      t.disabled = true; st.innerHTML = `<span class="thinking">L'IA prépare ${o.banque} questions (1 à 2 minutes)…</span>`;
-      try { const auto = o.types.filter(x => x !== "redige"); const lang = o.langue || langueDef(co.texte); const g = await genQuizQuestions(co, {matiere:co.matiere, niveau:co.niveau, types:o.types, consignes:o.consignes, langue:lang}, +o.banque);
-        const id = uid(12); await write("quizzes/" + id, {titre:o.titre || g.titre || "Quiz · " + co.titre, matiere:co.matiere, niveau:co.niveau, classeId:cl.id, coursId:co.id, statut:"brouillon", parTentative:+o.parTentative, fermeture:o.fermeture || "", redige:o.types.includes("redige"), types:o.types, consignes:o.consignes || "", langue:lang, questions:g.questions, createdAt:new Date().toISOString()});
-        S.qn.titre = ""; S.qz = {id, tab:"questions", el:null}; location.hash = `#/exercices/${id}/questions`; void auto; }
-      catch(e){ st.textContent = aiErr(e?.code); t.disabled = false; } return; }
+      const O = structuredClone(o);
+      if (bgTask({key:"quiz", label:"Nouveau quiz d'exercices", btn:"#qn-go", run:async () => {
+        const lang = O.langue || langueDef(co.texte); const g = await genQuizQuestions(co, {matiere:co.matiere, niveau:co.niveau, types:O.types, consignes:O.consignes, langue:lang}, +O.banque);
+        const id = uid(12), ti = O.titre || g.titre || "Quiz · " + co.titre;
+        await write("quizzes/" + id, {titre:ti, matiere:co.matiere, niveau:co.niveau, classeId:cl.id, coursId:co.id, statut:"brouillon", parTentative:+O.parTentative, fermeture:O.fermeture || "", redige:O.types.includes("redige"), types:O.types, consignes:O.consignes || "", langue:lang, questions:g.questions, createdAt:new Date().toISOString()});
+        S.qn.titre = ""; return {open:`#/exercices/${id}/questions`, msg:"Quiz prêt : « " + ti + " »."}; }}))
+        st.innerHTML = `<span class="thinking">L'IA prépare ${o.banque} questions (1 à 2 minutes).</span> ${TASK_WAIT}`;
+      return; }
     const q = S.view === "quiz" ? quizOf(S.qz.id) : null;
     if (q){
       if (d.qzstat){ if (d.qzstat === "ouvert" && !(q.questions || []).length) return toast("Ajoute des questions avant de publier."); q.statut = d.qzstat; await write("quizzes/" + q.id, q); toast(d.qzstat === "ouvert" ? "Quiz ouvert : les élèves le voient avec leur code." : "Quiz clos."); return; }
@@ -230,10 +233,13 @@ document.addEventListener("click", async ev => {
       if (d.qqdel){ q.questions = q.questions.filter(x => x.id !== d.qqdel); await write("quizzes/" + q.id, q); return; }
       if (t.id === "qz-more" || t.id === "qz-regen"){ const co = store.cours.find(c => c.id === q.coursId); if (!co) return toast("Cours d'origine introuvable.");
         if (t.id === "qz-regen" && !confirm("Remplacer toutes les questions par une nouvelle banque ? Les résultats déjà obtenus restent.")) return;
-        const st = $("#qz-st"); t.disabled = true; st.innerHTML = `<span class="thinking">L'IA prépare de nouvelles questions…</span>`;
-        try { const n = t.id === "qz-more" ? 10 : (q.questions || []).length || 30; const g = await genQuizQuestions(co, {matiere:q.matiere, niveau:q.niveau, types:q.types || ["qcm","vf","num","trou"], consignes:q.consignes, langue:q.langue}, n, (q.questions || []).map(x => x.enonce));
-          q.questions = t.id === "qz-more" ? [...(q.questions || []), ...g.questions] : g.questions; await write("quizzes/" + q.id, q); toast(g.questions.length + " nouvelle(s) question(s)."); }
-        catch(e){ st.textContent = aiErr(e?.code); t.disabled = false; } return; }
+        const st = $("#qz-st"), more = t.id === "qz-more";
+        if (bgTask({key:"qz:" + q.id, label:(more ? "Nouvelles questions" : "Nouvelle banque") + " pour « " + q.titre + " »", btn:"#" + t.id, run:async () => {
+          const n = more ? 10 : (q.questions || []).length || 30; const g = await genQuizQuestions(co, {matiere:q.matiere, niveau:q.niveau, types:q.types || ["qcm","vf","num","trou"], consignes:q.consignes, langue:q.langue}, n, (q.questions || []).map(x => x.enonce));
+          const cur = structuredClone(quizOf(q.id) || q); cur.questions = more ? [...(cur.questions || []), ...g.questions] : g.questions; await write("quizzes/" + q.id, cur);
+          return {open:`#/exercices/${q.id}/questions`, msg:g.questions.length + " nouvelle(s) question(s) pour « " + q.titre + " »."}; }}))
+          st.innerHTML = `<span class="thinking">L'IA prépare de nouvelles questions.</span> ${TASK_WAIT}`;
+        return; }
       if (d.rednote){ const [eid, i, v] = d.rednote.split("|"); const k = "quizrep/" + q.id + "_" + eid, r = store.quizrep[q.id + "_" + eid]; if (!r) return;
         const red = structuredClone(r.redigees || []); if (red[+i]) red[+i].note = +v; await write(k, {redigees:red}, "update"); return; }
       if (t.id === "qz-redai"){ const st = $("#qz-redst"); const items = []; repsOf(q.id).forEach(r => (r.redigees || []).forEach((a, i) => { const x = (q.questions || []).find(y => y.id === a.qid); if (a.note == null && x) items.push({r, i, x, a}); }));
