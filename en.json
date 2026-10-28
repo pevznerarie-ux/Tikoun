@@ -1812,5 +1812,14 @@
  "· note": "· score",
  "· commentaire :": "· comment:",
  "Ces questions sont INTERDITES (doublons d'une question du contrôle) :": "These questions are FORBIDDEN (duplicates of a test question):",
- "questions, dans le même ordre, chacune sur la MÊME notion, avec les MÊMES points, le même type et la même difficulté, mais qui demande AUTRE CHOSE : autres valeurs, autre exemple, autre situation, ou un autre élément de la notion, avec une réponse attendue différente de l'original. Reformuler la question d'origine (ou la transformer en vrai/faux, texte à trous ou QCM qui attend la même réponse) est interdit.": "questions, in the same order, each on the SAME concept, with the SAME points, the same type and the same difficulty, but asking for SOMETHING ELSE: other values, another example, another situation, or another element of the concept, with an expected answer different from the original. Rephrasing the original question (or turning it into true/false, fill-in-the-blank or multiple choice expecting the same answer) is forbidden."
+ "questions, dans le même ordre, chacune sur la MÊME notion, avec les MÊMES points, le même type et la même difficulté, mais qui demande AUTRE CHOSE : autres valeurs, autre exemple, autre situation, ou un autre élément de la notion, avec une réponse attendue différente de l'original. Reformuler la question d'origine (ou la transformer en vrai/faux, texte à trous ou QCM qui attend la même réponse) est interdit.": "questions, in the same order, each on the SAME concept, with the SAME points, the same type and the same difficulty, but asking for SOMETHING ELSE: other values, another example, another situation, or another element of the concept, with an expected answer different from the original. Rephrasing the original question (or turning it into true/false, fill-in-the-blank or multiple choice expecting the same answer) is forbidden.",
+ "C'est parti : tu peux continuer ailleurs, ou même fermer l'application. Je te préviens quand c'est prêt.": "Started: you can keep working elsewhere, or even close the app. I'll let you know when it's ready.",
+ "Feuille déjà imprimée : nouvelle feuille d'exercices prête": "Sheet already printed: new practice sheet ready",
+ "Feuilles déjà imprimées : nouvelle version prête": "Sheets already printed: new version ready",
+ "Impossible de lancer la génération : réessaie.": "Couldn't start the generation: try again.",
+ "Nouveau contrôle généré": "New test generated",
+ "Nouveaux exercices prêts": "New practice exercises ready",
+ "Variante prête": "Variant ready",
+ "prêt": "ready",
+ "Nouveau rattrapage de": "New remediation for"
 }

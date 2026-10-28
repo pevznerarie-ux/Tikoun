@@ -1813,5 +1813,14 @@
  "· note": "· nota",
  "· commentaire :": "· comentário:",
  "Ces questions sont INTERDITES (doublons d'une question du contrôle) :": "Estas questões são PROIBIDAS (duplicatas de uma questão da prova):",
- "questions, dans le même ordre, chacune sur la MÊME notion, avec les MÊMES points, le même type et la même difficulté, mais qui demande AUTRE CHOSE : autres valeurs, autre exemple, autre situation, ou un autre élément de la notion, avec une réponse attendue différente de l'original. Reformuler la question d'origine (ou la transformer en vrai/faux, texte à trous ou QCM qui attend la même réponse) est interdit.": "questões, na mesma ordem, cada uma sobre o MESMO conceito, com os MESMOS pontos, o mesmo tipo e a mesma dificuldade, mas pedindo OUTRA COISA: outros valores, outro exemplo, outra situação ou outro elemento do conceito, com uma resposta esperada diferente da original. Reformular a questão original (ou transformá-la em verdadeiro/falso, lacuna ou múltipla escolha com a mesma resposta) é proibido."
+ "questions, dans le même ordre, chacune sur la MÊME notion, avec les MÊMES points, le même type et la même difficulté, mais qui demande AUTRE CHOSE : autres valeurs, autre exemple, autre situation, ou un autre élément de la notion, avec une réponse attendue différente de l'original. Reformuler la question d'origine (ou la transformer en vrai/faux, texte à trous ou QCM qui attend la même réponse) est interdit.": "questões, na mesma ordem, cada uma sobre o MESMO conceito, com os MESMOS pontos, o mesmo tipo e a mesma dificuldade, mas pedindo OUTRA COISA: outros valores, outro exemplo, outra situação ou outro elemento do conceito, com uma resposta esperada diferente da original. Reformular a questão original (ou transformá-la em verdadeiro/falso, lacuna ou múltipla escolha com a mesma resposta) é proibido.",
+ "C'est parti : tu peux continuer ailleurs, ou même fermer l'application. Je te préviens quand c'est prêt.": "Começou: você pode continuar em outra parte, ou até fechar o app. Eu aviso quando estiver pronto.",
+ "Feuille déjà imprimée : nouvelle feuille d'exercices prête": "Folha já impressa: nova folha de exercícios pronta",
+ "Feuilles déjà imprimées : nouvelle version prête": "Folhas já impressas: nova versão pronta",
+ "Impossible de lancer la génération : réessaie.": "Não foi possível iniciar a geração: tente de novo.",
+ "Nouveau contrôle généré": "Nova prova gerada",
+ "Nouveaux exercices prêts": "Novos exercícios prontos",
+ "Variante prête": "Variante pronta",
+ "prêt": "pronto",
+ "Nouveau rattrapage de": "Nova recuperação de"
 }

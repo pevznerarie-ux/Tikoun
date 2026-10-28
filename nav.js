@@ -80,6 +80,26 @@ function ctrlRow(c, meta){
     <span class="btn sm crow-go">${c.statut === "corrige" ? "Voir" : "Continuer"} →</span></a>`;
 }
 
+/* Rattrapages d'un même contrôle : une seule ligne (« Rattrapages · titre · N élèves ») qui mène à l'étape Classe & rattrapage */
+function groupRatt(list){
+  const out = [], by = {};
+  for (const c of list){
+    if (c.type === "rattrapage" && c.parentId && ctrl(c.parentId)){ if (by[c.parentId]){ by[c.parentId].rs.push(c); continue; } out.push(by[c.parentId] = {pid:c.parentId, rs:[c]}); }
+    else out.push(c);
+  }
+  return out;
+}
+const rattDone = x => x.rs ? x.rs.every(c => c.statut === "corrige") : x.statut === "corrige";
+function rattGroupRow(g){
+  const p = ctrl(g.pid), rs = g.rs, n = k => rs.filter(c => (c.statut || "brouillon") === k).length;
+  const noms = rs.flatMap(c => studentsOf(c).map(e => e.prenom)).join(", ");
+  const st = [[n("brouillon"), "à préparer"], [n("imprime"), "imprimé(s)"], [n("correction"), "en correction"], [n("corrige"), "corrigé(s)"]].filter(x => x[0]).map(x => x[0] + " " + x[1]).join(" · ");
+  return `<a class="crow" href="#/controle/${g.pid}/classe">
+    <div class="crow-main"><div class="t"><span class="chip blue">Rattrapages</span> ${esc(p.titre)}</div><div class="s">${rs.length} élève${rs.length > 1 ? "s" : ""} : ${esc(noms)}</div></div>
+    <div class="crow-prog"><span class="crow-st ${rattDone(g) ? "ok" : ""}">${st}</span></div>
+    <span class="btn sm crow-go">Ouvrir →</span></a>`;
+}
+
 /* Liste des contrôles, rangés */
 function ctrlList(){
   const f = S.cf = S.cf || {st:"tous", mat:""};
@@ -102,7 +122,7 @@ function vControles(){
     <div class="row">${isBoss() ? `<select id="scope-sel" style="width:auto" aria-label="Portée">${selOpts(["moi","ecole"], S.scope, x => x === "moi" ? "Mes contrôles" : "Toute l'école")}</select>` : ""}<a class="btn primary" href="#/nouveau">+ Nouveau contrôle</a></div></div>
   <div class="row">${F.map(([k, l]) => `<button class="fchip ${f.st === k ? "on" : ""}" data-cf="${k}">${l} <span class="num">${cnt(k)}</span></button>`).join("")}
     ${mats.length > 1 ? `<select id="cf-mat" style="width:auto;margin-left:auto" aria-label="Matière"><option value="">Toutes les matières</option>${selOpts(mats, f.mat)}</select>` : ""}</div>
-  ${list.length ? classAcc("ctrl", ctrlClasses(), sum, cl => `<div>${of(cl).map(line).join("")}</div>`) : `<section class="panel empty">Aucun contrôle ${f.st !== "tous" ? "dans cette catégorie" : "pour l'instant"}.</section>`}`;
+  ${list.length ? classAcc("ctrl", ctrlClasses(), sum, cl => `<div>${groupRatt(of(cl)).map(x => x.rs ? rattGroupRow(x) : line(x)).join("")}</div>`) : `<section class="panel empty">Aucun contrôle ${f.st !== "tous" ? "dans cette catégorie" : "pour l'instant"}.</section>`}`;
 }
 document.addEventListener("click", ev => { const t = ev.target.closest("[data-cf]"); if (!t) return; S.cf.st = t.dataset.cf; render(); });
 document.addEventListener("change", ev => { if (ev.target.id === "cf-cl"){ S.cf.cl = ev.target.value; render(); } if (ev.target.id === "cf-mat"){ S.cf.mat = ev.target.value; render(); } });

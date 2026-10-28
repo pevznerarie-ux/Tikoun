@@ -787,7 +787,40 @@ function bgTask(o){   // o = {key, label, btn, run:async () => ({open, msg})}
   })();
   return true;
 }
-const TASK_WAIT = "Começou: você pode continuar em outra parte, eu aviso quando estiver pronto.";
+/* Génération confiée au serveur quand il le permet : elle continue même application fermée ou téléphone verrouillé.
+   o = {key, label, btn, spec:() => corps de la tâche serveur, run:() => repli dans la page} */
+const SRV_GEN = () => !!(window.TIKOUN_CONFIG?.jobs && typeof SERVERSTORE !== "undefined" && SERVERSTORE);
+async function aiTask(o){
+  if (TASKS.some(x => x.key === o.key)){ toast("Já em andamento: " + o.label + "."); return false; }
+  if (!SRV_GEN()) return bgTask(o);
+  let body; try { body = await o.spec(); } catch(e){ if (e?.code !== "cancelled") toast(aiErr(e?.code) + (e?.message ? " (" + e.message + ")" : ""), 7000); return false; }
+  askNotif();
+  try { const j = await api("/api/gen", {method:"POST", body:JSON.stringify({label:o.label, ...body})});
+    TASKS.push({key:o.key, label:o.label, btn:o.btn, gen:j.gen.id, hash:location.hash}); tasksUI(); markTaskBtns(); genPoll(); return true; }
+  catch(e){ toast(e?.message || "Não foi possível iniciar a geração: tente de novo.", 7000); return false; }
+}
+let genTimer = null, genBusy = false, GEN_STARTED = false;
+async function genPoll(){
+  if (genBusy || !SRV_GEN() || !S.me) return; genBusy = true; clearTimeout(genTimer);
+  try {
+    const list = (await api("/api/gen")).gens || [];
+    for (const g of list){
+      const tk = TASKS.find(t => t.gen === g.id);
+      if (g.status === "attente" || g.status === "en_cours"){ if (!tk) TASKS.push({key:"gen:" + g.id, label:g.label, gen:g.id}); continue; }
+      if (tk) TASKS.splice(TASKS.indexOf(tk), 1);
+      if (g.seen) continue;
+      api("/api/gen/" + g.id + "/vu", {method:"POST"}).catch(() => {});
+      if (g.status === "erreur"){ notify(g.label + " : falhou. " + (g.msg || ""), null, true); continue; }
+      if (typeof SYNC === "function") await SYNC();   // le document écrit par le serveur arrive avant qu'on l'ouvre
+      if (tk && g.open && location.hash === tk.hash && document.visibilityState === "visible"){ location.hash = g.open; toast(g.msg, 4000); }
+      else notify(g.msg, g.open);
+    }
+    tasksUI(); markTaskBtns(); scheduleRender();
+  } catch(e){} finally { genBusy = false; }
+  if (TASKS.some(t => t.gen)) genTimer = setTimeout(genPoll, document.visibilityState === "visible" ? 3000 : 15000);
+}
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") genPoll(); });
+const TASK_WAIT = "Começou: você pode continuar em outra parte, ou até fechar o app. Eu aviso quando estiver pronto.";
 function markTaskBtns(){ for (const t of TASKS) if (t.btn) $$(t.btn).forEach(b => { b.disabled = true; if (!b.dataset.busy){ b.dataset.busy = 1; b.innerHTML = `<span class="thinking">En cours…</span>`; } }); }
 function tasksUI(){
   let el = document.getElementById("tasks-chip");
@@ -809,7 +842,7 @@ function notify(msg, open, bad){
   it.querySelector(".ntf-x").addEventListener("click", () => it.remove());
   box.append(it); setTimeout(() => it.remove(), 20000);
 }
-window.addEventListener("beforeunload", ev => { if (TASKS.length){ ev.preventDefault(); ev.returnValue = ""; } });
+window.addEventListener("beforeunload", ev => { if (TASKS.some(t => !t.gen)){ ev.preventDefault(); ev.returnValue = ""; } });
 
 /* ================= AI ================= */
 async function ai(prompt, opts = {}){
@@ -865,7 +898,7 @@ function render(){
   skipped = false;
   $$(".tab").forEach(t => t.setAttribute("aria-selected", t.dataset.r === navKey()));
   const LOADING = window.TIKOUN_CONFIG?.storage === "server" && !S.auth && (!S.me || typeof DATA_READY === "undefined" || !DATA_READY);
-  if (!LOADING) hideSplash();
+  if (!LOADING){ hideSplash(); if (S.me && !GEN_STARTED){ GEN_STARTED = true; setTimeout(genPoll, 1200); } }
   const V = LOADING ? vLoading : S.auth ? vAuth : (typeof SB !== "undefined" && SB && !SB_USER) ? vLogin : (typeof NEED_CODE !== "undefined" && NEED_CODE) ? vCode : {home:vHome, classes:vClasses, new:vNew, edit:vEdit, scan:vScan, correct:vCorrect, analyse:vAnalyse, suivi:vSuivi, banque:vBanque, direction:vDirection, reglages:vReglages, controles:vControles, exercices:vExercices, quiznew:vQuizNew, quiz:vQuiz, compte:vCompte, comptes:vComptes, entrainement:vEntrainement}[S.view] || vHome;
   $("#tabs").hidden = V === vLogin || V === vCode || V === vAuth || V === vLoading; $("#umenu").hidden = $("#tabs").hidden && !(V === vAuth && S.me);
   { const acc = !!window.TIKOUN_CONFIG?.accounts; const tg = (id, h) => { const e = document.getElementById(id); if (e) e.hidden = h; };
@@ -903,9 +936,9 @@ function vHome(){
     <div class="row"><button class="btn primary" data-go="classes">Criar uma turma</button><button class="btn" id="demo">Carregar uma turma de demonstração</button></div>
   </section>`;
   const cs = [...store.controles].sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
-  const todo = cs.filter(c => c.statut !== "corrige"), done = cs.filter(c => c.statut === "corrige");
+  const items = groupRatt(cs), todo = items.filter(x => !rattDone(x)), done = items.filter(rattDone);   // les rattrapages d'un même contrôle tiennent sur une ligne
   let aValider = 0; cs.forEach(c => { const f = feuille(c.id); if (f) Object.values(f.copies || {}).forEach(cp => { if (!cp.validee && Object.keys(cp.answers || {}).length) aValider++; }); });
-  const line = c => ctrlRow(c, `${esc(c.matiere)} · ${esc(classe(c.classeId)?.nom || "?")}${c.type === "rattrapage" ? " · " + esc(studentsOf(c).map(e => e.prenom + " " + e.nom).join(", ")) : ""}${c.date ? " · " + esc(frDate(c.date)) : ""}`);
+  const line = c => c.rs ? rattGroupRow(c) : ctrlRow(c, `${esc(c.matiere)} · ${esc(classe(c.classeId)?.nom || "?")}${c.type === "rattrapage" ? " · " + esc(studentsOf(c).map(e => e.prenom + " " + e.nom).join(", ")) : ""}${c.date ? " · " + esc(frDate(c.date)) : ""}`);
   const nEx = cs.filter(c => c.type === "exercices").length, nCtrl = cs.filter(c => !c.type || c.type === "controle").length;
   const hour = new Date().getHours(), hello = hour < 18 ? "Bom dia" : "Boa noite";
   return `
@@ -2020,7 +2053,7 @@ Responda apenas em JSON: {"doublons":[números N das novas questões duplicadas]
   /* Sans vérification de l'IA, la comparaison des mots décide seule ; avec elle, on n'ajoute que les copies quasi identiques */
   return [...new Set([...lex(ok ? 0.85 : 0.6), ...sem])].sort((a, b) => a - b);
 }
-async function createRattrapage(c, e, replaceId){
+async function createRattrapage(c, e, replaceId, spec){
   const f = feuille(c.id), cp = f?.copies?.[e.id]; if (!cp) throw {code:"no_copy"};
   if (!copyDone(c, cp) || final20(c, cp) >= SEUIL) throw {code:"not_failed"};
   if (!cp.validee && !confirm(`A prova de ${e.prenom} ainda não foi validada: a recuperação seria baseada na nota sugerida pela IA. Continuar?`)) throw {code:"cancelled"};
@@ -2051,6 +2084,14 @@ Responda apenas em JSON: {"titre":"…","questions":[{"notion":"…","points":5,
   const toQ = x => ({id:"q" + uid(5), notion:String(x.notion || ""), points:+x.points || 5, lignes:clamp(+x.lignes || 6, 2, 20), erreurs:(x.erreurs || []).map(String),
     v:{standard:{enonce:String(x.enonce || ""), corrige:String(x.corrige || ""), criteres:String(x.criteres || "")}}});
   const prev = replaceId ? askedOf([ctrl(replaceId)].filter(Boolean)) : [];
+  if (spec){   // tâche confiée au serveur : il génère, vérifie les doublons et enregistre lui-même
+    const old0 = replaceId && ctrl(replaceId), printed0 = old0 && feuille(replaceId) && Object.keys(feuille(replaceId).copies || {}).length;
+    if (old0 && !printed0) return {prompt:prompt(3, prev), n:3, olds:[...olds, ...prev], path:"controles/" + replaceId, mode:"update", titre:{fixe:old0.titre}, msgOk:"Nova recuperação de " + e.prenom + " pronto"};
+    const round0 = store.controles.filter(x => x.type === "rattrapage" && x.parentId === c.id && x.eleves?.includes(e.id)).length;
+    return {prompt:prompt(3, prev), n:3, olds:[...olds, ...prev], path:"controles/" + uid(12), mode:"create", titre:{prefixe:"Recuperação" + (round0 ? " " + (round0 + 1) : "") + " · ", defaut:"Recuperação · " + rTitre(c.titre)},
+      base:{type:"rattrapage", parentId:c.id, matiere:c.matiere, niveau:c.niveau, classeId:c.classeId, eleves:[e.id], coursId:c.coursId || null, duree:30, differencie:false,
+        mise:{...(c.mise || {}), consignes:"Folha de recuperação pessoal. Não tenha pressa e releia a dica."}, statut:"brouillon", date:today()}, msgOk:"Recuperação de " + e.prenom + " pronto"};
+  }
   const r = await ai(prompt(3, prev)); const qs = (r?.questions || []).slice(0, 3).map(toQ);
   /* Vérification du sens par l'IA : une question qui demande la même chose qu'une question déjà posée est remplacée (2 essais) */
   for (let k = 0; k < 2 && qs.length; k++){
@@ -2072,7 +2113,7 @@ Responda apenas em JSON: {"titre":"…","questions":[{"notion":"…","points":5,
 
 /* Rattrapage préparé en tâche de fond */
 function rattTask(C, e, btn){
-  bgTask({key:"ratt:" + C.id + ":" + e.id, label:"Recuperação de " + e.prenom, btn, run:async () => {
+  aiTask({key:"ratt:" + C.id + ":" + e.id, label:"Recuperação de " + e.prenom, btn, spec:() => createRattrapage(C, e, null, true), run:async () => {
     const id = await createRattrapage(C, e); return {open:`#/controle/${id}/preparer`, msg:"Recuperação de " + e.prenom + " pronto: revise antes de imprimir."}; }});
 }
 /* ================= Classes: level suggestions ================= */
@@ -2171,12 +2212,19 @@ async function exercicesFrom(c){
     gen:{types:p.types, difficulte:p.difficulte, consignes:""}, statut:"brouillon", date:"", mise:{...(c.mise || {}), consignes:"Folha de exercícios de prática. Escreva apenas dentro dos quadros."}, questions:qs, createdAt:new Date().toISOString()});
   return id;
 }
-async function regenExercices(c){
+async function regenExercices(c, spec){
   const co = store.cours.find(x => x.id === c.coursId);
   if (!co) throw {code:"no_cours"};
   const EXO = c.type === "exercices";
   const g = c.gen || {}, p = {matiere:c.matiere, niveau:c.niveau, duree:c.duree || 55, difficulte:g.difficulte || "moyen", types:g.types || [], consignes:g.consignes || "", langue:c.langue || ""};
   const deja = (c.questions || []).map(q => vOf(q, "standard").enonce).join(" / ").slice(0, 3000);
+  const nq = clamp((c.questions || []).length || 5, 1, 10), extra = EXO ? EXO_TXT + "\nProponha exercícios NOVOS e DIFERENTES destes: " + deja : "Proponha questões NOVAS e DIFERENTES destas: " + deja;
+  if (spec){ const f0 = feuille(c.id), printed0 = f0 && Object.keys(f0.copies || {}).length, prompt = genPrompt(co, p, nq, extra), feature = EXO ? "exercices" : "";
+    if (!printed0) return {prompt, n:nq, path:"controles/" + c.id, mode:"update", titre:{ia:!EXO}, msgOk:EXO ? "Novos exercícios prontos" : "Nova prova gerada", feature};
+    const n0 = store.controles.filter(x => (x.type || "controle") === (c.type || "controle") && (x.srcId || x.id) === (c.srcId || c.id)).length + 1;
+    const doc0 = structuredClone(c); delete doc0.id; delete doc0.owner; delete doc0.questions; Object.assign(doc0, {srcId:c.srcId || c.id, statut:"brouillon", date:""});
+    return {prompt, n:nq, path:"controles/" + uid(12), mode:"create", base:doc0, feature, msgOk:EXO ? "Folha já impressa: nova folha de exercícios pronta" : "Folhas já impressas: nova versão pronta",
+      titre:EXO ? {prefixe:"Exercícios " + n0 + " · ", defaut:"Exercícios " + n0 + " · " + co.titre} : {suffixe:" · versão " + n0, defaut:c.titre + " · versão " + n0}}; }
   const r = await genQuestions(co, p, clamp((c.questions || []).length || 5, 1, 10), EXO ? EXO_TXT + "\nProponha exercícios NOVOS e DIFERENTES destes: " + deja : "Proponha questões NOVAS e DIFERENTES destas: " + deja, EXO ? {feature:"exercices"} : {}), qs = r.questions;
   const f = feuille(c.id), printed = f && Object.keys(f.copies || {}).length;
   if (!printed){ const o = structuredClone(ctrl(c.id) || c); o.questions = qs; if (!EXO && r.titre) o.titre = r.titre; await saveCtrl(o); return c.id; }
@@ -2288,7 +2336,11 @@ document.addEventListener("click", async ev => {
     if (REC) REC.stop();
     const mat = $("#c-mat").value, cl = classe($("#dc-cl").value), niveau = nivOf(cl) || "", langue = langueDef(texte), photo = S.src === "photo", st = $("#dc-st2");
     const titre = $("#dc-titre").value.trim(), duree = +$("#dc-dur").value || 30;
-    if (bgTask({key:"dictee", label:"Organizando a prova ditada", btn:"#dc-go", run:async () => {
+    const dBase = {type:"controle", gen:{source:photo ? "photo" : "dictee"}, source:texte.slice(0, 20000), matiere:mat, niveau, classeId:cl?.id || "", coursId:null, duree, differencie:false, langue, statut:"brouillon", date:"",
+      mise:{affiche:S.me?.affichage || "les2", police:prefs().police, lh:prefs().lh, bareme:prefs().bareme, consignes:prefs().consignes}};
+    if (await aiTask({key:"dictee", label:"Organizando a prova ditada", btn:"#dc-go",
+      spec:() => { learnMatiere(mat); S.matChg = false; S.dict = null; S.src = "cours"; return {prompt:dictPrompt(texte, mat, niveau, langue, photo), n:0, path:"controles/" + uid(12), mode:"create", base:dBase, titre:{fixe:titre, defaut:"Prova"}, remarques:true, msgOk:"Prova pronta"}; },
+      run:async () => {
       const r = await ai(dictPrompt(texte, mat, niveau, langue, photo)), qs = (r?.questions || []).map(mapQ); if (!qs.length) throw {code:"invalid_json"};
       const id = uid(12), ti = titre || r.titre || "Prova";
       await write("controles/" + id, {type:"controle", titre:ti, gen:{source:photo ? "photo" : "dictee"}, source:texte.slice(0, 20000), remarques:(r.remarques || []).map(String).filter(Boolean).slice(0, 12),
@@ -2318,7 +2370,11 @@ document.addEventListener("click", async ev => {
       differencie:!!p.differencie, langue:p.langue || "", statut:"brouillon", date:"", mise:{affiche:S.me?.affichage || "les2", police:prefs().police, lh:prefs().lh, bareme:prefs().bareme, consignes:EXO ? "Folha de exercícios de prática. Escreva apenas dentro dos quadros." : prefs().consignes}, questions:[], createdAt:new Date().toISOString()};
     if (t.id === "genBlank"){ base.questions = [mapQ({points:4, lignes:6})]; await write("controles/" + id, base); S.editId = id; S.wizStep = 1; S.step = "preparer"; return go("edit"); }
     const P = structuredClone(p);
-    if (bgTask({key:"gen", label:EXO ? "Nova folha de exercícios" : "Nova prova", btn:"#gen", run:async () => {
+    const nq = clamp(+P.nbq || 5, 1, 10);
+    if (await aiTask({key:"gen", label:EXO ? "Nova folha de exercícios" : "Nova prova", btn:"#gen",
+      spec:() => { S.params.titre = ""; S.params._pref = false; const {questions:_q, ...b0} = base;
+        return {prompt:genPrompt(co, P, nq, EXO ? EXO_TXT : ""), n:nq, path:"controles/" + id, mode:"create", base:b0, titre:{fixe:P.titre || "", prefixe:EXO ? "Exercícios · " : "", defaut:base.titre}, msgOk:EXO ? "Exercícios prontos" : "Prova pronta", feature:EXO ? "exercices" : ""}; },
+      run:async () => {
       const r = await genQuestions(co, P, clamp(+P.nbq || 5, 1, 10), EXO ? EXO_TXT : "", EXO ? {feature:"exercices"} : {}), qs = r.questions;
       base.titre = P.titre || (EXO && r.titre ? "Exercícios · " + r.titre : r.titre) || base.titre; base.questions = qs;
       await write("controles/" + id, base); S.params.titre = ""; S.params._pref = false; S.wizStep = 1;
@@ -2336,17 +2392,17 @@ document.addEventListener("click", async ev => {
     if (d.qdel !== undefined){ const printed = c.statut && c.statut !== "brouillon";
       if (!confirm(printed ? "As folhas já foram impressas: excluir esta questão também remove as respostas e notas dos alunos nela, e muda os totais. Continuar?" : "Supprimer cette question ?")) return;
       c.questions.splice(+d.qdel, 1); await saveCtrl(c); return; }
-    if (t.id === "variante"){ bgTask({key:"var:" + c.id, label:"Variante de “ " + c.titre + " ”", btn:"#variante", run:async () => {
+    if (t.id === "variante"){ aiTask({key:"var:" + c.id, label:"Variante de “ " + c.titre + " ”", btn:"#variante", spec:() => createVariante(c, true), run:async () => {
         const nid = await createVariante(c); return {open:`#/controle/${nid}/preparer`, msg:"Variante pronta: revise antes de imprimir."}; }});
       return; }
     if (t.id === "remOk"){ c.remarques = []; await saveCtrl(c); return render(); }
     if (t.id === "regenCtrl"){ if (!confirm("Substituir todas as questões por uma nova prova gerada pela IA?")) return;
-      bgTask({key:"regen:" + c.id, label:"Regenerando “ " + c.titre + " ”", btn:"#regenCtrl", run:async () => {
+      aiTask({key:"regen:" + c.id, label:"Regenerando “ " + c.titre + " ”", btn:"#regenCtrl", spec:() => regenExercices(c, true), run:async () => {
         const nid = await regenExercices(c);
         return {open:`#/controle/${nid}/preparer`, msg:nid !== c.id ? "Folhas já impressas: uma nova versão da prova está pronta." : "Nova prova gerada: “ " + (ctrl(nid)?.titre || c.titre) + " »."}; }});
       return; }
     if (t.id === "regenEx"){ if (!canEx()) return toast(aiErr("no_option"));
-      bgTask({key:"regen:" + c.id, label:"Regenerando os exercícios", btn:"#regenEx", run:async () => {
+      aiTask({key:"regen:" + c.id, label:"Regenerando os exercícios", btn:"#regenEx", spec:() => regenExercices(c, true), run:async () => {
         const nid = await regenExercices(c);
         return {open:`#/controle/${nid}/preparer`, msg:nid !== c.id ? "Folha já impressa: uma nova folha de exercícios está pronta." : "Novos exercícios gerados."}; }});
       return; }
@@ -2555,10 +2611,10 @@ ${NOSRC}
 Responda apenas em JSON: {"titre":"…","remarques":["…"],"questions":[{"notion":"…","points":4,"lignes":5,"erreurs":["…"],"versions":{"standard":{"enonce":"…","corrige":"…","criteres":"…"}}}]}`;
 }
 /* Variante d'un contrôle : même structure, mêmes notions et mêmes points, nouveaux énoncés */
-async function createVariante(c){
+async function createVariante(c, spec){
   const co = c.coursId && (store.allCours || store.cours).find(x => x.id === c.coursId), lv = c.differencie ? LEVELS : ["standard"];
   const list = c.questions.map((q, i) => { const v = vOf(q, "standard"); return `${i + 1}. [${q.points} pts${q.type === "qcm" ? ", QCM" : ""}] Notion : ${q.notion || "?"}\n   Enunciado: ${v.enonce}\n   Resposta: ${v.corrige}`; }).join("\n");
-  const ask = (refus) => ai(`Você é um professor de ${c.matiere}${c.niveau ? " en " + c.niveau : ""}. Aqui está uma prova:
+  const ask = (refus) => ai(vprompt(refus)); const vprompt = (refus) => (`Você é um professor de ${c.matiere}${c.niveau ? " en " + c.niveau : ""}. Aqui está uma prova:
 ${list}
 ${co?.texte ? `\nAULA (para encontrar outros exemplos):\n"""${co.texte.slice(0, 12000)}"""\n` : ""}
 Escreva uma VARIANTE desta prova para outra turma ou outro dia: exatamente ${c.questions.length} questões, na mesma ordem, cada uma sobre o MESMO conceito, com os MESMOS pontos, o mesmo tipo e a mesma dificuldade, mas pedindo OUTRA COISA: outros valores, outro exemplo, outra situação ou outro elemento do conceito, com uma resposta esperada diferente da original. Reformular a questão original (ou transformá-la em verdadeiro/falso, lacuna ou múltipla escolha com a mesma resposta) é proibido.
@@ -2566,7 +2622,11 @@ ${lv.length > 1 ? `Para cada questão, 3 versões com os mesmos pontos: "socle" 
 ${refus.length ? "Estas questões são PROIBIDAS (duplicatas de uma questão da prova): " + refus.map(t => "« " + t.slice(0, 200) + " ”").join(" / ") + "\n" : ""}${langueRule(c.langue)}
 ${NOSRC}
 Responda apenas em JSON: {"questions":[{"notion":"…","points":4,"lignes":6,"erreurs":["…"],"versions":{${lv.map(l => `"${l}":{"enonce":"…","corrige":"…","criteres":"…"}`).join(",")}}}]}`);
-  const olds = askedOf([c]); let r = await ask([]);
+  const olds = askedOf([c]);
+  if (spec){ const {id:_0, owner:_1, ...rest0} = c;
+    return {prompt:vprompt([]), n:c.questions.length, olds, points:c.questions.map(q => +q.points), lignes:c.questions.map(q => q.lignes || 0), path:"controles/" + uid(12), mode:"create",
+      titre:{fixe:c.titre.replace(/ \(variante( \d+)?\)$/, "") + " (variante)"}, base:{...rest0, statut:"brouillon", date:"", varianteDe:c.id, remarques:[]}, msgOk:"Variante pronta", feature:c.type === "exercices" ? "exercices" : ""}; }
+  let r = await ask([]);
   /* Vérification du sens : si des questions ne font que reformuler l'original, on refait la variante en les interdisant */
   const d1 = await doublons((r?.questions || []).map(mapQ).map(q => vOf(q, "standard")), olds);
   if (d1.length){ const r2 = await ask(d1.map(k => String(r.questions[k]?.versions?.standard?.enonce || ""))); if ((r2?.questions || []).length) r = r2; }
@@ -2819,7 +2879,7 @@ document.addEventListener("click", async ev => {
 });
 
 /* ================= Stockage sur le serveur de l'école (Railway + Volume) ================= */
-let SERVERSTORE = false, SRV_PERSIST = true;
+let SERVERSTORE = false, SRV_PERSIST = true, SYNC = null;   // SYNC : synchronisation immédiate avec le serveur
 async function serverDB(){
   const r = await fetch("/api/db", {credentials:"same-origin"});
   if (r.status === 401){ NEED_CODE = true; throw {code:"need_code"}; }
@@ -2849,7 +2909,7 @@ async function serverDB(){
       if (!skip){ epoch = k.epoch; seq = k.seq; }   // un document ignoré sera relu à la prochaine synchronisation
     } catch(e){} finally { busy = false; }
   };
-  setInterval(pull, 8000); document.addEventListener("visibilitychange", pull);
+  setInterval(pull, 8000); document.addEventListener("visibilitychange", pull); SYNC = pull;
   return db;
 }
 const serverAssets = { upload: async (blob, want) => {
@@ -2974,6 +3034,26 @@ function ctrlRow(c, meta){
     <span class="btn sm crow-go">${c.statut === "corrige" ? "Ver" : "Continuar"} →</span></a>`;
 }
 
+/* Rattrapages d'un même contrôle : une seule ligne (« Rattrapages · titre · N élèves ») qui mène à l'étape Classe & rattrapage */
+function groupRatt(list){
+  const out = [], by = {};
+  for (const c of list){
+    if (c.type === "rattrapage" && c.parentId && ctrl(c.parentId)){ if (by[c.parentId]){ by[c.parentId].rs.push(c); continue; } out.push(by[c.parentId] = {pid:c.parentId, rs:[c]}); }
+    else out.push(c);
+  }
+  return out;
+}
+const rattDone = x => x.rs ? x.rs.every(c => c.statut === "corrige") : x.statut === "corrige";
+function rattGroupRow(g){
+  const p = ctrl(g.pid), rs = g.rs, n = k => rs.filter(c => (c.statut || "brouillon") === k).length;
+  const noms = rs.flatMap(c => studentsOf(c).map(e => e.prenom)).join(", ");
+  const st = [[n("brouillon"), "à préparer"], [n("imprime"), "imprimé(s)"], [n("correction"), "em correção"], [n("corrige"), "corrigé(s)"]].filter(x => x[0]).map(x => x[0] + " " + x[1]).join(" · ");
+  return `<a class="crow" href="#/controle/${g.pid}/classe">
+    <div class="crow-main"><div class="t"><span class="chip blue">Recuperações</span> ${esc(p.titre)}</div><div class="s">${rs.length} élève${rs.length > 1 ? "s" : ""} : ${esc(noms)}</div></div>
+    <div class="crow-prog"><span class="crow-st ${rattDone(g) ? "ok" : ""}">${st}</span></div>
+    <span class="btn sm crow-go">Ouvrir →</span></a>`;
+}
+
 /* Liste des contrôles, rangés */
 function ctrlList(){
   const f = S.cf = S.cf || {st:"tous", mat:""};
@@ -2996,7 +3076,7 @@ function vControles(){
     <div class="row">${isBoss() ? `<select id="scope-sel" style="width:auto" aria-label="Abrangência">${selOpts(["moi","ecole"], S.scope, x => x === "moi" ? "Minhas provas" : "Toda a escola")}</select>` : ""}<a class="btn primary" href="#/nouveau">+ Nova prova</a></div></div>
   <div class="row">${F.map(([k, l]) => `<button class="fchip ${f.st === k ? "on" : ""}" data-cf="${k}">${l} <span class="num">${cnt(k)}</span></button>`).join("")}
     ${mats.length > 1 ? `<select id="cf-mat" style="width:auto;margin-left:auto" aria-label="Disciplina"><option value="">Todas as disciplinas</option>${selOpts(mats, f.mat)}</select>` : ""}</div>
-  ${list.length ? classAcc("ctrl", ctrlClasses(), sum, cl => `<div>${of(cl).map(line).join("")}</div>`) : `<section class="panel empty">Nenhuma prova ${f.st !== "tous" ? "nesta categoria" : "por enquanto"}.</section>`}`;
+  ${list.length ? classAcc("ctrl", ctrlClasses(), sum, cl => `<div>${groupRatt(of(cl)).map(x => x.rs ? rattGroupRow(x) : line(x)).join("")}</div>`) : `<section class="panel empty">Nenhuma prova ${f.st !== "tous" ? "nesta categoria" : "por enquanto"}.</section>`}`;
 }
 document.addEventListener("click", ev => { const t = ev.target.closest("[data-cf]"); if (!t) return; S.cf.st = t.dataset.cf; render(); });
 document.addEventListener("change", ev => { if (ev.target.id === "cf-cl"){ S.cf.cl = ev.target.value; render(); } if (ev.target.id === "cf-mat"){ S.cf.mat = ev.target.value; render(); } });
