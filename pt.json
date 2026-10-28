@@ -1747,5 +1747,7 @@
  "Réponds uniquement en JSON : {\"titre\":\"…\",\"remarques\":[\"…\"],\"questions\":[{\"notion\":\"…\",\"points\":4,\"lignes\":5,\"erreurs\":[\"…\"],\"versions\":{\"standard\":{\"enonce\":\"…\",\"corrige\":\"…\",\"criteres\":\"…\"}}}]}": "Responda apenas em JSON: {\"titre\":\"…\",\"remarques\":[\"…\"],\"questions\":[{\"notion\":\"…\",\"points\":4,\"lignes\":5,\"erreurs\":[\"…\"],\"versions\":{\"standard\":{\"enonce\":\"…\",\"corrige\":\"…\",\"criteres\":\"…\"}}}]}",
  "Réponds uniquement en JSON : {\"questions\":[{\"notion\":\"…\",\"points\":4,\"lignes\":6,\"erreurs\":[\"…\"],\"versions\":{": "Responda apenas em JSON: {\"questions\":[{\"notion\":\"…\",\"points\":4,\"lignes\":6,\"erreurs\":[\"…\"],\"versions\":{",
  "🎙 Dicter": "🎙 Ditar",
- "⧉ Variante (IA)": "⧉ Variante (IA)"
+ "⧉ Variante (IA)": "⧉ Variante (IA)",
+ "Dicter dans ce champ": "Ditar neste campo",
+ "Dictée non disponible dans ce navigateur : utilise le micro de ton clavier.": "Ditado indisponível neste navegador: use o microfone do teclado."
 }

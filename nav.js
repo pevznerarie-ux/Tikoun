@@ -40,7 +40,7 @@ function go(v){
   if (location.hash !== h) location.hash = h; else { render(); window.scrollTo({top:0}); }
 }
 function openCtrl(id, step){ const c = ctrl(id); location.hash = `#/controle/${id}/${step || defaultStep(c)}`; }
-window.addEventListener("hashchange", () => { const a = document.activeElement; if (a && a !== document.body && $("#view")?.contains(a)) a.blur(); flushEdit(); applyRoute(); render(); window.scrollTo({top:0}); });
+window.addEventListener("hashchange", () => { if (FREC) FREC.stop(); const a = document.activeElement; if (a && a !== document.body && $("#view")?.contains(a)) a.blur(); flushEdit(); applyRoute(); render(); window.scrollTo({top:0}); });
 
 function navKey(){ if (S.inCtrl || S.view === "edit" || S.view === "new") return "controles"; return {home:"accueil", quiznew:"exercices", quiz:"exercices", scan:"scanner", reglages:"sauvegarde", correct:"controles", analyse:"controles"}[S.view] || S.view; }
 
