@@ -2048,7 +2048,7 @@ NOVAS QUESTÕES:
 ${news.map((n, k) => `N${k + 1}. ${n.enonce.slice(0, 300)} → resposta esperada: ${n.corrige.slice(0, 200)}`).join("\n")}
 
 Uma nova questão é DUPLICATA se pedir a mesma informação ou esperar essencialmente a mesma resposta de uma questão já feita, mesmo com outra redação (reformulação, verdadeiro/falso, lacuna, múltipla escolha, situação que leve a recitar a mesma coisa). NÃO é duplicata se tratar do mesmo conceito mas pedir outro elemento, uma nova aplicação ou outra explicação.
-Responda apenas em JSON: {"doublons":[números N das novas questões duplicadas]}`, {modelTier:"quick"});
+Responda apenas em JSON: {"doublons":[números N das novas questões duplicadas]}`, {modelTier:"complex"});
     sem = (r?.doublons || []).map(x => +String(x).replace(/\D/g, "") - 1).filter(i => i >= 0 && i < news.length); ok = Array.isArray(r?.doublons); } catch(e){ console.warn("verificação de duplicatas", e); }
   /* Sans vérification de l'IA, la comparaison des mots décide seule ; avec elle, on n'ajoute que les copies quasi identiques */
   return [...new Set([...lex(ok ? 0.85 : 0.6), ...sem])].sort((a, b) => a - b);
@@ -2078,17 +2078,19 @@ ${langueRule(c.langue)}
 Crie exatamente ${n} exercício(s) TOTALMENTE NOVO(S)${n === 3 ? ", de dificuldade crescente: 1 = descoberta (mais simples que o nível do aluno), 2 = aplicação, 3 = retorno ao nível " + LVL[lvl].toLowerCase() + " da prova" : ""}.
 REGRA ABSOLUTA: cada exercício deve pedir outra coisa e esperar uma resposta DIFERENTE de todas as questões proibidas. Reformular uma questão proibida, ou transformá-la em verdadeiro/falso, lacuna, múltipla escolha ou situação que leve à mesma resposta, é duplicata: recusado.
 Para continuar nos conceitos em que o aluno errou sem repetir: use outras partes da aula (outra regra, outro detalhe, outro exemplo, caso particular, consequência prática, comparação entre dois conceitos, aplicação a uma situação concreta nova, explicação do “porquê”).
+Método: ANTES de escrever, escolha ${n} ângulo(s) todos diferentes (em "angles"), cada um tirado de um trecho preciso da aula, e escreva um exercício por ângulo. Dois exercícios nunca devem pedir a mesma coisa.
+Se a aula não tiver conteúdo suficiente para ${n} exercício(s) realmente diferentes, escreva menos (pelo menos 1) e explique em "manque", numa frase, o que seria preciso acrescentar à aula.
 Total ${n === 3 ? "20 pontos (ex.: 5, 7, 8)" : "pontos: " + n * 6 + " aproximadamente"}. Cada exercício: um enunciado autônomo${n === 3 ? " (com uma dica entre parênteses no 1)" : ""}, uma resposta-modelo, critérios de correção, 2 ou 3 erros típicos, um número de linhas de resposta (3 a 12).
 ${NOSRC}
-Responda apenas em JSON: {"titre":"…","questions":[{"notion":"…","points":5,"lignes":5,"enonce":"…","corrige":"…","criteres":"…","erreurs":["…"]}]}`;
+Réponds uniquement en JSON : {"angles":["…"],"manque":"","titre":"…","questions":[{"notion":"…","points":5,"lignes":5,"enonce":"…","corrige":"…","criteres":"…","erreurs":["…"]}]}`;
   const toQ = x => ({id:"q" + uid(5), notion:String(x.notion || ""), points:+x.points || 5, lignes:clamp(+x.lignes || 6, 2, 20), erreurs:(x.erreurs || []).map(String),
     v:{standard:{enonce:String(x.enonce || ""), corrige:String(x.corrige || ""), criteres:String(x.criteres || "")}}});
   const prev = replaceId ? askedOf([ctrl(replaceId)].filter(Boolean)) : [];
   if (spec){   // tâche confiée au serveur : il génère, vérifie les doublons et enregistre lui-même
     const old0 = replaceId && ctrl(replaceId), printed0 = old0 && feuille(replaceId) && Object.keys(feuille(replaceId).copies || {}).length;
-    if (old0 && !printed0) return {prompt:prompt(3, prev), n:3, olds:[...olds, ...prev], path:"controles/" + replaceId, mode:"update", titre:{fixe:old0.titre}, msgOk:"Nova recuperação de " + e.prenom + " pronto"};
+    if (old0 && !printed0) return {check:true, prompt:prompt(3, prev), n:3, olds:[...olds, ...prev], path:"controles/" + replaceId, mode:"update", titre:{fixe:old0.titre}, msgOk:"Nova recuperação de " + e.prenom + " pronto"};
     const round0 = store.controles.filter(x => x.type === "rattrapage" && x.parentId === c.id && x.eleves?.includes(e.id)).length;
-    return {prompt:prompt(3, prev), n:3, olds:[...olds, ...prev], path:"controles/" + uid(12), mode:"create", titre:{prefixe:"Recuperação" + (round0 ? " " + (round0 + 1) : "") + " · ", defaut:"Recuperação · " + rTitre(c.titre)},
+    return {check:true, prompt:prompt(3, prev), n:3, olds:[...olds, ...prev], path:"controles/" + uid(12), mode:"create", titre:{prefixe:"Recuperação" + (round0 ? " " + (round0 + 1) : "") + " · ", defaut:"Recuperação · " + rTitre(c.titre)},
       base:{type:"rattrapage", parentId:c.id, matiere:c.matiere, niveau:c.niveau, classeId:c.classeId, eleves:[e.id], coursId:c.coursId || null, duree:30, differencie:false,
         mise:{...(c.mise || {}), consignes:"Folha de recuperação pessoal. Não tenha pressa e releia a dica."}, statut:"brouillon", date:today()}, msgOk:"Recuperação de " + e.prenom + " pronto"};
   }
@@ -2220,10 +2222,10 @@ async function regenExercices(c, spec){
   const deja = (c.questions || []).map(q => vOf(q, "standard").enonce).join(" / ").slice(0, 3000);
   const nq = clamp((c.questions || []).length || 5, 1, 10), extra = EXO ? EXO_TXT + "\nProponha exercícios NOVOS e DIFERENTES destes: " + deja : "Proponha questões NOVAS e DIFERENTES destas: " + deja;
   if (spec){ const f0 = feuille(c.id), printed0 = f0 && Object.keys(f0.copies || {}).length, prompt = genPrompt(co, p, nq, extra), feature = EXO ? "exercices" : "";
-    if (!printed0) return {prompt, n:nq, path:"controles/" + c.id, mode:"update", titre:{ia:!EXO}, msgOk:EXO ? "Novos exercícios prontos" : "Nova prova gerada", feature};
+    if (!printed0) return {check:true, prompt, n:nq, path:"controles/" + c.id, mode:"update", titre:{ia:!EXO}, msgOk:EXO ? "Novos exercícios prontos" : "Nova prova gerada", feature};
     const n0 = store.controles.filter(x => (x.type || "controle") === (c.type || "controle") && (x.srcId || x.id) === (c.srcId || c.id)).length + 1;
     const doc0 = structuredClone(c); delete doc0.id; delete doc0.owner; delete doc0.questions; Object.assign(doc0, {srcId:c.srcId || c.id, statut:"brouillon", date:""});
-    return {prompt, n:nq, path:"controles/" + uid(12), mode:"create", base:doc0, feature, msgOk:EXO ? "Folha já impressa: nova folha de exercícios pronta" : "Folhas já impressas: nova versão pronta",
+    return {check:true, prompt, n:nq, path:"controles/" + uid(12), mode:"create", base:doc0, feature, msgOk:EXO ? "Folha já impressa: nova folha de exercícios pronta" : "Folhas já impressas: nova versão pronta",
       titre:EXO ? {prefixe:"Exercícios " + n0 + " · ", defaut:"Exercícios " + n0 + " · " + co.titre} : {suffixe:" · versão " + n0, defaut:c.titre + " · versão " + n0}}; }
   const r = await genQuestions(co, p, clamp((c.questions || []).length || 5, 1, 10), EXO ? EXO_TXT + "\nProponha exercícios NOVOS e DIFERENTES destes: " + deja : "Proponha questões NOVAS e DIFERENTES destas: " + deja, EXO ? {feature:"exercices"} : {}), qs = r.questions;
   const f = feuille(c.id), printed = f && Object.keys(f.copies || {}).length;
@@ -2373,7 +2375,7 @@ document.addEventListener("click", async ev => {
     const nq = clamp(+P.nbq || 5, 1, 10);
     if (await aiTask({key:"gen", label:EXO ? "Nova folha de exercícios" : "Nova prova", btn:"#gen",
       spec:() => { S.params.titre = ""; S.params._pref = false; const {questions:_q, ...b0} = base;
-        return {prompt:genPrompt(co, P, nq, EXO ? EXO_TXT : ""), n:nq, path:"controles/" + id, mode:"create", base:b0, titre:{fixe:P.titre || "", prefixe:EXO ? "Exercícios · " : "", defaut:base.titre}, msgOk:EXO ? "Exercícios prontos" : "Prova pronta", feature:EXO ? "exercices" : ""}; },
+        return {check:true, prompt:genPrompt(co, P, nq, EXO ? EXO_TXT : ""), n:nq, path:"controles/" + id, mode:"create", base:b0, titre:{fixe:P.titre || "", prefixe:EXO ? "Exercícios · " : "", defaut:base.titre}, msgOk:EXO ? "Exercícios prontos" : "Prova pronta", feature:EXO ? "exercices" : ""}; },
       run:async () => {
       const r = await genQuestions(co, P, clamp(+P.nbq || 5, 1, 10), EXO ? EXO_TXT : "", EXO ? {feature:"exercices"} : {}), qs = r.questions;
       base.titre = P.titre || (EXO && r.titre ? "Exercícios · " + r.titre : r.titre) || base.titre; base.questions = qs;
@@ -2411,16 +2413,23 @@ document.addEventListener("click", async ev => {
     if (t.id === "addQai" || d.qai !== undefined){
       const co = store.cours.find(x => x.id === c.coursId); const i = d.qai !== undefined ? +d.qai : -1; const q = c.questions[i];
       const instr = q ? ($("#q-i-" + q.id).value.trim() || "melhore a questão") : "";
-      const extra = q ? `Reescreva a questão a seguir conforme este pedido do professor: “ ${instr} ”. Mantenha ${q.points} pontos.\nQuestão atual (versão padrão): ${vOf(q, "standard").enonce}` :
-        `Adicione uma nova questão diferente destas: ${c.questions.map(x => vOf(x, "standard").enonce).join(" / ")}`;
+      /* Questions à ne pas répéter : celles de la feuille (sauf celle qu'on réécrit) et, pour un rattrapage, celles du contrôle d'origine */
+      const parent = c.type === "rattrapage" && c.parentId ? ctrl(c.parentId) : null;
+      const olds = askedOf([c, ...(parent ? [parent] : [])]).filter(o => !q || !Object.values(q.v || {}).some(v => v?.enonce === o.enonce));
+      const liste = olds.map((o, k) => `${k + 1}. ${o.enonce.slice(0, 250)} → resposta: ${o.corrige.slice(0, 150)}`).join("\n");
+      const extra = (q ? `Reescreva a questão a seguir conforme este pedido do professor: “ ${instr} ”. Mantenha ${q.points} pontos.\nQuestão atual (versão padrão): ${vOf(q, "standard").enonce}` :
+        `Acrescente UMA nova questão que avalie um elemento da aula que a folha ainda não avalia.`) + `\nQuestões já na folha${parent ? " ou na prova original" : ""}, PROIBIDAS (nem repetidas, nem reformuladas, nem em verdadeiro/falso, lacuna ou múltipla escolha com a mesma resposta):\n${liste || "(aucune)"}`;
       bgTask({key:"qai:" + c.id + ":" + (q ? q.id : "new" + Date.now()), label:q ? "Reescrevendo a questão " + (i + 1) : "Nova questão (IA)", btn:q ? `[data-qai="${i}"]` : null, run:async () => {
-        const r = await ai(genPrompt(co, {...c, types:["cours","application","probleme"], difficulte:"moyen", consignes:""}, 1, extra) + `\nResponda com {"questions":[ uma única questão ]}.`);
-        const nq = (r?.questions || []).map(mapQ)[0]; if (!nq) throw {code:"invalid_json"};
+        const one = async (plus) => { const r = await ai(genPrompt(co, {...c, types:["cours","application","probleme"], difficulte:"moyen", consignes:""}, 1, extra + (plus || "")) + `\nResponda com {"questions":[ uma única questão ]}.`, {modelTier:"complex"});
+          const nq = (r?.questions || []).map(mapQ)[0]; if (!nq) throw {code:"invalid_json"}; return nq; };
+        let nq = await one(), redite = (await doublons([vOf(nq, "standard")], olds)).length > 0;
+        if (redite){ nq = await one(`\nATENÇÃO: sua proposta “ ${vOf(nq, "standard").enonce.slice(0, 250)} ” repete uma questão proibida. Proponha uma questão sobre OUTRO elemento da aula.`); redite = (await doublons([vOf(nq, "standard")], olds)).length > 0; }
+        if (redite) return {msg:q ? "Questão não alterada: a IA não encontra uma versão que não repita outra questão. Detalhe seu pedido ou enriqueça a aula." : "Nenhuma questão adicionada: a IA não encontra mais nenhuma questão realmente nova nesta aula. Acrescente conteúdo à aula ou escreva a questão você mesmo."};
         const cur = structuredClone(ctrl(c.id) || c), k = q ? cur.questions.findIndex(x => x.id === q.id) : -1;   // contrôle relu : les modifications faites entre-temps sont gardées
         if (q && k < 0) throw {code:"cancelled"};
         if (q){ nq.id = q.id; nq.points = cur.questions[k].points; cur.questions[k] = nq; } else cur.questions.push(nq);
         await saveCtrl(cur);
-        return {open:`#/controle/${c.id}/preparer`, msg:q ? "Questão " + (k + 1) + " reescrita." : "Nova questão adicionada."}; }});
+        return {open:`#/controle/${c.id}/preparer`, msg:(q ? "Questão " + (k + 1) + " reescrita." : "Nova questão adicionada.")}; }});
       return;
     }
     if (t.id === "print") return printSheets(c, studentsOf(c));
@@ -2624,7 +2633,7 @@ ${NOSRC}
 Responda apenas em JSON: {"questions":[{"notion":"…","points":4,"lignes":6,"erreurs":["…"],"versions":{${lv.map(l => `"${l}":{"enonce":"…","corrige":"…","criteres":"…"}`).join(",")}}}]}`);
   const olds = askedOf([c]);
   if (spec){ const {id:_0, owner:_1, ...rest0} = c;
-    return {prompt:vprompt([]), n:c.questions.length, olds, points:c.questions.map(q => +q.points), lignes:c.questions.map(q => q.lignes || 0), path:"controles/" + uid(12), mode:"create",
+    return {check:true, prompt:vprompt([]), n:c.questions.length, olds, points:c.questions.map(q => +q.points), lignes:c.questions.map(q => q.lignes || 0), path:"controles/" + uid(12), mode:"create",
       titre:{fixe:c.titre.replace(/ \(variante( \d+)?\)$/, "") + " (variante)"}, base:{...rest0, statut:"brouillon", date:"", varianteDe:c.id, remarques:[]}, msgOk:"Variante pronta", feature:c.type === "exercices" ? "exercices" : ""}; }
   let r = await ask([]);
   /* Vérification du sens : si des questions ne font que reformuler l'original, on refait la variante en les interdisant */
@@ -3047,9 +3056,9 @@ const rattDone = x => x.rs ? x.rs.every(c => c.statut === "corrige") : x.statut 
 function rattGroupRow(g){
   const p = ctrl(g.pid), rs = g.rs, n = k => rs.filter(c => (c.statut || "brouillon") === k).length;
   const noms = rs.flatMap(c => studentsOf(c).map(e => e.prenom)).join(", ");
-  const st = [[n("brouillon"), "à préparer"], [n("imprime"), "imprimé(s)"], [n("correction"), "em correção"], [n("corrige"), "corrigé(s)"]].filter(x => x[0]).map(x => x[0] + " " + x[1]).join(" · ");
+  const st = [[n("brouillon"), "a preparar"], [n("imprime"), "impresso(s)"], [n("correction"), "em correção"], [n("corrige"), "corrigido(s)"]].filter(x => x[0]).map(x => x[0] + " " + x[1]).join(" · ");
   return `<a class="crow" href="#/controle/${g.pid}/classe">
-    <div class="crow-main"><div class="t"><span class="chip blue">Recuperações</span> ${esc(p.titre)}</div><div class="s">${rs.length} élève${rs.length > 1 ? "s" : ""} : ${esc(noms)}</div></div>
+    <div class="crow-main"><div class="t"><span class="chip blue">Recuperações</span> ${esc(p.titre)}</div><div class="s">${rs.length} aluno${rs.length > 1 ? "s" : ""} : ${esc(noms)}</div></div>
     <div class="crow-prog"><span class="crow-st ${rattDone(g) ? "ok" : ""}">${st}</span></div>
     <span class="btn sm crow-go">Ouvrir →</span></a>`;
 }

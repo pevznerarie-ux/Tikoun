@@ -1822,5 +1822,20 @@
  "Nouveaux exercices prêts": "Novos exercícios prontos",
  "Variante prête": "Variante pronta",
  "prêt": "pronto",
- "Nouveau rattrapage de": "Nova recuperação de"
+ "Nouveau rattrapage de": "Nova recuperação de",
+ ".\nRÈGLE ABSOLUE : chaque exercice doit demander autre chose et attendre une réponse DIFFÉRENTE de toutes les questions interdites. Reformuler une question interdite, la transformer en vrai/faux, en texte à trous, en QCM ou en mise en situation qui revient à donner la même réponse, c'est un doublon : refusé.\nPour rester sur les notions ratées sans répéter : appuie-toi sur d'autres éléments du cours (autre règle, autre détail, autre exemple, cas particulier, conséquence pratique, comparaison entre deux notions, application à une situation concrète nouvelle, explication du « pourquoi »).\nMéthode : AVANT d'écrire, choisis": ".\nREGRA ABSOLUTA: cada exercício deve pedir outra coisa e esperar uma resposta DIFERENTE de todas as questões proibidas. Reformular uma questão proibida, ou transformá-la em verdadeiro/falso, lacuna, múltipla escolha ou situação que leve à mesma resposta, é duplicata: recusado.\nPara continuar nos conceitos em que o aluno errou sem repetir: use outras partes da aula (outra regra, outro detalhe, outro exemplo, caso particular, consequência prática, comparação entre dois conceitos, aplicação a uma situação concreta nova, explicação do “porquê”).\nMétodo: ANTES de escrever, escolha",
+ ", INTERDITES (ni reprises, ni reformulées, ni en vrai/faux, texte à trous ou QCM qui attend la même réponse) :\\n": ", PROIBIDAS (nem repetidas, nem reformuladas, nem em verdadeiro/falso, lacuna ou múltipla escolha com a mesma resposta):\\n",
+ "Ajoute UNE nouvelle question qui évalue un élément du cours que la feuille n'évalue pas encore.": "Acrescente UMA nova questão que avalie um elemento da aula que a folha ainda não avalia.",
+ "\\nATTENTION : ta proposition «": "\\nATENÇÃO: sua proposta “",
+ "\\nQuestions déjà sur la feuille": "\\nQuestões já na folha",
+ "angle(s) tous différents (dans \"angles\"), chacun tiré d'un passage précis du cours, puis écris un exercice par angle. Deux exercices ne doivent jamais demander la même chose entre eux.\nS'il n'y a pas assez de matière dans le cours pour": "ângulo(s) todos diferentes (em \"angles\"), cada um tirado de um trecho preciso da aula, e escreva um exercício por ângulo. Dois exercícios nunca devem pedir a mesma coisa.\nSe a aula não tiver conteúdo suficiente para",
+ "corrigé(s)": "corrigido(s)",
+ "exercice(s) vraiment différents, écris-en moins (au moins 1) et explique dans \"manque\", en une phrase, ce qu'il faudrait ajouter au cours.\nTotal": "exercício(s) realmente diferentes, escreva menos (pelo menos 1) e explique em \"manque\", numa frase, o que seria preciso acrescentar à aula.\nTotal",
+ "imprimé(s)": "impresso(s)",
+ "ou dans le contrôle d'origine": "ou na prova original",
+ "» répète une question interdite. Propose une question sur un AUTRE élément du cours.": "” repete uma questão proibida. Proponha uma questão sobre OUTRO elemento da aula.",
+ "à préparer": "a preparar",
+ "élève": "aluno",
+ "Question non modifiée : l'IA ne trouve pas de version qui ne répète pas une autre question. Précise ta demande ou enrichis le cours.": "Questão não alterada: a IA não encontra uma versão que não repita outra questão. Detalhe seu pedido ou enriqueça a aula.",
+ "Aucune question ajoutée : l'IA ne trouve plus de question vraiment nouvelle dans ce cours. Ajoute du contenu au cours, ou écris la question toi-même.": "Nenhuma questão adicionada: a IA não encontra mais nenhuma questão realmente nova nesta aula. Acrescente conteúdo à aula ou escreva a questão você mesmo."
 }

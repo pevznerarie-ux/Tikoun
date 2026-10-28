@@ -22,6 +22,8 @@ const TYPES = {".html":"text/html; charset=utf-8", ".js":"text/javascript; chars
   ".md":"text/markdown; charset=utf-8", ".png":"image/png", ".jpg":"image/jpeg", ".svg":"image/svg+xml", ".ico":"image/x-icon", ".webmanifest":"application/manifest+json", ".txt":"text/plain; charset=utf-8"};
 const env = k => (process.env[k] || "").trim();
 /* Lecture des copies manuscrites : modèle le plus précis par défaut (GRADE_TIER=default pour revenir au modèle rapide) */
+/* Rédaction des contrôles, rattrapages et variantes : modèle puissant par défaut (GEN_TIER=default pour le modèle rapide) */
+const GEN_TIER = () => ["quick","default","complex"].includes(env("GEN_TIER")) ? env("GEN_TIER") : "complex";
 const GRADE_TIER = () => ["quick","default","complex"].includes(env("GRADE_TIER")) ? env("GRADE_TIER") : "complex";
 const MODELS = () => ({quick:env("MODEL_QUICK") || "claude-haiku-4-5-20251001", default:env("MODEL_DEFAULT") || "claude-haiku-4-5-20251001", complex:env("MODEL_COMPLEX") || "claude-sonnet-5"});
 
@@ -871,38 +873,39 @@ async function genAI(u, prompt, tier){
   const res = looseJSON(txt); if (!res) throw new Error("Réponse de l'IA illisible"); return res;
 }
 async function dupCheck(u, news, olds){
-  if (!news.length || !olds.length) return [];
+  if (!news.length || (!olds.length && news.length < 2)) return [];
   let sem = [], ok = false;
   try { const r = await genAI(u, `Tu contrôles qu'une feuille ne répète pas un contrôle.
 QUESTIONS DÉJÀ POSÉES :
-${olds.map((o, k) => `A${k + 1}. ${String(o.enonce).slice(0, 300)} → réponse attendue : ${String(o.corrige || "").slice(0, 200)}`).join("\n")}
+${olds.map((o, k) => `A${k + 1}. ${String(o.enonce).slice(0, 300)} → réponse attendue : ${String(o.corrige || "").slice(0, 200)}`).join("\n") || "(aucune)"}
 
 NOUVELLES QUESTIONS :
 ${news.map((n, k) => `N${k + 1}. ${String(n.enonce).slice(0, 300)} → réponse attendue : ${String(n.corrige || "").slice(0, 200)}`).join("\n")}
 
-Une nouvelle question est un DOUBLON si elle demande la même information ou attend pour l'essentiel la même réponse qu'une question déjà posée, même formulée autrement (reformulation, vrai/faux, texte à trous, QCM, mise en situation qui revient à réciter la même chose). Elle n'est PAS un doublon si elle porte sur la même notion mais demande un autre élément, une application nouvelle ou une explication différente.
-Réponds uniquement en JSON : {"doublons":[numéros N des nouvelles questions en doublon]}`, "quick");
+Une nouvelle question est un DOUBLON si elle demande la même information ou attend pour l'essentiel la même réponse qu'une question déjà posée, OU qu'une autre nouvelle question placée avant elle, même formulée autrement (reformulation, vrai/faux, texte à trous, QCM, mise en situation qui revient à réciter la même chose). Elle n'est PAS un doublon si elle porte sur la même notion mais demande un autre élément, une application nouvelle ou une explication différente.
+Sois exigeant : un professeur doit trouver chaque question vraiment différente des autres.
+Réponds uniquement en JSON : {"doublons":[numéros N des nouvelles questions en doublon]}`, GEN_TIER());
     sem = (Array.isArray(r?.doublons) ? r.doublons : []).map(x => +String(x).replace(/\D/g, "") - 1).filter(i => i >= 0 && i < news.length); ok = Array.isArray(r?.doublons); } catch(e){ console.warn("Doublons", e.message); }
-  const lex = news.map((n, i) => olds.some(o => closeTo(n.enonce, o.enonce, ok ? 0.85 : 0.6)) ? i : -1).filter(i => i >= 0);
+  const sl = ok ? 0.85 : 0.6, lex = news.map((n, i) => olds.some(o => closeTo(n.enonce, o.enonce, sl)) || news.slice(0, i).some(o => closeTo(n.enonce, o.enonce, sl)) ? i : -1).filter(i => i >= 0);
   return [...new Set([...lex, ...sem])].sort((a, b) => a - b);
 }
 async function runGen(j){
   const u = USERS.find(x => x.id === j.user); if (!u) throw new Error("Compte introuvable");
   if (!access(u).ok) throw new Error(NO_ACCESS);
-  let res = await genAI(u, j.prompt, j.tier); const titreIA = typeof res?.titre === "string" ? res.titre : "";
+  let res = await genAI(u, j.prompt, j.tier); const titreIA = typeof res?.titre === "string" ? res.titre : "", manque = typeof res?.manque === "string" ? res.manque.trim() : "";
   let qs = (Array.isArray(res?.questions) ? res.questions : []).map(genQ);
   /* Réponse coupée (trop longue) : on demande la suite */
-  for (let k = 0; k < 3 && j.n && qs.length && qs.length < j.n; k++){
+  for (let k = 0; k < 3 && j.n && !manque && qs.length && qs.length < j.n; k++){
     const reste = j.n - qs.length, deja = qs.map(q => stdOf(q).enonce).join(" / ").slice(0, 3000);
     const r2 = await genAI(u, j.prompt + `\n\nCe contrôle contient déjà ces questions : ${deja}\nRédige UNIQUEMENT les ${reste} question(s) qui manquent, sur d'autres notions, avec le même format JSON.`, j.tier);
     const add = (Array.isArray(r2?.questions) ? r2.questions : []).map(genQ); if (!add.length) break; qs = qs.concat(add.slice(0, reste)); }
   if (j.n) qs = qs.slice(0, j.n);
   if (!qs.length) throw new Error("L'IA n'a proposé aucune question : réessaie.");
   /* Doublons d'une question déjà posée : remplacés (deux essais) */
-  if (Array.isArray(j.olds) && j.olds.length) for (let k = 0; k < 2; k++){
-    const dup = await dupCheck(u, qs.map(stdOf), j.olds); if (!dup.length) break;
-    const refus = dup.map(i => stdOf(qs[i]).enonce);
-    const r3 = await genAI(u, j.prompt + `\n\nCORRECTION : ces questions de ta réponse sont refusées car elles répètent une question déjà posée : ${refus.map(t => "« " + t.slice(0, 200) + " »").join(" / ")}.\nRédige UNIQUEMENT ${dup.length} nouvelle(s) question(s) pour les remplacer (questions n° ${dup.map(i => i + 1).join(", ")} de ta réponse : même notion et mêmes points), en respectant toutes les règles ci-dessus, sans répéter aucune question déjà posée. Même format JSON.`, j.tier);
+  if ((Array.isArray(j.olds) && j.olds.length) || j.check) for (let k = 0; k < 2; k++){
+    const dup = await dupCheck(u, qs.map(stdOf), j.olds || []); if (!dup.length) break;
+    const refus = dup.map(i => stdOf(qs[i]).enonce), garde = qs.filter((q, i) => !dup.includes(i)).map(q => stdOf(q).enonce);
+    const r3 = await genAI(u, j.prompt + `\n\nCORRECTION : ces questions de ta réponse sont refusées car elles répètent une question déjà posée ou une autre question de la feuille : ${refus.map(t => "« " + t.slice(0, 200) + " »").join(" / ")}.${garde.length ? `\nQuestions gardées dans la feuille (à ne pas répéter non plus) : ${garde.map(t => "« " + t.slice(0, 200) + " »").join(" / ")}.` : ""}\nRédige UNIQUEMENT ${dup.length} nouvelle(s) question(s) pour les remplacer (questions n° ${dup.map(i => i + 1).join(", ")} de ta réponse : même notion et mêmes points), chacune sur un angle que la feuille n'utilise pas encore, en respectant toutes les règles ci-dessus. Même format JSON.`, j.tier);
     const add = (Array.isArray(r3?.questions) ? r3.questions : []).map(genQ).slice(0, dup.length);
     dup.forEach((i, m) => { if (add[m]){ add[m].points = qs[i].points; qs[i] = add[m]; } }); }
   if (Array.isArray(j.points)) qs.forEach((q, i) => { if (j.points[i] != null) q.points = +j.points[i]; if (j.lignes?.[i]) q.lignes = +j.lignes[i]; });
@@ -911,11 +914,12 @@ async function runGen(j){
   const tIA = /rattrapage/i.test(j.titre?.prefixe || "") ? titreIA.replace(/^(feuille de |fiche de )?rattrapage\s*[-:·–]?\s*/i, "") : titreIA;
   const titre = j.titre?.fixe || (tIA ? (j.titre?.prefixe || "") + tIA + (j.titre?.suffixe || "") : "") || j.titre?.defaut || "Contrôle";
   if (j.mode === "update"){ if (!cur) throw new Error("Contrôle introuvable");
-    persist(dp, {...cur, questions:qs, ...(j.titre?.ia && titreIA ? {titre:titreIA} : j.titre?.fixe ? {titre:j.titre.fixe} : {})}); }
+    persist(dp, {...cur, questions:qs, ...(j.titre?.ia && titreIA ? {titre:titreIA} : j.titre?.fixe ? {titre:j.titre.fixe} : {}), ...(manque ? {remarques:[manque]} : {})}); }
   else { const base = isObj(j.base) ? j.base : {};
-    persist(dp, {...base, titre, questions:qs, ...(j.remarques ? {remarques:(Array.isArray(res?.remarques) ? res.remarques : []).map(String).filter(Boolean).slice(0, 12)} : {}), owner:u.id, espace:espaceFor(dp, u), createdAt:new Date().toISOString()}); }
+    const rem = [...(j.remarques && Array.isArray(res?.remarques) ? res.remarques.map(String).filter(Boolean) : []), ...(manque ? [manque] : [])].slice(0, 12);
+    persist(dp, {...base, titre, questions:qs, ...(rem.length || j.remarques ? {remarques:rem} : {}), owner:u.id, espace:espaceFor(dp, u), createdAt:new Date().toISOString()}); }
   j.open = j.openHash || ("#/controle/" + dp.split("/")[1] + "/preparer");
-  j.msg = (j.msgOk || "Prêt") + (j.mode === "update" ? "" : " : « " + titre + " »") + ".";
+  j.msg = (j.msgOk || "Prêt") + (j.mode === "update" ? "" : " : « " + titre + " »") + "." + (manque ? " Le cours ne suffit pas pour plus de questions vraiment différentes : regarde « À vérifier »." : "");
 }
 let gensRunning = 0;
 async function pumpGens(){
@@ -941,7 +945,7 @@ async function genApi(req, res, p, u){
     const dp = String(b.path || ""); if (!/^controles\/[A-Za-z0-9_-]{4,40}$/.test(dp) || !canWrite(u, dp)) return sendJ(res, 400, {error:{message:"Tâche invalide"}});
     if (GENS.filter(j => j.user === u.id && (j.status === "attente" || j.status === "en_cours")).length >= 12) return sendJ(res, 429, {error:{message:"Trop de générations en cours : attends qu'une se termine."}});
     const j = {id:crypto.randomBytes(8).toString("hex"), user:u.id, status:"attente", createdAt:new Date().toISOString(), label:String(b.label || "Génération").slice(0, 160),
-      prompt:String(b.prompt || "").slice(0, 120000), tier:tierOk(b.tier), n:clampN(+b.n || 0, 0, 12), path:dp, mode:b.mode === "update" ? "update" : "create",
+      prompt:String(b.prompt || "").slice(0, 120000), tier:GEN_TIER(), check:!!b.check, n:clampN(+b.n || 0, 0, 12), path:dp, mode:b.mode === "update" ? "update" : "create",
       base:isObj(b.base) ? b.base : null, titre:isObj(b.titre) ? {fixe:String(b.titre.fixe || "").slice(0, 200), prefixe:String(b.titre.prefixe || "").slice(0, 60), suffixe:String(b.titre.suffixe || "").slice(0, 60), defaut:String(b.titre.defaut || "").slice(0, 200), ia:!!b.titre.ia} : null,
       remarques:!!b.remarques, points:Array.isArray(b.points) ? b.points.slice(0, 12).map(Number) : null, lignes:Array.isArray(b.lignes) ? b.lignes.slice(0, 12).map(Number) : null,
       olds:(Array.isArray(b.olds) ? b.olds : []).slice(0, 60).map(o => ({enonce:String(o?.enonce || "").slice(0, 600), corrige:String(o?.corrige || "").slice(0, 400)})).filter(o => o.enonce),
