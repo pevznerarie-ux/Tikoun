@@ -1994,10 +1994,31 @@ function vAnalyse(){
 }
 const rTitre = t => String(t).replace(/^(feuille de |fiche de )?rattrapage\s*[-:·–]?\s*/i, "").replace(/^contr[ôo]le de /i, "") || String(t);
 /* Deux énoncés trop proches : l'un contient l'autre, ou ils partagent la plupart de leurs mots significatifs */
-function tooClose(a, b){
+function tooClose(a, b, seuil = 0.6){
   const w = t => new Set(t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9\u0590-\u05ff ]+/g, " ").split(/\s+/).filter(x => x.length > 3).map(x => x.slice(0, 5)));
   const A = w(a), B = w(b); if (!A.size || !B.size) return false;
-  const inter = [...A].filter(x => B.has(x)).length; return inter / Math.min(A.size, B.size) >= 0.6;
+  const inter = [...A].filter(x => B.has(x)).length; return inter / Math.min(A.size, B.size) >= seuil;
+}
+/* Questions déjà posées (énoncé + réponse attendue) */
+const askedOf = ctrls => ctrls.flatMap(x => (x.questions || []).flatMap(q => [...new Set(Object.values(q.v || {}).map(v => v?.enonce).filter(Boolean))].map(en => ({enonce:en, corrige:Object.values(q.v).find(v => v?.enonce === en)?.corrige || ""}))));
+/* Indices des nouvelles questions qui demandent la même chose (ou attendent la même réponse) qu'une question déjà posée :
+   comparaison des mots, puis vérification du sens par l'IA */
+async function doublons(news, olds){
+  if (!news.length || !olds.length) return [];
+  const lex = seuil => news.map((n, i) => olds.some(o => tooClose(n.enonce, o.enonce, seuil)) ? i : -1).filter(i => i >= 0);
+  let sem = [], ok = false;
+  try { const r = await ai(`You check that a remediation sheet doesn't repeat a test.
+QUESTIONS ALREADY ASKED:
+${olds.map((o, k) => `A${k + 1}. ${o.enonce.slice(0, 300)} → expected answer: ${o.corrige.slice(0, 200)}`).join("\n")}
+
+NEW QUESTIONS:
+${news.map((n, k) => `N${k + 1}. ${n.enonce.slice(0, 300)} → expected answer: ${n.corrige.slice(0, 200)}`).join("\n")}
+
+A new question is a DUPLICATE if it asks for the same information or essentially expects the same answer as a question already asked, even worded differently (rephrasing, true/false, fill-in-the-blank, multiple choice, a scenario that amounts to reciting the same thing). It is NOT a duplicate if it is about the same concept but asks for another element, a new application or a different explanation.
+Reply only in JSON: {"doublons":[N numbers of the duplicate new questions]}`, {modelTier:"quick"});
+    sem = (r?.doublons || []).map(x => +String(x).replace(/\D/g, "") - 1).filter(i => i >= 0 && i < news.length); ok = Array.isArray(r?.doublons); } catch(e){ console.warn("duplicate check", e); }
+  /* Sans vérification de l'IA, la comparaison des mots décide seule ; avec elle, on n'ajoute que les copies quasi identiques */
+  return [...new Set([...lex(ok ? 0.85 : 0.6), ...sem])].sort((a, b) => a - b);
 }
 async function createRattrapage(c, e, replaceId){
   const f = feuille(c.id), cp = f?.copies?.[e.id]; if (!cp) throw {code:"no_copy"};
@@ -2007,34 +2028,37 @@ async function createRattrapage(c, e, replaceId){
   const weak = c.questions.map(q => ({q, a:cp.answers[q.id]})).filter(x => x.a && noteOf(x.a) / x.q.points < 0.6);
   const target = weak.length ? weak : c.questions.map(q => ({q, a:cp.answers[q.id]})).sort((x, y) => noteOf(x.a) / x.q.points - noteOf(y.a) / y.q.points).slice(0, 1);
   const lvl = levelOf(e, c.matiere);
-  const ctx = target.map(({q, a}) => { const v = vOf(q, cp.version?.[q.id] || "standard");
-    return `- Skill: ${q.notion || "?"}
-  Question: ${v.enonce}
-  Answer key: ${v.corrige}
-  Student's answer (${fmt(noteOf(a))}/${q.points}) : ${a?.transcription || "(vide)"}
-  Mistakes noted: ${(a?.erreurs || []).join(", ") || "?"}
-  Comment: ${a?.commentaire || ""}`; }).join("\n");
+  /* Ce que l'élève a raté : notions et erreurs seulement. Les questions du contrôle ne sont données qu'en liste INTERDITE,
+     jamais comme modèle : sinon l'IA les reformule au lieu d'en écrire de nouvelles */
+  const ctx = target.map(({q, a}) => `- Skill: ${q.notion || "?"} · score ${fmt(noteOf(a))}/${q.points} · mistakes noted: ${(a?.erreurs || []).join(", ") || "?"}${a?.commentaire ? " · comment: " + a.commentaire : ""}`).join("\n");
   const co = c.coursId && (store.allCours || store.cours).find(x => x.id === c.coursId);
-  /* Énoncés déjà vus par l'élève (contrôle, toutes versions, et rattrapages précédents) : le rattrapage ne doit pas les reprendre */
-  const seen = [c, ...store.controles.filter(x => x.type === "rattrapage" && x.parentId === c.id)].flatMap(x => (x.questions || []).flatMap(q => Object.values(q.v || {}).map(v => v?.enonce || ""))).filter(Boolean);
-  const prompt = (refus) => `You are preparing an individual remediation sheet for a student in ${c.niveau || ""} en ${c.matiere}.
+  const olds = askedOf([c, ...store.controles.filter(x => x.type === "rattrapage" && x.parentId === c.id)]);
+  const prompt = (n, refus) => `You are preparing an individual remediation sheet for a student in ${c.niveau || ""} en ${c.matiere}.
 Student's usual level in this subject: ${LVL[lvl]}.
-Their difficulties on the test " ${c.titre} » :
+Concepts the student failed on the test “ ${c.titre} » :
 ${ctx}
-${co?.texte ? `\nLESSON (to vary the examples and angles):\n"""${co.texte.slice(0, 12000)}"""\n` : ""}
+${co?.texte ? `\nLESSON (main source for the new questions):\n"""${co.texte.slice(0, 14000)}"""\n` : ""}
+QUESTIONS ALREADY ASKED TO THE STUDENT, ALL FORBIDDEN (with their answer):
+${[...olds, ...refus].map((o, k) => `${k + 1}. ${o.enonce.slice(0, 300)} → answer: ${o.corrige.slice(0, 200)}`).join("\n")}
+
 ${langueRule(c.langue)}
-Create exactly 3 NEW exercises, of increasing difficulty, that work on the SAME concepts from a DIFFERENT angle:
-1 = discovery (easier than the student's level), 2 = application, 3 = back to level ${LVL[lvl].toLowerCase()} of the test.
-ABSOLUTE RULE: never reuse a question from the test, neither word for word nor rephrased. Change the format: practical case or real-life scenario, true/false to justify, sentence to complete, mistake to correct, comparison, explanation in their own words, example to find. A question that asks the same thing as one in the test is rejected.
-Total 20 points (e.g. 5, 7, 8). Each exercise: a self-contained prompt (with a hint in parentheses for #1), a model answer, grading criteria, 2 or 3 typical mistakes, a number of answer lines (3 to 12).
+Create exactly ${n} COMPLETELY NEW exercise(s)${n === 3 ? ", of increasing difficulty: 1 = discovery (easier than the student's level), 2 = application, 3 = back to level " + LVL[lvl].toLowerCase() + " of the test" : ""}.
+ABSOLUTE RULE: each exercise must ask for something else and expect an answer DIFFERENT from all the forbidden questions. Rephrasing a forbidden question, or turning it into true/false, fill-in-the-blank, multiple choice or a scenario that amounts to giving the same answer, is a duplicate: rejected.
+To stay on the failed concepts without repeating: use other parts of the lesson (another rule, another detail, another example, a special case, a practical consequence, a comparison between two concepts, application to a new concrete situation, explaining the “why”).
+Total ${n === 3 ? "20 points (e.g. 5, 7, 8)" : "points: " + n * 6 + " approximately"}. Each exercise: a self-contained prompt${n === 3 ? " (with a hint in parentheses for #1)" : ""}, a model answer, grading criteria, 2 or 3 typical mistakes, a number of answer lines (3 to 12).
 ${NOSRC}
-${refus.length ? "These questions are FORBIDDEN because the student already had them: " + refus.map(t => "« " + t.slice(0, 200) + " ”").join(" / ") + "\n" : ""}Reply only in JSON: {"titre":"…","questions":[{"notion":"…","points":5,"lignes":5,"enonce":"…","corrige":"…","criteres":"…","erreurs":["…"]}]}`;
-  let r = await ai(prompt(replaceId ? (ctrl(replaceId)?.questions || []).map(q => vOf(q, "standard").enonce) : []));
-  const copies = rr => (rr?.questions || []).filter(x => seen.some(t => tooClose(String(x.enonce || ""), t)));
-  if (copies(r).length){ const r2 = await ai(prompt([...new Set([...copies(r).map(x => String(x.enonce)), ...target.map(({q}) => vOf(q, "standard").enonce)])]));
-    if ((r2?.questions || []).length && copies(r2).length < copies(r).length) r = r2; }
-  const qs = (r?.questions || []).slice(0, 3).map(x => ({id:"q" + uid(5), notion:String(x.notion || ""), points:+x.points || 5, lignes:clamp(+x.lignes || 6, 2, 20), erreurs:(x.erreurs || []).map(String),
-    v:{standard:{enonce:String(x.enonce || ""), corrige:String(x.corrige || ""), criteres:String(x.criteres || "")}}}));
+Reply only in JSON: {"titre":"…","questions":[{"notion":"…","points":5,"lignes":5,"enonce":"…","corrige":"…","criteres":"…","erreurs":["…"]}]}`;
+  const toQ = x => ({id:"q" + uid(5), notion:String(x.notion || ""), points:+x.points || 5, lignes:clamp(+x.lignes || 6, 2, 20), erreurs:(x.erreurs || []).map(String),
+    v:{standard:{enonce:String(x.enonce || ""), corrige:String(x.corrige || ""), criteres:String(x.criteres || "")}}});
+  const prev = replaceId ? askedOf([ctrl(replaceId)].filter(Boolean)) : [];
+  const r = await ai(prompt(3, prev)); const qs = (r?.questions || []).slice(0, 3).map(toQ);
+  /* Vérification du sens par l'IA : une question qui demande la même chose qu'une question déjà posée est remplacée (2 essais) */
+  for (let k = 0; k < 2 && qs.length; k++){
+    const dup = await doublons(qs.map(q => vOf(q, "standard")), olds); if (!dup.length) break;
+    const keep = qs.filter((q, i) => !dup.includes(i)).map(q => vOf(q, "standard")), bad = dup.map(i => vOf(qs[i], "standard"));
+    const r2 = await ai(prompt(dup.length, [...prev, ...keep, ...bad])), add = (r2?.questions || []).slice(0, dup.length).map(toQ);
+    dup.forEach((i, j) => { if (add[j]){ add[j].points = qs[i].points; qs[i] = add[j]; } });
+  }
   if (!qs.length) throw {code:"invalid_json"};
   const old = replaceId && ctrl(replaceId), printed = old && feuille(replaceId) && Object.keys(feuille(replaceId).copies || {}).length;
   if (old && !printed){ const o = structuredClone(old); o.questions = qs; o.titre = "Remediation · " + rTitre(r.titre || c.titre); await saveCtrl(o); return replaceId; }
@@ -2534,14 +2558,18 @@ Reply only in JSON: {"titre":"…","remarques":["…"],"questions":[{"notion":"�
 async function createVariante(c){
   const co = c.coursId && (store.allCours || store.cours).find(x => x.id === c.coursId), lv = c.differencie ? LEVELS : ["standard"];
   const list = c.questions.map((q, i) => { const v = vOf(q, "standard"); return `${i + 1}. [${q.points} pts${q.type === "qcm" ? ", QCM" : ""}] Notion : ${q.notion || "?"}\n   Question: ${v.enonce}\n   Answer: ${v.corrige}`; }).join("\n");
-  const r = await ai(`You are a teacher of ${c.matiere}${c.niveau ? " en " + c.niveau : ""}. Here is a test:
+  const ask = (refus) => ai(`You are a teacher of ${c.matiere}${c.niveau ? " en " + c.niveau : ""}. Here is a test:
 ${list}
 ${co?.texte ? `\nLESSON (to find other examples):\n"""${co.texte.slice(0, 12000)}"""\n` : ""}
-Write a VARIANT of this test for another class or another day: exactly ${c.questions.length} questions, in the same order, each on the SAME concept, with the SAME points, the same type and the same difficulty, but with a different wording (other values, other examples, another situation). For a knowledge question, ask for the same knowledge in another way. No question may be identical to the original.
+Write a VARIANT of this test for another class or another day: exactly ${c.questions.length} questions, in the same order, each on the SAME concept, with the SAME points, the same type and the same difficulty, but asking for SOMETHING ELSE: other values, another example, another situation, or another element of the concept, with an expected answer different from the original. Rephrasing the original question (or turning it into true/false, fill-in-the-blank or multiple choice expecting the same answer) is forbidden.
 ${lv.length > 1 ? `For each question, 3 versions graded on the same points: "socle" (more guided), "standard", "approfondi" (more demanding).` : `For each question, a single "standard" version.`} Each version: question, model answer, grading criteria adding up to the points.${c.questions.some(q => q.type === "qcm") ? ` For a multiple-choice question: "type":"qcm" and, in each version, "choix" (options without letters) and "bonnes" (indices starting at 0).` : ""}
-${langueRule(c.langue)}
+${refus.length ? "These questions are FORBIDDEN (duplicates of a test question): " + refus.map(t => "« " + t.slice(0, 200) + " ”").join(" / ") + "\n" : ""}${langueRule(c.langue)}
 ${NOSRC}
 Reply only in JSON: {"questions":[{"notion":"…","points":4,"lignes":6,"erreurs":["…"],"versions":{${lv.map(l => `"${l}":{"enonce":"…","corrige":"…","criteres":"…"}`).join(",")}}}]}`);
+  const olds = askedOf([c]); let r = await ask([]);
+  /* Vérification du sens : si des questions ne font que reformuler l'original, on refait la variante en les interdisant */
+  const d1 = await doublons((r?.questions || []).map(mapQ).map(q => vOf(q, "standard")), olds);
+  if (d1.length){ const r2 = await ask(d1.map(k => String(r.questions[k]?.versions?.standard?.enonce || ""))); if ((r2?.questions || []).length) r = r2; }
   const qs = (r?.questions || []).map(mapQ); if (!qs.length) throw {code:"invalid_json"};
   qs.forEach((q, i) => { const o = c.questions[i]; if (o){ q.points = +o.points; q.lignes = o.lignes || q.lignes; } });
   const {id:_, ...rest} = c, id = uid(12);

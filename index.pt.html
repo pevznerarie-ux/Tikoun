@@ -1994,10 +1994,31 @@ function vAnalyse(){
 }
 const rTitre = t => String(t).replace(/^(feuille de |fiche de )?rattrapage\s*[-:·–]?\s*/i, "").replace(/^contr[ôo]le de /i, "") || String(t);
 /* Deux énoncés trop proches : l'un contient l'autre, ou ils partagent la plupart de leurs mots significatifs */
-function tooClose(a, b){
+function tooClose(a, b, seuil = 0.6){
   const w = t => new Set(t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9\u0590-\u05ff ]+/g, " ").split(/\s+/).filter(x => x.length > 3).map(x => x.slice(0, 5)));
   const A = w(a), B = w(b); if (!A.size || !B.size) return false;
-  const inter = [...A].filter(x => B.has(x)).length; return inter / Math.min(A.size, B.size) >= 0.6;
+  const inter = [...A].filter(x => B.has(x)).length; return inter / Math.min(A.size, B.size) >= seuil;
+}
+/* Questions déjà posées (énoncé + réponse attendue) */
+const askedOf = ctrls => ctrls.flatMap(x => (x.questions || []).flatMap(q => [...new Set(Object.values(q.v || {}).map(v => v?.enonce).filter(Boolean))].map(en => ({enonce:en, corrige:Object.values(q.v).find(v => v?.enonce === en)?.corrige || ""}))));
+/* Indices des nouvelles questions qui demandent la même chose (ou attendent la même réponse) qu'une question déjà posée :
+   comparaison des mots, puis vérification du sens par l'IA */
+async function doublons(news, olds){
+  if (!news.length || !olds.length) return [];
+  const lex = seuil => news.map((n, i) => olds.some(o => tooClose(n.enonce, o.enonce, seuil)) ? i : -1).filter(i => i >= 0);
+  let sem = [], ok = false;
+  try { const r = await ai(`Você verifica se uma folha de recuperação não repete uma prova.
+QUESTÕES JÁ FEITAS:
+${olds.map((o, k) => `A${k + 1}. ${o.enonce.slice(0, 300)} → resposta esperada: ${o.corrige.slice(0, 200)}`).join("\n")}
+
+NOVAS QUESTÕES:
+${news.map((n, k) => `N${k + 1}. ${n.enonce.slice(0, 300)} → resposta esperada: ${n.corrige.slice(0, 200)}`).join("\n")}
+
+Uma nova questão é DUPLICATA se pedir a mesma informação ou esperar essencialmente a mesma resposta de uma questão já feita, mesmo com outra redação (reformulação, verdadeiro/falso, lacuna, múltipla escolha, situação que leve a recitar a mesma coisa). NÃO é duplicata se tratar do mesmo conceito mas pedir outro elemento, uma nova aplicação ou outra explicação.
+Responda apenas em JSON: {"doublons":[números N das novas questões duplicadas]}`, {modelTier:"quick"});
+    sem = (r?.doublons || []).map(x => +String(x).replace(/\D/g, "") - 1).filter(i => i >= 0 && i < news.length); ok = Array.isArray(r?.doublons); } catch(e){ console.warn("verificação de duplicatas", e); }
+  /* Sans vérification de l'IA, la comparaison des mots décide seule ; avec elle, on n'ajoute que les copies quasi identiques */
+  return [...new Set([...lex(ok ? 0.85 : 0.6), ...sem])].sort((a, b) => a - b);
 }
 async function createRattrapage(c, e, replaceId){
   const f = feuille(c.id), cp = f?.copies?.[e.id]; if (!cp) throw {code:"no_copy"};
@@ -2007,29 +2028,37 @@ async function createRattrapage(c, e, replaceId){
   const weak = c.questions.map(q => ({q, a:cp.answers[q.id]})).filter(x => x.a && noteOf(x.a) / x.q.points < 0.6);
   const target = weak.length ? weak : c.questions.map(q => ({q, a:cp.answers[q.id]})).sort((x, y) => noteOf(x.a) / x.q.points - noteOf(y.a) / y.q.points).slice(0, 1);
   const lvl = levelOf(e, c.matiere);
-  const ctx = target.map(({q, a}) => { const v = vOf(q, cp.version?.[q.id] || "standard");
-    return `- Conteúdo: ${q.notion || "?"}\n  Questão: ${v.enonce}\n  Gabarito: ${v.corrige}\n  Resposta do aluno (${fmt(noteOf(a))}/${q.points}) : ${a?.transcription || "(vide)"}\n  Erros identificados: ${(a?.erreurs || []).join(", ") || "?"}\n  Comentário: ${a?.commentaire || ""}`; }).join("\n");
+  /* Ce que l'élève a raté : notions et erreurs seulement. Les questions du contrôle ne sont données qu'en liste INTERDITE,
+     jamais comme modèle : sinon l'IA les reformule au lieu d'en écrire de nouvelles */
+  const ctx = target.map(({q, a}) => `- Conteúdo: ${q.notion || "?"} · nota ${fmt(noteOf(a))}/${q.points} · erros anotados: ${(a?.erreurs || []).join(", ") || "?"}${a?.commentaire ? " · comentário: " + a.commentaire : ""}`).join("\n");
   const co = c.coursId && (store.allCours || store.cours).find(x => x.id === c.coursId);
-  /* Énoncés déjà vus par l'élève (contrôle, toutes versions, et rattrapages précédents) : le rattrapage ne doit pas les reprendre */
-  const seen = [c, ...store.controles.filter(x => x.type === "rattrapage" && x.parentId === c.id)].flatMap(x => (x.questions || []).flatMap(q => Object.values(q.v || {}).map(v => v?.enonce || ""))).filter(Boolean);
-  const prompt = (refus) => `Você está preparando uma folha de recuperação individual para um aluno do ${c.niveau || ""} en ${c.matiere}.
+  const olds = askedOf([c, ...store.controles.filter(x => x.type === "rattrapage" && x.parentId === c.id)]);
+  const prompt = (n, refus) => `Você está preparando uma folha de recuperação individual para um aluno do ${c.niveau || ""} en ${c.matiere}.
 Nível habitual do aluno nesta disciplina: ${LVL[lvl]}.
-Suas dificuldades na prova “ ${c.titre} » :
+Conceitos em que o aluno falhou na prova “ ${c.titre} » :
 ${ctx}
-${co?.texte ? `\nAULA (para variar os exemplos e os ângulos):\n"""${co.texte.slice(0, 12000)}"""\n` : ""}
+${co?.texte ? `\nAULA (fonte principal das novas questões):\n"""${co.texte.slice(0, 14000)}"""\n` : ""}
+QUESTÕES JÁ FEITAS AO ALUNO, TODAS PROIBIDAS (com a resposta):
+${[...olds, ...refus].map((o, k) => `${k + 1}. ${o.enonce.slice(0, 300)} → resposta: ${o.corrige.slice(0, 200)}`).join("\n")}
+
 ${langueRule(c.langue)}
-Crie exatamente 3 exercícios NOVOS, de dificuldade crescente, que trabalhem os MESMOS conceitos sob OUTRO ângulo:
-1 = descoberta (mais simples que o nível do aluno), 2 = aplicação, 3 = retorno ao nível ${LVL[lvl].toLowerCase()} da prova.
-REGRA ABSOLUTA: nunca reutilize uma questão da prova, nem palavra por palavra nem reformulada. Mude o formato: caso prático ou situação real, verdadeiro/falso para justificar, frase para completar, erro para corrigir, comparação, explicação com as próprias palavras, exemplo para encontrar. Uma questão que pede a mesma coisa que uma da prova é recusada.
-Total de 20 pontos (ex.: 5, 7, 8). Cada exercício: um enunciado autônomo (com uma dica entre parênteses no 1), uma resposta-modelo, critérios de correção, 2 ou 3 erros típicos, um número de linhas de resposta (3 a 12).
+Crie exatamente ${n} exercício(s) TOTALMENTE NOVO(S)${n === 3 ? ", de dificuldade crescente: 1 = descoberta (mais simples que o nível do aluno), 2 = aplicação, 3 = retorno ao nível " + LVL[lvl].toLowerCase() + " da prova" : ""}.
+REGRA ABSOLUTA: cada exercício deve pedir outra coisa e esperar uma resposta DIFERENTE de todas as questões proibidas. Reformular uma questão proibida, ou transformá-la em verdadeiro/falso, lacuna, múltipla escolha ou situação que leve à mesma resposta, é duplicata: recusado.
+Para continuar nos conceitos em que o aluno errou sem repetir: use outras partes da aula (outra regra, outro detalhe, outro exemplo, caso particular, consequência prática, comparação entre dois conceitos, aplicação a uma situação concreta nova, explicação do “porquê”).
+Total ${n === 3 ? "20 pontos (ex.: 5, 7, 8)" : "pontos: " + n * 6 + " aproximadamente"}. Cada exercício: um enunciado autônomo${n === 3 ? " (com uma dica entre parênteses no 1)" : ""}, uma resposta-modelo, critérios de correção, 2 ou 3 erros típicos, um número de linhas de resposta (3 a 12).
 ${NOSRC}
-${refus.length ? "Estas questões são PROIBIDAS porque o aluno já as teve: " + refus.map(t => "« " + t.slice(0, 200) + " ”").join(" / ") + "\n" : ""}Responda apenas em JSON: {"titre":"…","questions":[{"notion":"…","points":5,"lignes":5,"enonce":"…","corrige":"…","criteres":"…","erreurs":["…"]}]}`;
-  let r = await ai(prompt(replaceId ? (ctrl(replaceId)?.questions || []).map(q => vOf(q, "standard").enonce) : []));
-  const copies = rr => (rr?.questions || []).filter(x => seen.some(t => tooClose(String(x.enonce || ""), t)));
-  if (copies(r).length){ const r2 = await ai(prompt([...new Set([...copies(r).map(x => String(x.enonce)), ...target.map(({q}) => vOf(q, "standard").enonce)])]));
-    if ((r2?.questions || []).length && copies(r2).length < copies(r).length) r = r2; }
-  const qs = (r?.questions || []).slice(0, 3).map(x => ({id:"q" + uid(5), notion:String(x.notion || ""), points:+x.points || 5, lignes:clamp(+x.lignes || 6, 2, 20), erreurs:(x.erreurs || []).map(String),
-    v:{standard:{enonce:String(x.enonce || ""), corrige:String(x.corrige || ""), criteres:String(x.criteres || "")}}}));
+Responda apenas em JSON: {"titre":"…","questions":[{"notion":"…","points":5,"lignes":5,"enonce":"…","corrige":"…","criteres":"…","erreurs":["…"]}]}`;
+  const toQ = x => ({id:"q" + uid(5), notion:String(x.notion || ""), points:+x.points || 5, lignes:clamp(+x.lignes || 6, 2, 20), erreurs:(x.erreurs || []).map(String),
+    v:{standard:{enonce:String(x.enonce || ""), corrige:String(x.corrige || ""), criteres:String(x.criteres || "")}}});
+  const prev = replaceId ? askedOf([ctrl(replaceId)].filter(Boolean)) : [];
+  const r = await ai(prompt(3, prev)); const qs = (r?.questions || []).slice(0, 3).map(toQ);
+  /* Vérification du sens par l'IA : une question qui demande la même chose qu'une question déjà posée est remplacée (2 essais) */
+  for (let k = 0; k < 2 && qs.length; k++){
+    const dup = await doublons(qs.map(q => vOf(q, "standard")), olds); if (!dup.length) break;
+    const keep = qs.filter((q, i) => !dup.includes(i)).map(q => vOf(q, "standard")), bad = dup.map(i => vOf(qs[i], "standard"));
+    const r2 = await ai(prompt(dup.length, [...prev, ...keep, ...bad])), add = (r2?.questions || []).slice(0, dup.length).map(toQ);
+    dup.forEach((i, j) => { if (add[j]){ add[j].points = qs[i].points; qs[i] = add[j]; } });
+  }
   if (!qs.length) throw {code:"invalid_json"};
   const old = replaceId && ctrl(replaceId), printed = old && feuille(replaceId) && Object.keys(feuille(replaceId).copies || {}).length;
   if (old && !printed){ const o = structuredClone(old); o.questions = qs; o.titre = "Recuperação · " + rTitre(r.titre || c.titre); await saveCtrl(o); return replaceId; }
@@ -2529,14 +2558,18 @@ Responda apenas em JSON: {"titre":"…","remarques":["…"],"questions":[{"notio
 async function createVariante(c){
   const co = c.coursId && (store.allCours || store.cours).find(x => x.id === c.coursId), lv = c.differencie ? LEVELS : ["standard"];
   const list = c.questions.map((q, i) => { const v = vOf(q, "standard"); return `${i + 1}. [${q.points} pts${q.type === "qcm" ? ", QCM" : ""}] Notion : ${q.notion || "?"}\n   Enunciado: ${v.enonce}\n   Resposta: ${v.corrige}`; }).join("\n");
-  const r = await ai(`Você é um professor de ${c.matiere}${c.niveau ? " en " + c.niveau : ""}. Aqui está uma prova:
+  const ask = (refus) => ai(`Você é um professor de ${c.matiere}${c.niveau ? " en " + c.niveau : ""}. Aqui está uma prova:
 ${list}
 ${co?.texte ? `\nAULA (para encontrar outros exemplos):\n"""${co.texte.slice(0, 12000)}"""\n` : ""}
-Escreva uma VARIANTE desta prova para outra turma ou outro dia: exatamente ${c.questions.length} questões, na mesma ordem, cada uma sobre o MESMO conceito, com os MESMOS pontos, o mesmo tipo e a mesma dificuldade, mas com outro enunciado (outros valores, outros exemplos, outra situação). Para uma questão de conhecimento, peça o mesmo conhecimento de outro jeito. Nenhuma questão pode ser idêntica à original.
+Escreva uma VARIANTE desta prova para outra turma ou outro dia: exatamente ${c.questions.length} questões, na mesma ordem, cada uma sobre o MESMO conceito, com os MESMOS pontos, o mesmo tipo e a mesma dificuldade, mas pedindo OUTRA COISA: outros valores, outro exemplo, outra situação ou outro elemento do conceito, com uma resposta esperada diferente da original. Reformular a questão original (ou transformá-la em verdadeiro/falso, lacuna ou múltipla escolha com a mesma resposta) é proibido.
 ${lv.length > 1 ? `Para cada questão, 3 versões com os mesmos pontos: "socle" (mais guiada), "standard", "approfondi" (mais exigente).` : `Para cada questão, uma única versão "standard".`} Cada versão: enunciado, resposta-modelo e critérios de correção cuja soma dá os pontos.${c.questions.some(q => q.type === "qcm") ? ` Para múltipla escolha: "type":"qcm" e, em cada versão, "choix" (opções sem letra) e "bonnes" (índices a partir de 0).` : ""}
-${langueRule(c.langue)}
+${refus.length ? "Estas questões são PROIBIDAS (duplicatas de uma questão da prova): " + refus.map(t => "« " + t.slice(0, 200) + " ”").join(" / ") + "\n" : ""}${langueRule(c.langue)}
 ${NOSRC}
 Responda apenas em JSON: {"questions":[{"notion":"…","points":4,"lignes":6,"erreurs":["…"],"versions":{${lv.map(l => `"${l}":{"enonce":"…","corrige":"…","criteres":"…"}`).join(",")}}}]}`);
+  const olds = askedOf([c]); let r = await ask([]);
+  /* Vérification du sens : si des questions ne font que reformuler l'original, on refait la variante en les interdisant */
+  const d1 = await doublons((r?.questions || []).map(mapQ).map(q => vOf(q, "standard")), olds);
+  if (d1.length){ const r2 = await ask(d1.map(k => String(r.questions[k]?.versions?.standard?.enonce || ""))); if ((r2?.questions || []).length) r = r2; }
   const qs = (r?.questions || []).map(mapQ); if (!qs.length) throw {code:"invalid_json"};
   qs.forEach((q, i) => { const o = c.questions[i]; if (o){ q.points = +o.points; q.lignes = o.lignes || q.lignes; } });
   const {id:_, ...rest} = c, id = uid(12);
