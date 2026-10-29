@@ -2126,5 +2126,19 @@
  "Élève (notes": "Aluno (notas",
  "Afficher aussi le pourcentage à côté du niveau": "Mostrar também a porcentagem ao lado do nível",
  "au contrôle et": "na prova e",
- "au rattrapage → note retenue": "na recuperação → nota final"
+ "au rattrapage → note retenue": "na recuperação → nota final",
+ "\\n\"competences\" : pour chaque question, la compétence principale qu'elle évalue vraiment (en premier), et une seconde seulement si la question l'exige clairement. Sur un même contrôle, varie : des questions différentes évaluent en général des compétences différentes. Choix parmi \"connaitre\" (restituer le cours), \"comprendre\" (expliquer, reformuler, interpréter), \"raisonner\" (logique, déduire, résoudre un problème), \"lire\" (lire et analyser un texte ou un document), \"ecrire\" (rédiger, argumenter, s'exprimer à l'écrit).": "\\n\"competences\": para cada questão, a competência principal que ela realmente avalia (primeiro) e uma segunda só se a questão exigir claramente. Numa mesma prova, varie: questões diferentes costumam avaliar competências diferentes. Escolha entre \"connaitre\" (recordar a aula), \"comprendre\" (explicar, reformular, interpretar), \"raisonner\" (lógica, deduzir, resolver um problema), \"lire\" (ler e analisar um texto ou documento), \"ecrire\" (redigir, argumentar, expressar-se por escrito). Mantenha essas chaves exatas em francês.",
+ "Pas encore évaluée": "Ainda não avaliada",
+ "Profil régulier": "Perfil regular",
+ ": évaluées par exactement les mêmes questions, elles donnent donc le même résultat. Pour les distinguer, change les compétences de quelques questions dans l'éditeur des contrôles.": ": avaliadas exatamente pelas mesmas questões, por isso dão o mesmo resultado. Para distingui-las, altere as competências de algumas questões no editor das provas.",
+ "Aucune question de l'année n'a encore de compétence.": "Nenhuma questão do ano tem competência ainda.",
+ "non évaluée": "não avaliada",
+ "Pour chaque compétence : la part des points obtenus sur l'année aux questions qui l'évaluent, et le niveau du livret scolaire (": "Para cada competência: a parte dos pontos obtidos no ano nas questões que a avaliam, e o nível do boletim (",
+ "très bonne maîtrise dès 80 ·": "domínio muito bom a partir de 80 ·",
+ "satisfaisante dès 60 ·": "satisfatório a partir de 60 ·",
+ "fragile dès 40 ·": "frágil a partir de 40 ·",
+ "insuffisante). La compétence principale d'une question compte entièrement, la seconde pour moitié.": "insuficiente). A competência principal de uma questão conta inteira, a segunda conta pela metade.",
+ "Profil": "Perfil",
+ "Point fort :": "Ponto forte:",
+ "À travailler :": "A trabalhar:"
 }

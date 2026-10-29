@@ -2124,5 +2124,19 @@
  "Élève (notes": "Student (grades",
  "Afficher aussi le pourcentage à côté du niveau": "Also show the percentage next to the level",
  "au contrôle et": "on the test and",
- "au rattrapage → note retenue": "on the make-up → final grade"
+ "au rattrapage → note retenue": "on the make-up → final grade",
+ "\\n\"competences\" : pour chaque question, la compétence principale qu'elle évalue vraiment (en premier), et une seconde seulement si la question l'exige clairement. Sur un même contrôle, varie : des questions différentes évaluent en général des compétences différentes. Choix parmi \"connaitre\" (restituer le cours), \"comprendre\" (expliquer, reformuler, interpréter), \"raisonner\" (logique, déduire, résoudre un problème), \"lire\" (lire et analyser un texte ou un document), \"ecrire\" (rédiger, argumenter, s'exprimer à l'écrit).": "\\n\"competences\": for each question, the main skill it really assesses (first), and a second one only if the question clearly requires it. Within a test, vary: different questions usually assess different skills. Choose among \"connaitre\" (recall the lesson), \"comprendre\" (explain, rephrase, interpret), \"raisonner\" (logic, deduce, solve a problem), \"lire\" (read and analyze a text or document), \"ecrire\" (write, argue, express oneself in writing). Keep these exact French keys.",
+ "Pas encore évaluée": "Not assessed yet",
+ "Profil régulier": "Even profile",
+ ": évaluées par exactement les mêmes questions, elles donnent donc le même résultat. Pour les distinguer, change les compétences de quelques questions dans l'éditeur des contrôles.": ": assessed by exactly the same questions, so they give the same result. To tell them apart, change the skills of a few questions in the test editor.",
+ "Aucune question de l'année n'a encore de compétence.": "No question this year has a skill yet.",
+ "non évaluée": "not assessed",
+ "Pour chaque compétence : la part des points obtenus sur l'année aux questions qui l'évaluent, et le niveau du livret scolaire (": "For each skill: the share of points earned this year on the questions that assess it, and the report-card level (",
+ "très bonne maîtrise dès 80 ·": "very good mastery from 80 ·",
+ "satisfaisante dès 60 ·": "satisfactory from 60 ·",
+ "fragile dès 40 ·": "fragile from 40 ·",
+ "insuffisante). La compétence principale d'une question compte entièrement, la seconde pour moitié.": "insufficient). A question's main skill counts fully, the second one counts half.",
+ "Profil": "Profile",
+ "Point fort :": "Strength:",
+ "À travailler :": "To work on:"
 }

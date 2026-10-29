@@ -643,7 +643,7 @@ const TON_EX = {bienveillant:{tu:"Bonne idée de citer la règle ! Il manque l'e
 /* Compétences évaluées par chaque question (1 ou 2), suivies sur l'année avec l'échelle du livret scolaire */
 const COMPS = {connaitre:"Connaître", comprendre:"Comprendre", raisonner:"Raisonner", lire:"Lire", ecrire:"Écrire"};
 const compsOf = a => Object.keys(COMPS).filter(k => (Array.isArray(a) ? a : []).map(x => String(x).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")).includes(k)).slice(0, 2);
-const COMP_RULE = `\n"competences" : pour chaque question, 1 ou 2 compétences parmi "connaitre" (restituer le cours), "comprendre" (expliquer, reformuler, interpréter), "raisonner" (logique, déduire, résoudre un problème), "lire" (lire et analyser un texte ou un document), "ecrire" (rédiger, argumenter, s'exprimer à l'écrit).`;
+const COMP_RULE = `\n"competences" : pour chaque question, la compétence principale qu'elle évalue vraiment (en premier), et une seconde seulement si la question l'exige clairement. Sur un même contrôle, varie : des questions différentes évaluent en général des compétences différentes. Choix parmi "connaitre" (restituer le cours), "comprendre" (expliquer, reformuler, interpréter), "raisonner" (logique, déduire, résoudre un problème), "lire" (lire et analyser un texte ou un document), "ecrire" (rédiger, argumenter, s'exprimer à l'écrit).`;
 const MAITRISE = r => r == null ? null : r >= .8 ? {k:"tb", t:"ok", l:"Très bonne maîtrise"} : r >= .6 ? {k:"s", t:"ok", l:"Maîtrise satisfaisante"} : r >= .4 ? {k:"f", t:"warn", l:"Maîtrise fragile"} : {k:"i", t:"bad", l:"Maîtrise insuffisante"};
 const MAI_ABR = {tb:"TB", s:"S", f:"F", i:"I"};
 /* Mise en page d'un nouveau contrôle : préférences du prof, réglure Seyès et interligne large au primaire */
@@ -3764,12 +3764,20 @@ function yearsOf(cl, mat){ const s = new Set(store.controles.filter(c => c.class
 function moyennes(cs, e){ const rows = cs.map(c => ({c, v:noteDe(c, e), w:coefOf(c), p:periodOf(ctrlDay(c))}));
   return {rows, per:Array.from({length:bornes().length + 1}, (_, i) => wavg(rows.filter(r => r.p === i))), an:wavg(rows)}; }
 /* Compétences : part des points obtenus sur les questions qui évaluent chaque compétence */
+/* La 1re compétence d'une question est la principale (poids 1), la 2e compte pour moitié */
 function compStats(cs, e){ const acc = {};
   for (const c of cs){ const cp = feuille(c.id)?.copies?.[e.id]; if (!copyDone(c, cp) || isAbs(c, e)) continue;
     for (const q of c.questions || []){ const n = noteOf(cp.answers?.[q.id]); if (n == null || !+q.points) continue;
-      for (const k of q.comps || []){ const o = acc[k] = acc[k] || {s:0, p:0}; o.s += n; o.p += +q.points; } } }
+      (q.comps || []).forEach((k, i) => { const w = i ? .5 : 1, o = acc[k] = acc[k] || {s:0, p:0}; o.s += n * w; o.p += +q.points * w; }); } }
   return Object.fromEntries(Object.keys(COMPS).map(k => [k, acc[k] ? acc[k].s / acc[k].p : null])); }
-const maiCell = r => { const m = MAITRISE(r); return m ? `<span class="cell ${m.t}" title="${esc(m.l)} · ${pct(r)}">${MAI_ABR[m.k]}</span>` : `<span class="cell none">—</span>`; };
+/* Combien de questions de l'année évaluent chaque compétence, et lesquelles (pour repérer deux compétences évaluées par les mêmes questions) */
+function compCouv(cs){ const q = Object.fromEntries(Object.keys(COMPS).map(k => [k, []]));
+  for (const c of cs) for (const x of c.questions || []) (x.comps || []).forEach(k => q[k]?.push(c.id + ":" + x.id));
+  return q; }
+const maiCell = r => { const m = MAITRISE(r); return m ? `<span class="cell ${m.t}" title="${esc(m.l)}">${Math.round(r * 100)}<small style="font-weight:500;opacity:.75"> ${MAI_ABR[m.k]}</small></span>` : `<span class="cell none" title="Pas encore évaluée">—</span>`; };
+/* Point fort et point à travailler d'un élève, par rapport à ses propres résultats (écart d'au moins 10 points) */
+const profil = R => { const v = Object.entries(R).filter(([, r]) => r != null).sort((a, b) => b[1] - a[1]); if (v.length < 2) return null; const [hi, lo] = [v[0], v[v.length - 1]];
+  return hi[1] - lo[1] >= .1 ? {fort:hi[0], faible:lo[0]} : {homogene:true}; };
 
 /* ---------- Signaux à observer : des faits tirés des notes et des copies, jamais un diagnostic. Vus du seul professeur. ---------- */
 function signaux(cl, mat, e, y){
@@ -3875,12 +3883,18 @@ function vSuiviBase(){
       </tbody></table></div></section>`;
   }
   if (tab === "comps"){
-    const sans = cs.filter(c => (c.questions || []).some(q => !(q.comps || []).length)), CS = Object.fromEntries(els.map(e => [e.id, compStats(cs, e)]));
-    body = `<section class="panel"><p class="small muted" style="margin:0">Échelle du livret scolaire, sur l'année : <b>TB</b> très bonne maîtrise · <b>S</b> satisfaisante · <b>F</b> fragile · <b>I</b> insuffisante. Chaque question compte pour la ou les compétences qu'elle évalue.</p>
+    const sans = cs.filter(c => (c.questions || []).some(q => !(q.comps || []).length)), CS = Object.fromEntries(els.map(e => [e.id, compStats(cs, e)])), cov = compCouv(cs);
+    const ks = Object.keys(COMPS), used = ks.filter(k => cov[k].length);
+    /* Deux compétences évaluées exactement par les mêmes questions donnent forcément le même résultat : on le dit */
+    const jumelles = []; used.forEach((a, i) => used.slice(i + 1).forEach(b => { if (cov[a].length === cov[b].length && cov[a].every(x => cov[b].includes(x))) jumelles.push(COMPS[a] + " / " + COMPS[b]); }));
+    const pf = x => { const P = profil(CS[x.id]); return !P ? `<span class="small muted">—</span>` : P.homogene ? `<span class="small muted">Profil régulier</span>` : `<span class="small"><b style="color:var(--ok)">↑ ${COMPS[P.fort]}</b> · <b style="color:var(--bad)">↓ ${COMPS[P.faible]}</b></span>`; };
+    body = `<section class="panel"><p class="small muted" style="margin:0">Pour chaque compétence : la part des points obtenus sur l'année aux questions qui l'évaluent, et le niveau du livret scolaire (<b>TB</b> très bonne maîtrise dès 80 · <b>S</b> satisfaisante dès 60 · <b>F</b> fragile dès 40 · <b>I</b> insuffisante). La compétence principale d'une question compte entièrement, la seconde pour moitié.</p>
       ${sans.length ? `<p class="banner" style="margin-top:8px">${sans.length} contrôle(s) de l'année ont des questions sans compétence. <button class="btn sm" id="compAll">Les indiquer avec l'IA</button> <span class="status" id="comp-st"></span></p>` : ""}
-      <div class="tbl-wrap tbl-sticky" style="margin-top:8px"><table><thead><tr><th>Élève</th>${Object.values(COMPS).map(l => `<th class="c">${l}</th>`).join("")}</tr></thead><tbody>
-      ${els.map(x => `<tr ${rowAttr(x)}>${nameTd(x)}${Object.keys(COMPS).map(k => `<td class="c">${maiCell(CS[x.id][k])}</td>`).join("")}</tr>`).join("")}
-      <tr class="tot"><td><b>Classe</b></td>${Object.keys(COMPS).map(k => `<td class="c">${maiCell(mean(els.map(e => CS[e.id][k])))}</td>`).join("")}</tr>
+      ${jumelles.length ? `<p class="banner" style="margin-top:8px">${esc(jumelles.join(" ; "))} : évaluées par exactement les mêmes questions, elles donnent donc le même résultat. Pour les distinguer, change les compétences de quelques questions dans l'éditeur des contrôles.</p>` : ""}
+      ${used.length ? "" : `<p class="small muted" style="margin-top:8px">Aucune question de l'année n'a encore de compétence.</p>`}
+      <div class="tbl-wrap tbl-sticky" style="margin-top:8px"><table><thead><tr><th>Élève</th>${ks.map(k => `<th class="c">${COMPS[k]}<div class="small muted" style="font-weight:500;text-transform:none;letter-spacing:0">${cov[k].length ? cov[k].length + " q." : "non évaluée"}</div></th>`).join("")}<th>Profil</th></tr></thead><tbody>
+      ${els.map(x => `<tr ${rowAttr(x)}>${nameTd(x)}${ks.map(k => `<td class="c">${maiCell(CS[x.id][k])}</td>`).join("")}<td>${pf(x)}</td></tr>`).join("")}
+      <tr class="tot"><td><b>Classe</b></td>${ks.map(k => `<td class="c">${maiCell(mean(els.map(e => CS[e.id][k])))}</td>`).join("")}<td>${(P => !P ? "" : P.homogene ? `<span class="small muted">Profil régulier</span>` : `<span class="small"><b style="color:var(--ok)">↑ ${COMPS[P.fort]}</b> · <b style="color:var(--bad)">↓ ${COMPS[P.faible]}</b></span>`)(profil(Object.fromEntries(ks.map(k => [k, mean(els.map(e => CS[e.id][k]))]))))}</td></tr>
       </tbody></table></div></section>`;
   }
   const e = els.find(x => x.id === S.su.el);
@@ -3912,7 +3926,8 @@ function ficheEleve(cl, mat, e, y, cs){
       <p class="small muted" style="margin:6px 0 0">Des faits tirés des notes et des copies, pour t'aider à observer : jamais un diagnostic. Jamais montré à l'élève ni à sa famille.</p></div>
     <div class="grid g2">
       <div><div class="label" style="margin-bottom:6px">Compétences</div>
-        <div class="bars">${Object.entries(COMPS).map(([k, l]) => { const r = CS[k], m = MAITRISE(r); return `<div class="bar" style="grid-template-columns:110px 1fr auto"><span class="small">${l}</span><div class="track"><div class="fill" style="width:${r == null ? 0 : Math.round(r * 100)}%;background:var(--${m ? m.t : "line"})"></div></div><span class="small ${m ? "" : "muted"}">${m ? esc(m.l) : "—"}</span></div>`; }).join("")}</div></div>
+        <div class="bars">${(cv => Object.entries(COMPS).map(([k, l]) => { const r = CS[k], m = MAITRISE(r); return `<div class="bar" style="grid-template-columns:110px 1fr 150px"><span class="small">${l} <span class="muted">(${cv[k].length})</span></span><div class="track"><div class="fill" style="width:${r == null ? 0 : Math.round(r * 100)}%;background:var(--${m ? m.t : "line"})"></div></div><span class="small ${m ? "" : "muted"}">${m ? `<b class="num">${Math.round(r * 100)} %</b> · ${esc(m.l.replace(/^Maîtrise /, ""))}` : "non évaluée"}</span></div>`; }).join(""))(compCouv(cs))}</div>
+        ${(P => !P || P.homogene ? "" : `<p class="small" style="margin:6px 0 0"><b style="color:var(--ok)">Point fort : ${COMPS[P.fort]}</b> · <b style="color:var(--bad)">À travailler : ${COMPS[P.faible]}</b></p>`)(profil(CS))}</div>
       <div><div class="label" style="margin-bottom:6px">Notions, de la plus fragile à la plus solide</div>
         <div class="bars">${nl.map(x => `<div class="bar" style="grid-template-columns:1fr 90px 44px"><span class="small">${esc(st.labels[x.k])} <span class="muted">(${x.n})</span></span><div class="track"><div class="fill" style="width:${Math.round(x.r * 100)}%;background:var(--${tone(x.r)})"></div></div><span class="num small" style="text-align:right">${pct(x.r)}</span></div>`).join("") || `<p class="muted small">Aucune copie validée.</p>`}</div></div>
     </div>
