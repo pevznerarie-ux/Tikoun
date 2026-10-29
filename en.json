@@ -2138,5 +2138,10 @@
  "insuffisante). La compétence principale d'une question compte entièrement, la seconde pour moitié.": "insufficient). A question's main skill counts fully, the second one counts half.",
  "Profil": "Profile",
  "Point fort :": "Strength:",
- "À travailler :": "To work on:"
+ "À travailler :": "To work on:",
+ "Ajouter des élèves : un par ligne, « Prénom Nom » ou « NOM Prénom » (le nom en majuscules)": "Add students: one per line, “First Last” or “LAST First” (last name in capitals)",
+ "élève(s) ont leur nom de famille (en majuscules) rangé à la place du prénom, par exemple": "student(s) have their last name (in capitals) stored as their first name, for example",
+ ". Ils ne peuvent pas se connecter à leur espace avec leur nom.": ". They cannot sign in to their space with their last name.",
+ "Remettre dans l'ordre": "Fix the order",
+ "élève(s) remis dans l'ordre : prénom, puis nom de famille.": "student(s) fixed: first name, then last name."
 }

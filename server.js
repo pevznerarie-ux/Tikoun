@@ -661,7 +661,9 @@ async function eleveApi(req, res, url, p){
     const b = await readJSON(req, 2e3) || {}; const hit = findCode(b.code);
     /* Code personnel + nom de famille : deviner un code ne suffit pas */
     const norm = t => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9\u0590-\u05ff]+/g, "");
-    if (!hit || !norm(b.nom) || (norm(hit.e.nom) && norm(hit.e.nom) !== norm(b.nom))) return sendJ(res, 401, {error:{message:"Code ou nom de famille incorrect : vérifie ta carte"}});
+    /* Nom de famille attendu ; le prénom ou le nom complet sont aussi acceptés (listes importées « NOM Prénom » rangées à l'envers) */
+    const t = norm(b.nom), N = norm(hit?.e.nom), P = norm(hit?.e.prenom), nameOk = !!t && (!N || [N, P, N + P, P + N].includes(t));
+    if (!hit || !nameOk) return sendJ(res, 401, {error:{message:"Code ou nom de famille incorrect : vérifie ta carte"}});
     const tok = crypto.randomBytes(24).toString("hex"); ESESS.set(tok, {classeId:hit.classeId, eleveId:hit.e.id, code:hit.code, espace:hit.cl.espace, exp:Date.now() + 120 * 864e5});
     const secure = String(req.headers["x-forwarded-proto"] || "").includes("https") ? "; Secure" : "";
     return sendJ(res, 200, {ok:true}, {"Set-Cookie":`esid=${tok}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${120 * 86400}${secure}`});
