@@ -793,6 +793,18 @@ function saveState(){ const e = document.getElementById("savest"); if (!e) retur
   e.className = "savest " + (SAVE.err && !busy ? "bad" : busy ? "busy" : SAVE.at ? "ok" : "");
   e.textContent = SAVE.err && !busy ? "⚠ Falha ao salvar: verifique sua conexão e refaça a última alteração" : busy ? "Enregistrement…" : SAVE.at ? "✓ Salvo" : "Enregistrement automatique"; }
 window.addEventListener("beforeunload", ev => { if (editPending || SAVE.n > 0){ flushEdit(); ev.preventDefault(); ev.returnValue = ""; } });
+/* « Prénom Nom », « NOM Prénom » ou « Nom, Prénom » : le mot écrit entièrement en majuscules est le nom de famille */
+const isCaps = w => /\p{Lu}/u.test(w || "") && w === w.toUpperCase() && /\p{L}{2}/u.test(w);
+function splitNom(l){
+  if (l.includes(",")){ const [n, p] = l.split(",").map(x => x.trim()); return {prenom:p || "", nom:n || ""}; }
+  const w = l.split(/\s+/).filter(Boolean), caps = w.map(isCaps); if (w.length < 2) return {prenom:w[0] || "", nom:""};
+  if (caps.every(Boolean)) return {nom:w[0], prenom:w.slice(1).join(" ")};   // tout en majuscules : export « NOM PRÉNOM » des logiciels de vie scolaire
+  if (caps[0]){ let k = 0; while (k < w.length - 1 && caps[k]) k++; return {nom:w.slice(0, k).join(" "), prenom:w.slice(k).join(" ")}; }
+  if (caps[w.length - 1]){ let k = w.length - 1; while (k > 1 && caps[k - 1]) k--; return {prenom:w.slice(0, k).join(" "), nom:w.slice(k).join(" ")}; }
+  return {prenom:w[0], nom:w.slice(1).join(" ")};
+}
+/* Élèves dont le nom de famille (en majuscules) a été rangé à la place du prénom */
+const nomsInverses = cl => (cl?.eleves || []).filter(e => isCaps(e.prenom) && e.nom && !isCaps(e.nom));
 const saveCtrl = c => { const {id, ...d} = c; return write("controles/" + id, d); };
 /* Compétences des questions d'un contrôle existant : proposées par l'IA, modifiables ensuite */
 async function tagComps(c){
@@ -1050,13 +1062,14 @@ function vClasses(){
         <button class="btn sm" id="sugg">Sugerir os níveis</button><button class="btn sm ghost danger" id="del-cl" title="Excluir esta turma">Excluir a turma</button></div></div>
       ${sug ? `<div class="banner">Sugestões calculadas com base nas 3 últimas provas validadas em ${esc(S.levelMat)} (básico: menos de ${noteS(10)} · padrão: ${nv(10)}–${noteS(15)} · avançado: mais de ${noteS(15)}). <button class="btn sm" id="applySug">Aplicar</button></div>` : ""}
       <div class="tbl-wrap"><table><thead><tr><th>Aluno</th><th>Nível · ${esc(S.levelMat)}</th>${sug ? "<th>Sugestão</th>" : ""}<th>Caligrafia</th><th></th></tr></thead><tbody>
+      ${(n => n.length >= 2 ? `<tr><td colspan="5"><p class="banner" style="margin:0">${n.length} aluno(s) estão com o sobrenome (em maiúsculas) no lugar do nome, por exemplo ${esc(n[0].prenom + " " + n[0].nom)}. Eles não conseguem entrar no espaço com o sobrenome. <button class="btn sm primary" data-swapnoms="${cl.id}">Corrigir a ordem</button></p></td></tr>` : "")(nomsInverses(cl))}
       ${(cl.eleves || []).map(e => `<tr><td style="white-space:normal;min-width:120px"><b>${esc(e.prenom)} ${esc(e.nom)}</b></td>
         <td><select data-lvl="${e.id}" style="width:auto" aria-label="Niveau de ${esc(e.prenom)}">${selOpts(LEVELS, levelOf(e, S.levelMat), l => LVL[l])}</select></td>
         ${sug ? `<td>${sug[e.id] ? `<span class="lvl ${sug[e.id].lvl}">${LVL[sug[e.id].lvl]}</span> <span class="muted small num">${noteS(sug[e.id].avg)}</span>` : `<span class="muted small">sem nota</span>`}</td>` : ""}
         <td>${(() => { const w = store.ecritures[e.id]; const sc = w?.parUsage?.[usageOf(S.levelMat)] ?? w?.score; return w ? (sc != null ? `<span class="chip ${tone(sc >= .9 ? 1 : sc >= .75 ? .6 : 0)}" title="Legibilidade medida na folha de amostra de escrita">${pct(sc)}</span>` : `<span class="chip">ficha recebida</span>`) : `<span class="muted small">—</span>`; })()}</td>
         <td><button class="btn sm ghost" data-rmel="${e.id}" aria-label="Remover">Remover</button></td></tr>`).join("") || `<tr><td colspan="4" class="muted">Nenhum aluno.</td></tr>`}
       </tbody></table></div>
-      <div class="field"><label for="add-el">Adicionar alunos: um por linha, “Nome Sobrenome”</label><textarea id="add-el" data-live placeholder="Léa Martin&#10;Hugo Bernard"></textarea></div>
+      <div class="field"><label for="add-el">Adicionar alunos: um por linha, « Nome Sobrenome » ou « SOBRENOME Nome » (sobrenome em maiúsculas)</label><textarea id="add-el" data-live placeholder="Léa Martin&#10;BERNARD Hugo"></textarea></div>
       <div class="row"><button class="btn primary" id="add-go">Adicionar</button></div>
       <div class="grid" style="gap:6px;border-top:1px solid var(--line);padding-top:12px"><div class="row between"><div><b>Ficha de caligrafia</b><div class="small muted">Peça aos alunos que preencham no início e no meio do ano letivo (10 min) e depois escaneie. Mede a legibilidade de cada aluno e ajuda a IA a ler a letra dele.</div></div>
         <button class="btn" id="fiches">Fichas da turma (PDF)</button></div><div class="status" id="fi-st"></div></div>
@@ -2398,6 +2411,8 @@ document.addEventListener("click", async ev => {
 
   /* classes */
   if (d.classe){ S.classeSel = d.classe; S.suggestions = null; return render(); }
+  if (d.swapnoms){ const cl = classe(d.swapnoms); if (!cl) return; const ids = new Set(nomsInverses(cl).map(e => e.id));
+    await write("classes/" + cl.id, {eleves:cl.eleves.map(e => ids.has(e.id) ? {...e, prenom:e.nom, nom:e.prenom} : e)}, "update"); toast(ids.size + " aluno(s) corrigidos: nome, depois sobrenome."); return; }
   if (t.id === "nc-go"){ const niveau = $("#nc-niv").value, libelle = $("#nc-nom").value.trim(), nom = libelle ? niveau + " " + libelle : niveau;
     if (store.classes.some(c => c.nom === nom)){ toast("Você já tem uma turma “ " + nom + " ”: adicione um rótulo (A, B, Azul…) para diferenciá-las."); $("#nc-nom").focus(); return; }
     const q = S.me?.quota; if (q && !q.illimite && q.classes != null && (store.allClasses || store.classes).filter(c => c.createdBy === S.me.id).length >= q.classes)
@@ -2410,7 +2425,7 @@ document.addEventListener("click", async ev => {
     if (store.classes.some(c => c.id !== cl.id && c.nom === nom)) return toast("Você já tem uma turma “ " + nom + " ”: escolha outro rótulo.");
     await write("classes/" + cl.id, {nom, libelle}, "update"); return; }
   if (t.id === "add-go"){ const cl = classe(S.classeSel); const lines = $("#add-el").value.split("\n").map(s => s.trim()).filter(Boolean);
-    if (!lines.length){ toast("Escreva um aluno por linha: “Nome Sobrenome”."); $("#add-el").focus(); return; } const add = lines.map(l => { const [p, ...n] = l.split(/\s+/); return {id:uid(8), prenom:p, nom:n.join(" "), niveaux:{}}; });
+    if (!lines.length){ toast("Escreva um aluno por linha: “Nome Sobrenome”."); $("#add-el").focus(); return; } const add = lines.map(l => ({id:uid(8), ...splitNom(l), niveaux:{}}));
     $("#add-el").value = ""; await write("classes/" + cl.id, {eleves:[...(cl.eleves || []), ...add]}, "update"); toast(add.length + " aluno(s) adicionado(s)."); return; }
   if (d.rmel){ const cl = classe(S.classeSel), e = (cl.eleves || []).find(x => x.id === d.rmel); if (!e) return;
     if (!confirm(`Remover ${e.prenom} ${e.nom} da turma?\n\nSuas provas digitalizadas, notas e resultados de exercícios serão excluídos. Isso é definitivo.`)) return;

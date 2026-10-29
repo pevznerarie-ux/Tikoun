@@ -2140,5 +2140,10 @@
  "insuffisante). La compétence principale d'une question compte entièrement, la seconde pour moitié.": "insuficiente). A competência principal de uma questão conta inteira, a segunda conta pela metade.",
  "Profil": "Perfil",
  "Point fort :": "Ponto forte:",
- "À travailler :": "A trabalhar:"
+ "À travailler :": "A trabalhar:",
+ "Ajouter des élèves : un par ligne, « Prénom Nom » ou « NOM Prénom » (le nom en majuscules)": "Adicionar alunos: um por linha, « Nome Sobrenome » ou « SOBRENOME Nome » (sobrenome em maiúsculas)",
+ "élève(s) ont leur nom de famille (en majuscules) rangé à la place du prénom, par exemple": "aluno(s) estão com o sobrenome (em maiúsculas) no lugar do nome, por exemplo",
+ ". Ils ne peuvent pas se connecter à leur espace avec leur nom.": ". Eles não conseguem entrar no espaço com o sobrenome.",
+ "Remettre dans l'ordre": "Corrigir a ordem",
+ "élève(s) remis dans l'ordre : prénom, puis nom de famille.": "aluno(s) corrigidos: nome, depois sobrenome."
 }
