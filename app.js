@@ -149,6 +149,12 @@ const maxOf = c => (c.questions || []).reduce((a, q) => a + (+q.points || 0), 0)
 const noteOf = a => a ? (a.note ?? a.noteIA ?? null) : null;
 const copyTotal = (c, cp) => (c.questions || []).reduce((s, q) => s + (+noteOf(cp?.answers?.[q.id]) || 0), 0);
 const copyDone = (c, cp) => !!cp && (c.questions || []).every(q => noteOf(cp.answers?.[q.id]) != null);
+document.addEventListener("click", async ev => { const t = ev.target.closest("[data-abse]"); if (!t) return; ev.stopPropagation(); const c = ctrl(t.dataset.absc); if (!c) return;
+  const st = new Set(c.absents || []), id = t.dataset.abse; st.has(id) ? st.delete(id) : st.add(id); c.absents = [...st];
+  await write("controles/" + c.id, {absents:c.absents}, "update"); toast(st.has(id) ? "Marqué absent : ce contrôle ne compte pas dans ses moyennes." : "Absence retirée."); render(); }, true);
+/* Élève absent à un contrôle : sa copie (même scannée vide) ne compte ni dans ses moyennes ni dans celles de la classe */
+const isAbs = (c, e) => !!c && (c.absents || []).includes(typeof e === "string" ? e : e?.id);
+const absBtn = (c, e, lab) => `<button class="btn sm${isAbs(c, e) ? "" : " ghost"}" data-absc="${c.id}" data-abse="${e.id}">${isAbs(c, e) ? "Absent ✓ · annuler" : lab || "Marquer absent"}</button>`;
 const on20 = (t, m) => m ? t / m * 20 : null;
 const bonusMax = c => (+c.bonus?.proprete || 0) + (+c.bonus?.orthographe || 0);
 function bonusOf(c, cp){
@@ -1267,7 +1273,7 @@ function vCorrect(){
         ${nAlert ? `<button class="btn sm" id="valAll">Valider les ${nAlert} sans alerte</button>` : ""}</div>
       ${studs.map(x => { const k = f.copies[x.id]; const n = k ? Object.keys(k.answers || {}).length : 0; const done = copyDone(c, k); const warn = k && Object.values(k.answers || {}).some(a => !a.lisible);
         return `<button class="stu" data-cel="${x.id}" aria-current="${x.id === S.corrEleve}"><span>${esc(x.prenom)} ${esc(x.nom)}</span><span class="row" style="gap:6px">
-        ${!n ? `<span class="chip">non scannée</span>` : done ? `<span class="num">${noteS(final20(c, k))}</span>${k.validee ? `<span class="chip ok">✓</span>` : `<span class="chip ${warn ? "bad" : "warn"}">${warn ? "à vérifier" : "à valider"}</span>`}` : `<span class="chip warn">${n}/${c.questions.length} q.</span>`}</span></button>`; }).join("")}
+        ${isAbs(c, x) ? `<span class="chip">absent</span>` : !n ? `<span class="chip">non scannée</span>` : done ? `<span class="num">${noteS(final20(c, k))}</span>${k.validee ? `<span class="chip ok">✓</span>` : `<span class="chip ${warn ? "bad" : "warn"}">${warn ? "à vérifier" : "à valider"}</span>`}` : `<span class="chip warn">${n}/${c.questions.length} q.</span>`}</span></button>`; }).join("")}
       <div style="padding:10px 8px 4px;border-top:1px solid var(--line);margin-top:6px" class="row"><button class="btn sm" id="csv">Exporter les notes (CSV)</button><button class="btn sm" id="renduAll">Copies rendues de la classe (PDF)</button></div>
     </aside>
     ${e ? copyView(c, e, cp, studs) : `<div class="panel empty">Aucun élève.</div>`}
@@ -1428,7 +1434,8 @@ function copyView(c, e, cp, studs){
     <div class="copy-h"><div><div class="label">Copie${c.differencie ? ` · <span class="lvl ${versionFor(c, e)}">${LVL[versionFor(c, e)]}</span>` : ""}</div><h3 style="font-size:20px">${esc(e.prenom)} ${esc(e.nom)}</h3></div>
       <div class="row">${done ? `<div><div class="total num">${nv(final20(c, cp))}<small>${sfxN(final20(c, cp))}</small></div>${bonusMax(c) ? `<div class="small muted num">brute ${fmt(on20(copyTotal(c, cp), max))} + bonus ${fmt(bonusOf(c, cp).proprete + bonusOf(c, cp).orthographe)}</div>` : ""}</div>` : ""}
       <button class="btn ${cp?.validee ? "" : "primary"}" id="validate" ${has || done ? "" : "disabled"}>${cp?.validee ? "Validée ✓" : "Valider la copie"}</button>
-      ${done && final20(c, cp) < seuilR() ? `<button class="btn sm" id="mkRatt">Rattrapage</button>` : ""}${done ? `<button class="btn sm" id="rendu1">Copie rendue (PDF)</button>` : ""}</div><div class="status" id="rd-st" style="width:100%"></div></div>
+      ${done && final20(c, cp) < seuilR() ? `<button class="btn sm" id="mkRatt">Rattrapage</button>` : ""}${done ? `<button class="btn sm" id="rendu1">Copie rendue (PDF)</button>` : ""}${isCtrl(c) ? absBtn(c, e) : ""}</div><div class="status" id="rd-st" style="width:100%"></div></div>
+    ${isAbs(c, e) ? `<p class="banner">Absent à ce contrôle : sa copie ne compte ni dans ses moyennes ni dans celles de la classe.</p>` : ""}
     ${scans.length ? `<div class="scans">${scans.map(([p, s]) => `<img alt="Page ${p}" src="${esc(s.asset ? blobSrc(s.asset) : s.url)}" data-zoom="${esc(s.asset ? blobSrc(s.asset) : s.url)}">`).join("")}</div>` : ""}
     ${has && bonusMax(c) ? `<div class="row" style="padding:10px 16px;border-bottom:1px solid var(--line);gap:14px">${["proprete","orthographe"].filter(k => +c.bonus?.[k]).map(k => `<label class="row small" style="gap:6px">Bonus ${k === "proprete" ? "propreté" : "orthographe"} <input type="number" min="0" max="${c.bonus[k]}" step="0.5" id="bo-${k}" data-bonus="${k}" value="${bonusOf(c, cp)[k]}" style="width:70px"> / ${fmt(+c.bonus[k])}</label>`).join("")}</div>` : ""}
     ${!has ? `<div class="empty">Copie pas encore scannée. <button class="btn sm" data-go="scan">Scanner</button><br><span class="small">Tu peux aussi saisir les notes directement ci-dessous.</span></div>` : ""}
@@ -1458,7 +1465,7 @@ function vAnalyse(){
   if (!list.length) return `<div class="head"><h2>Classe & rattrapage</h2></div><div class="panel empty">Les résultats apparaîtront ici dès que des copies auront été corrigées.</div>`;
   const c = ctrl(S.anCtrl) || list[0]; S.anCtrl = c.id;
   const f = feuille(c.id), max = maxOf(c), studs = studentsOf(c);
-  const rows = studs.map(e => ({e, cp:f.copies[e.id]})).filter(r => copyDone(c, r.cp));
+  const rows = studs.map(e => ({e, cp:f.copies[e.id]})).filter(r => copyDone(c, r.cp) && !isAbs(c, r.e));
   const notes = rows.map(r => final20(c, r.cp));
   const avg = notes.reduce((a, b) => a + b, 0) / notes.length;
   const qs = c.questions.map((q, k) => {
@@ -1489,14 +1496,16 @@ function vAnalyse(){
     <p class="small muted" style="margin:4px 0 0">Note retenue : ${esc(ruleTxt(prefs().ratt))}.</p>
     <div class="status" id="ra-st"></div>
     <div class="tbl-wrap" style="margin-top:6px"><table class="rtab"><thead><tr><th>Élève</th>${c.questions.map((q, k) => `<th class="c">Q${k + 1}</th>`).join("")}<th class="c">Note</th><th class="c">Rattrapage</th><th class="c">Retenue</th><th></th></tr></thead><tbody>
-    ${studs.map(e => { const cp = f.copies[e.id]; const ok = copyDone(c, cp), N = ok ? noteRetenue(c, e) : null, r = N?.r || ratts.find(x => x.eleves?.includes(e.id));
+    ${studs.map(e => { const cp = f.copies[e.id];
+      if (isAbs(c, e)) return `<tr><td><b>${esc(e.prenom)} ${esc(e.nom)}</b></td><td colspan="${c.questions.length + 3}" class="small muted">Absent : ne compte pas dans les moyennes.</td><td>${absBtn(c, e)}</td></tr>`;
+      const ok = copyDone(c, cp), N = ok ? noteRetenue(c, e) : null, r = N?.r || ratts.find(x => x.eleves?.includes(e.id));
       const up = N && N.ratt != null && Math.abs(N.retenue - N.base) > 0.001;
       return `<tr><td><b>${esc(e.prenom)} ${esc(e.nom)}</b>${c.differencie ? ` <span class="lvl ${versionFor(c, e)}">${LVL[versionFor(c, e)][0]}</span>` : ""}</td>
       ${c.questions.map(q => { const n = noteOf(cp?.answers?.[q.id]); return `<td class="c"><span class="cell ${n == null ? "none" : tone(n / q.points)}">${fmt(n)}</span></td>`; }).join("")}
       <td class="c num">${ok ? noteS(N.base) : "—"}</td>
       <td class="c num">${N?.ratt != null ? noteS(N.ratt) : r ? `<span class="small muted">${esc(STATUT[r.statut]?.[0] || "")}</span>` : "—"}</td>
       <td class="c num"><b>${ok ? noteS(N.retenue) : "—"}</b>${up ? ` <span class="chip blue" title="${esc(ruleTxt(N.R))}">↺</span>` : ""}</td>
-      <td>${r ? `<button class="btn sm" data-edit="${r.id}">${N?.ratt != null ? "Voir" : STATUT[r.statut]?.[0] || "Voir"}</button>` : ok && N.base < seuilR() ? `<button class="btn sm" data-ratt="${e.id}">Créer</button>` : ok ? `<span class="small muted">—</span>` : ""}</td></tr>`; }).join("")}
+      <td><div class="row" style="gap:6px;flex-wrap:nowrap">${r ? `<button class="btn sm" data-edit="${r.id}">${N?.ratt != null ? "Voir" : STATUT[r.statut]?.[0] || "Voir"}</button>` : ok && N.base < seuilR() ? `<button class="btn sm" data-ratt="${e.id}">Créer</button>` : ok ? `<span class="small muted">—</span>` : ""}${!ok || N.base === 0 ? absBtn(c, e, "Absent ?") : ""}</div></td></tr>`; }).join("")}
     </tbody></table></div></section>`;
 }
 const rTitre = t => String(t).replace(/^(feuille de |fiche de )?rattrapage\s*[-:·–]?\s*/i, "").replace(/^contr[ôo]le de /i, "") || String(t);
@@ -1529,7 +1538,7 @@ Réponds uniquement en JSON : {"doublons":[numéros N des nouvelles questions en
 }
 async function createRattrapage(c, e, replaceId, spec){
   const f = feuille(c.id), cp = f?.copies?.[e.id]; if (!cp) throw {code:"no_copy"};
-  if (!copyDone(c, cp) || final20(c, cp) >= seuilR()) throw {code:"not_failed"};
+  if (!copyDone(c, cp) || isAbs(c, e) || final20(c, cp) >= seuilR()) throw {code:"not_failed"};
   if (!cp.validee && !confirm(`La copie de ${e.prenom} n'est pas encore validée : le rattrapage serait basé sur la note proposée par l'IA. Continuer ?`)) throw {code:"cancelled"};
   if (!replaceId && store.controles.some(x => x.type === "rattrapage" && x.parentId === c.id && x.eleves?.includes(e.id))) throw {code:"ratt_exists"};
   const weak = c.questions.map(q => ({q, a:cp.answers[q.id]})).filter(x => x.a && noteOf(x.a) / x.q.points < 0.6);
@@ -1597,7 +1606,7 @@ function suggestLevels(cl, mat){
   const cs = store.controles.filter(c => c.classeId === cl.id && c.matiere === mat && isCtrl(c)).sort((a, b) => (b.date || b.createdAt || "").localeCompare(a.date || a.createdAt || ""));
   const map = {};
   cl.eleves.forEach(e => {
-    const ns = []; for (const c of cs){ const cp = feuille(c.id)?.copies?.[e.id]; if (cp?.validee && copyDone(c, cp)) ns.push(final20(c, cp)); if (ns.length === 3) break; }
+    const ns = []; for (const c of cs){ const cp = feuille(c.id)?.copies?.[e.id]; if (cp?.validee && copyDone(c, cp) && !isAbs(c, e)) ns.push(final20(c, cp)); if (ns.length === 3) break; }
     if (ns.length){ const avg = ns.reduce((a, b) => a + b, 0) / ns.length; map[e.id] = {avg, lvl: avg < 10 ? "socle" : avg <= 15 ? "standard" : "approfondi"}; }
   });
   return map;
@@ -1699,7 +1708,7 @@ function pubPanel(c){
 }
 /* Note retenue d'un élève : contrôle d'origine + dernier rattrapage corrigé, selon la règle */
 function noteRetenue(c, e){
-  const cp = feuille(c.id)?.copies?.[e.id]; if (!copyDone(c, cp)) return null;
+  const cp = feuille(c.id)?.copies?.[e.id]; if (!copyDone(c, cp) || isAbs(c, e)) return null;
   const base = final20(c, cp);
   const rs = store.controles.filter(x => x.type === "rattrapage" && x.parentId === c.id && x.eleves?.includes(e.id)).sort((a, b) => (a.createdAt || "").localeCompare(b.createdAt || ""));
   const r = [...rs].reverse().find(x => copyDone(x, feuille(x.id)?.copies?.[e.id])) || null, R = rattRule(r || rs[rs.length - 1]);
@@ -2015,7 +2024,7 @@ document.addEventListener("click", async ev => {
       await write("feuilles/" + C.id, upd, "update"); toast(Object.keys(upd.copies).length + " copie(s) validée(s)."); return; }
     if (t.id === "csv"){ const f = feuille(C.id) || {copies:{}}, max = maxOf(C);
       const rows = [["Élève", ...C.questions.map((q, k) => `Q${k + 1} (/${q.points})`), "Total", "Sur 20 (brute)", "Note finale /20", "Rattrapage /20", "Note retenue /20", "Validée"]];
-      studentsOf(C).forEach(e => { const k = f.copies[e.id]; rows.push([e.prenom + " " + e.nom, ...C.questions.map(q => fmt(noteOf(k?.answers?.[q.id]))), copyDone(C, k) ? fmt(copyTotal(C, k)) : "", copyDone(C, k) ? fmt(on20(copyTotal(C, k), max)) : "", copyDone(C, k) ? fmt(final20(C, k)) : "", ...(N => [N?.ratt != null ? fmt(N.ratt) : "", N ? fmt(N.retenue) : ""])(isCtrl(C) ? noteRetenue(C, e) : null), k?.validee ? "oui" : "non"]); });
+      studentsOf(C).forEach(e => { const k = f.copies[e.id]; if (isAbs(C, e)) return rows.push([e.prenom + " " + e.nom, ...C.questions.map(() => ""), "ABS", "ABS", "ABS", "", "", ""]); rows.push([e.prenom + " " + e.nom, ...C.questions.map(q => fmt(noteOf(k?.answers?.[q.id]))), copyDone(C, k) ? fmt(copyTotal(C, k)) : "", copyDone(C, k) ? fmt(on20(copyTotal(C, k), max)) : "", copyDone(C, k) ? fmt(final20(C, k)) : "", ...(N => [N?.ratt != null ? fmt(N.ratt) : "", N ? fmt(N.retenue) : ""])(isCtrl(C) ? noteRetenue(C, e) : null), k?.validee ? "oui" : "non"]); });
       const csv = "﻿" + rows.map(r => r.map(x => `"${String(x).replace(/"/g, '""')}"`).join(";")).join("\n");
       if (!DL) return toast("Téléchargement indisponible dans cette vue.");
       try { await DL.save({filename:`Notes - ${C.titre}.csv`.replace(/[\\/:*?"<>|]/g, "-"), data:csv}); } catch(e){ if (e?.code !== "declined") toast("Téléchargement impossible."); } return; }
@@ -2031,7 +2040,7 @@ document.addEventListener("click", async ev => {
       await saveCtrl({...ctrl(C.id), pub:{at:new Date().toISOString(), res:snap}}); toast("Résultats publiés aux élèves."); return render(); }
     if (t.id === "pub-off"){ if (!confirm("Retirer la publication ? Les élèves ne verront plus ces résultats.")) return; const {pub:_p, ...rest} = ctrl(C.id); await saveCtrl(rest); toast("Publication retirée."); return render(); }
     if (t.id === "synth"){ const f = feuille(C.id), max = maxOf(C), st = $("#syn-st"); st.innerHTML = `<span class="thinking">Analyse de la classe.</span> ${TASK_WAIT}`;
-      const rows = studentsOf(C).map(e => f.copies[e.id]).filter(k => copyDone(C, k));
+      const rows = studentsOf(C).filter(e => !isAbs(C, e)).map(e => f.copies[e.id]).filter(k => copyDone(C, k));
       const lines = C.questions.map((q, k) => { const got = rows.map(r => noteOf(r.answers[q.id]) / q.points); const tags = {}; rows.forEach(r => (r.answers[q.id]?.erreurs || []).forEach(x => tags[x] = (tags[x] || 0) + 1));
         const coms = rows.map(r => r.answers[q.id]?.commentaire).filter(Boolean).slice(0, 6);
         return `Q${k + 1} — ${q.notion || ""} (${q.points} pts) : ${vOf(q, "standard").enonce}\nRéussite moyenne ${pct(got.reduce((a, b) => a + b, 0) / got.length)} ; erreurs : ${Object.entries(tags).map(([x, n]) => x + " ×" + n).join(", ") || "aucune"}\nExtraits de commentaires : ${coms.join(" | ")}`; }).join("\n\n");
