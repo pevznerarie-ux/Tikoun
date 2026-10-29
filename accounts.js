@@ -88,7 +88,7 @@ const KEEP = ["rg-nom","rg-mail","rg-pw","me-nom","ec-nom","ec-ville"]; let kept
 document.addEventListener("change", async ev => { if (ev.target.id === "rg-cgu") S.regCgu = ev.target.checked;
   if (ev.target.id === "et-collecte"){ try { await api("/api/etab/reglages", {method:"POST", body:JSON.stringify({collecte:ev.target.checked})}); toast("Enregistré"); refreshMe(); } catch(e){ toast(e.message || "Impossible"); } return; }
   if (ev.target.id === "me-partage"){ try { const j = await api("/api/me", {method:"PATCH", body:JSON.stringify({partageEcriture:ev.target.checked})}); S.me = j.user; toast("Enregistré"); } catch(e){ toast(e.message); } }
-  if (ev.target.id === "me-bareme"){ try { const j = await api("/api/me", {method:"PATCH", body:JSON.stringify({bareme:ev.target.value})}); S.me = j.user; toast("Enregistré"); render(); } catch(e){ toast(e.message); } } });
+  });
 document.addEventListener("input", ev => { const el = ev.target; if (KEEP.includes(el.id)) S.form[el.id] = el.value; });
 const keepForm = () => { kept = {}; for (const id of KEEP){ const el = $("#" + id); if (el) kept[id] = el.value; } const a = document.querySelector('input[name="aff"]:checked'); if (a) kept.aff = a.dataset.aff; };
 const restoreForm = () => { for (const [id, v] of Object.entries(kept)){ if (id === "aff"){ const r = document.querySelector(`input[data-aff="${v}"]`); if (r) r.checked = true; continue; } const el = $("#" + id); if (el) el.value = v; } };
@@ -105,13 +105,45 @@ async function bootAccounts(){
 /* Mon compte */
 function vCompte(){
   if (S.ecFor !== "me"){ S.ec = {q:"", cp:"", res:null, sel:S.me?.ecole || null, manual:false, busy:false, err:""}; S.ecFor = "me"; }
-  return `<div class="head"><div><h2>Mon compte</h2><p>${esc(S.me?.nom || "")} · ${esc(S.me?.email || "")} · ${isAdmin() ? "Administrateur" : isDir() ? "Direction" : "Professeur"} · ${S.me?.billing && S.me?.acces?.mode !== "inclus" ? esc(accesLabel(S.me)) : `Abonnement ${PLAN[S.me?.plan] || "Essentiel"} · Option Exercices ${S.me?.can?.exercices ? "✓" : "✗"}`}</p></div>
-    <button class="btn" id="out-go">Se déconnecter</button></div>
-  <section class="panel grid" style="max-width:640px"><h3>Mon profil</h3>
+  const P = prefs(), Q = P.q;
+  /* Paramètres rangés par thème : le compte, la notation, les feuilles imprimées, l'IA et la correction */
+  const TABS = {compte:"Compte", notation:"Notation", feuilles:"Feuilles", ia:"IA et correction"}, tab = TABS[S.cptTab] ? S.cptTab : "compte"; S.cptTab = tab;
+  const intro = {compte:"Ton profil, ton abonnement, la langue et la sécurité de ton compte.", notation:"Comment tes notes s'affichent, comment l'année est découpée et comment comptent les rattrapages.",
+    feuilles:"Ce qui s'imprime : en-tête, texte, cadres de réponse et consignes. Chaque nouveau contrôle part de ces réglages.", ia:"Ce que l'IA te propose, comment elle s'adresse aux élèves, tes matières."}[tab];
+  const tabs = `<div class="qchips" role="tablist" style="flex-wrap:wrap;margin-bottom:4px">${Object.entries(TABS).map(([k, l]) => `<button class="chip${k === tab ? " cur" : ""}" role="tab" aria-selected="${k === tab}" data-cpt="${k}">${l}</button>`).join("")}</div><p class="small muted" style="margin:0 0 4px">${intro}</p>`;
+  const sec = {
+    compte:() => `  <section class="panel grid" style="max-width:640px"><h3>Mon profil</h3>
     <div class="field"><label for="me-nom">Mon nom</label><input id="me-nom" value="${esc(S.form["me-nom"] ?? S.me?.nom ?? "")}"></div>
     ${ecoleWidget()}
     <div class="row"><button class="btn primary" id="me-save">Enregistrer</button></div><div class="status" id="me-st"></div></section>
-  ${(() => { const P = prefs(), Q = P.q; return `<section class="panel grid" style="max-width:640px"><h3>Mise en page des feuilles</h3>
+  <section class="panel grid" style="max-width:640px"><h3>Langue</h3><p class="row">${[["fr","Français"],["en","English (US)"],["pt","Português (BR)"]].map(([k, l]) => `<a class="btn sm${(document.documentElement.lang || "fr").slice(0, 2) === k ? " cur" : ""}" href="?lang=${k}">${l}</a>`).join("")}</p></section>
+  <section class="panel grid" style="max-width:640px"><h3>Apparence</h3><p class="small muted" style="margin:0">Choix propre à cet appareil. Automatique : clair la journée, sombre le soir et la nuit (de 20 h à 7 h).</p>
+    <div class="seg" role="group" aria-label="Apparence">${[["clair","Clair"],["sombre","Sombre"],["auto","Automatique"]].map(([k, l]) => `<button data-th="${k}" aria-pressed="${themePref() === k}">${l}</button>`).join("")}</div></section>
+  ${abonnementPanel()}${etabPanel()}${devicesPanel()}${parrainagePanel()}
+  <section class="panel grid" style="max-width:640px"><h3>Changer de mot de passe</h3>
+    <div class="field"><label for="mc-old">Mot de passe actuel</label><input id="mc-old" type="password" autocomplete="current-password"></div>
+    <div class="field"><label for="mc-new">Nouveau mot de passe (8 caractères minimum)</label><input id="mc-new" type="password" autocomplete="new-password"></div>
+    <div class="row"><button class="btn primary" id="mc-go">Enregistrer</button></div><div class="status" id="mc-st"></div></section>
+  ${vReglages()}
+  <section class="panel grid" style="max-width:640px"><h3>Supprimer mon compte</h3>
+    <p class="small muted" style="margin:0">Efface définitivement ton compte et tout ce qui t'appartient : contrôles, copies scannées, notes, cours, exercices et images. Pense d'abord à exporter tes notes si tu en as besoin.</p>
+    <div class="field"><label for="del-pw">Mot de passe actuel</label><input id="del-pw" type="password" autocomplete="current-password"></div>
+    <div class="row"><button class="btn" id="del-me" style="color:var(--pen);border-color:var(--pen)">Supprimer définitivement mon compte</button></div><div class="status" id="del-st"></div></section>`,
+    notation:() => `${notationPanel()}
+  ${(() => { const R = {...PREF_DEF.periodes, ...(P.periodes || {})}, dIn = (id, md) => `<input type="date" id="${id}" value="${(+md.slice(0, 2) >= 8 ? "2026" : "2027") + "-" + md}">`;
+    return `<section class="panel grid" style="max-width:640px" id="annee-pref"><h3>Année scolaire</h3>
+    <p class="small muted" style="margin:0">Le découpage utilisé pour les moyennes du suivi des élèves. L'année commence en septembre ; seuls le jour et le mois des dates comptent.</p>
+    <div class="form-row"><div class="field"><label for="ap-mode">Découpage</label><select id="ap-mode">${selOpts(["trim", "sem"], R.mode, x => x === "sem" ? "Semestres" : "Trimestres")}</select></div>
+      ${R.mode === "sem" ? `<div class="field"><label for="ap-s2">Début du 2e semestre</label>${dIn("ap-s2", R.s2)}</div>` : `<div class="field"><label for="ap-t2">Début du 2e trimestre</label>${dIn("ap-t2", R.t2)}</div><div class="field"><label for="ap-t3">Début du 3e trimestre</label>${dIn("ap-t3", R.t3)}</div>`}</div>
+    <div class="row"><button class="btn primary" id="ap-save">Enregistrer</button></div></section>`; })()}
+  <section class="panel grid" style="max-width:640px" id="ratt-regles"><h3>Rattrapage</h3>
+    <p class="small muted" style="margin:0">Qui peut avoir un rattrapage, et comment sa note compte. Chaque rattrapage peut avoir sa propre règle (bouton « ⚙ Règles » sur la page du rattrapage).</p>
+    <div class="form-row"><div class="field"><label for="rp-seuil">Rattrapage proposé sous</label><select id="rp-seuil">${selOpts(["8","9","10","11","12"], String(P.ratt.seuil), x => noteS(+x))}</select></div>
+      <div class="field"><label for="rp-regle">Note retenue</label><select id="rp-regle">${selOpts(Object.keys(RREGLES), P.ratt.regle, x => RREGLES[x])}</select></div></div>
+    <div class="form-row">${P.ratt.regle === "bonus" ? `<div class="field"><label for="rp-bonus">Bonus maximum (note parfaite au rattrapage)</label><select id="rp-bonus">${selOpts(["1","2","3","4","5"], String(P.ratt.bonus), x => ptsS(+x))}</select></div>` : ""}
+      ${["meilleure", "bonus", "remplace"].includes(P.ratt.regle) ? `<div class="field"><label for="rp-plaf">Plafond de la note retenue</label><select id="rp-plaf">${selOpts(["10","12","14","16","20"], String(P.ratt.plafond), x => x === "20" ? "Aucun" : noteS(+x))}</select></div>` : ""}</div>
+    <p class="small" style="margin:0;padding:10px 12px;border-radius:10px;background:var(--surface-2)">Exemple : ${noteS(6)} au contrôle et ${noteS(16)} au rattrapage → note retenue <b>${(() => { const R = P.ratt, b = 6, n = 16, cap = v => Math.min(v, R.plafond); return noteS(R.regle === "bonus" ? Math.max(b, cap(b + R.bonus * n / 20)) : R.regle === "moyenne" ? (b + n) / 2 : R.regle === "remplace" ? cap(n) : R.regle === "formatif" ? b : Math.max(b, cap(n))); })()}</b> (${esc(ruleTxt(P.ratt))}).</p></section>`,
+    feuilles:() => `  <section class="panel grid" style="max-width:640px"><h3>Mise en page des feuilles</h3>
     <p class="small muted" style="margin:0">Chaque nouveau contrôle part de ces réglages. Tu peux toujours les ajuster dans son étape « Mise en page ».</p>
     <div class="field"><label>En-tête des feuilles</label>${affRadios(S.me?.affichage)}</div>
     <p class="small muted" style="margin:0">Aperçu : <b id="me-prev">${esc(headerFrom(S.me?.affichage || "les2"))}</b></p>
@@ -121,56 +153,31 @@ function vCompte(){
     <p class="small muted" style="margin:0">Pour une classe de primaire (CP à CM2), les nouveaux contrôles passent automatiquement en Seyès, interligne très large.</p>
     <div class="field"><label for="mp-cons">Consignes imprimées en haut de la feuille</label><textarea id="mp-cons">${esc(P.consignes)}</textarea></div>
     <label class="row small" style="gap:6px"><input type="checkbox" id="mp-bar"${P.bareme ? " checked" : ""}> Afficher le barème de chaque question</label>
-    <div class="row"><button class="btn primary" id="mp-save">Enregistrer</button></div></section>
-  <section class="panel grid" style="max-width:640px"><h3>Questions</h3>
+    <div class="row"><button class="btn primary" id="mp-save">Enregistrer</button></div></section>`,
+    ia:() => `  <section class="panel grid" style="max-width:640px"><h3>Questions</h3>
     <p class="small muted" style="margin:0">Le style des questions que l'IA te propose. Le niveau de la classe est toujours pris en compte, et tu peux tout modifier contrôle par contrôle.</p>
     <div class="form-row"><div class="field"><label for="qp-fmt">Format</label><select id="qp-fmt">${selOpts(["redige","mixte","qcm"], Q.format, x => ({redige:"Réponses rédigées", mixte:"Rédigé et questions à choix", qcm:"Surtout des questions à choix"}[x]))}</select></div>
       <div class="field"><label for="qp-prof">Profondeur</label><select id="qp-prof">${selOpts(["simple","standard","exigeant"], Q.profondeur, x => ({simple:"Simple : appliquer le cours", standard:"Standard : comprendre et expliquer", exigeant:"Exigeant : raisonner et argumenter"}[x]))}</select></div></div>
     <div class="field"><label for="qp-long">Longueur des réponses</label><select id="qp-long">${selOpts(["courte","moyenne","developpee"], Q.longueur, x => ({courte:"Courtes (3 à 5 lignes)", moyenne:"Moyennes (5 à 8 lignes)", developpee:"Développées (8 à 14 lignes)"}[x]))}</select></div>
     <label class="row small" style="gap:6px"><input type="checkbox" id="qp-just"${Q.justif ? " checked" : ""}> <span>Questions à choix : toujours laisser un cadre pour justifier la réponse (corrigé par l'IA)</span></label>
     <div class="row"><button class="btn primary" id="qp-save">Enregistrer</button></div></section>
-  ${(() => { const R = {...PREF_DEF.periodes, ...(P.periodes || {})}, dIn = (id, md) => `<input type="date" id="${id}" value="${(+md.slice(0, 2) >= 8 ? "2026" : "2027") + "-" + md}">`;
-    return `<section class="panel grid" style="max-width:640px" id="annee-pref"><h3>Année scolaire</h3>
-    <p class="small muted" style="margin:0">Le découpage utilisé pour les moyennes du suivi des élèves. L'année commence en septembre ; seuls le jour et le mois des dates comptent.</p>
-    <div class="form-row"><div class="field"><label for="ap-mode">Découpage</label><select id="ap-mode">${selOpts(["trim", "sem"], R.mode, x => x === "sem" ? "Semestres" : "Trimestres")}</select></div>
-      ${R.mode === "sem" ? `<div class="field"><label for="ap-s2">Début du 2e semestre</label>${dIn("ap-s2", R.s2)}</div>` : `<div class="field"><label for="ap-t2">Début du 2e trimestre</label>${dIn("ap-t2", R.t2)}</div><div class="field"><label for="ap-t3">Début du 3e trimestre</label>${dIn("ap-t3", R.t3)}</div>`}</div>
-    <div class="row"><button class="btn primary" id="ap-save">Enregistrer</button></div></section>`; })()}
   <section class="panel grid" style="max-width:640px" id="ton-pref"><h3>Ton des commentaires</h3>
     <p class="small muted" style="margin:0">La façon dont l'IA s'adresse aux élèves dans les commentaires de correction et des quiz, et le ton des appréciations de bulletin.</p>
     <div class="form-row"><div class="field"><label for="tp-ton">Ton</label><select id="tp-ton">${selOpts(Object.keys(TONS), P.ton, x => TONS[x])}</select></div>
       <div class="field"><label for="tp-adr">S'adresser à l'élève</label><select id="tp-adr">${selOpts(["tu","vous"], P.adresse, x => x === "vous" ? "En le vouvoyant" : "En le tutoyant")}</select></div></div>
     <p class="small" style="margin:0;padding:10px 12px;border-radius:10px;background:var(--surface-2)">Exemple : <i>${esc(TON_EX[P.ton]?.[P.adresse] || "")}</i></p></section>
-  <section class="panel grid" style="max-width:640px" id="ratt-regles"><h3>Rattrapage</h3>
-    <p class="small muted" style="margin:0">Qui peut avoir un rattrapage, et comment sa note compte. Chaque rattrapage peut avoir sa propre règle (bouton « ⚙ Règles » sur la page du rattrapage).</p>
-    <div class="form-row"><div class="field"><label for="rp-seuil">Rattrapage proposé sous</label><select id="rp-seuil">${selOpts(["8","9","10","11","12"], String(P.ratt.seuil), x => noteS(+x))}</select></div>
-      <div class="field"><label for="rp-regle">Note retenue</label><select id="rp-regle">${selOpts(Object.keys(RREGLES), P.ratt.regle, x => RREGLES[x])}</select></div></div>
-    <div class="form-row">${P.ratt.regle === "bonus" ? `<div class="field"><label for="rp-bonus">Bonus maximum (20/20 au rattrapage)</label><select id="rp-bonus">${selOpts(["1","2","3","4","5"], String(P.ratt.bonus), x => "+" + x + " point" + (x > 1 ? "s" : ""))}</select></div>` : ""}
-      ${["meilleure", "bonus", "remplace"].includes(P.ratt.regle) ? `<div class="field"><label for="rp-plaf">Plafond de la note retenue</label><select id="rp-plaf">${selOpts(["10","12","14","16","20"], String(P.ratt.plafond), x => x === "20" ? "Aucun" : noteS(+x))}</select></div>` : ""}</div>
-    <p class="small" style="margin:0;padding:10px 12px;border-radius:10px;background:var(--surface-2)">Exemple : 6 au contrôle et 16 au rattrapage → note retenue <b>${(() => { const R = P.ratt, b = 6, n = 16, cap = v => Math.min(v, R.plafond); return noteS(R.regle === "bonus" ? Math.max(b, cap(b + R.bonus * n / 20)) : R.regle === "moyenne" ? (b + n) / 2 : R.regle === "remplace" ? cap(n) : R.regle === "formatif" ? b : Math.max(b, cap(n))); })()}</b> (${esc(ruleTxt(P.ratt))}).</p></section>`; })()}
   <section class="panel grid" style="max-width:640px"><h3>Les matières que j'enseigne</h3>
     <p class="small muted" style="margin:0">Seules ces matières te seront proposées. Si tu n'en enseignes qu'une, elle est choisie toute seule quand tu prépares un contrôle.</p>
     <div class="row">${enseigne().map(m => `<span class="chip">${esc(m)} <button class="btn sm ghost" style="padding:0 4px" data-ensdel="${esc(m)}" aria-label="Retirer">×</button></span>`).join("") || `<span class="small muted">Aucune matière choisie : toute la liste est proposée.</span>`}</div>
     <div class="row"><select id="ens-sel" style="max-width:260px" aria-label="Matière à ajouter"><option value="">Choisir une matière…</option>${selOpts(myMatieres(true).filter(m => !enseigne().includes(m)), "")}</select><button class="btn sm primary" id="ens-go">Ajouter</button></div>
     <div class="row"><input id="mat-new" placeholder="Matière absente de la liste" style="max-width:260px"><button class="btn sm" id="mat-go">Ajouter</button></div></section>
-  ${abonnementPanel()}${etabPanel()}${devicesPanel()}${parrainagePanel()}
   <section class="panel grid" style="max-width:640px"><h3>Amélioration de la lecture</h3>
     <label class="row small" style="gap:8px;align-items:flex-start"><input type="checkbox" id="me-partage" style="width:auto;margin-top:3px"${S.me?.partageEcriture ? " checked" : ""}${isAdmin() ? " disabled" : ""}><span>Aider Mastery à mieux lire l'écriture manuscrite : quand je corrige une lecture, l'image du cadre de réponse et mon texte corrigé sont conservés, sans nom d'élève, de classe, de note ni d'établissement, 2 ans au plus, uniquement pour améliorer la lecture de Mastery.</span></label>
-    ${S.me?.etab && S.me.etab.collecte === false ? `<p class="small muted" style="margin:0">Désactivé par la direction de ton établissement.</p>` : ""}</section>
-  <section class="panel grid" style="max-width:640px"><h3>Notes affichées</h3>
-    <p class="small muted" style="margin:0">Les calculs restent identiques ; seul l'affichage des notes change.</p>
-    <select id="me-bareme" style="max-width:320px">${[["20","Sur 20 (France)"],["10","Sur 10 (Brésil)"],["100","Pourcentage (%)"],["AF","Lettres A à F (États-Unis)"]].map(([k, t]) => `<option value="${k}"${bareme() === k ? " selected" : ""}>${t}</option>`).join("")}</select></section>
-  <section class="panel grid" style="max-width:640px"><h3>Langue</h3><p class="row">${[["fr","Français"],["en","English (US)"],["pt","Português (BR)"]].map(([k, l]) => `<a class="btn sm${(document.documentElement.lang || "fr").slice(0, 2) === k ? " cur" : ""}" href="?lang=${k}">${l}</a>`).join("")}</p></section>
-  <section class="panel grid" style="max-width:640px"><h3>Apparence</h3><p class="small muted" style="margin:0">Choix propre à cet appareil. Automatique : clair la journée, sombre le soir et la nuit (de 20 h à 7 h).</p>
-    <div class="seg" role="group" aria-label="Apparence">${[["clair","Clair"],["sombre","Sombre"],["auto","Automatique"]].map(([k, l]) => `<button data-th="${k}" aria-pressed="${themePref() === k}">${l}</button>`).join("")}</div></section>
-  <section class="panel grid" style="max-width:640px"><h3>Changer de mot de passe</h3>
-    <div class="field"><label for="mc-old">Mot de passe actuel</label><input id="mc-old" type="password" autocomplete="current-password"></div>
-    <div class="field"><label for="mc-new">Nouveau mot de passe (8 caractères minimum)</label><input id="mc-new" type="password" autocomplete="new-password"></div>
-    <div class="row"><button class="btn primary" id="mc-go">Enregistrer</button></div><div class="status" id="mc-st"></div></section>
-  ${vReglages()}
-  <section class="panel grid" style="max-width:640px"><h3>Supprimer mon compte</h3>
-    <p class="small muted" style="margin:0">Efface définitivement ton compte et tout ce qui t'appartient : contrôles, copies scannées, notes, cours, exercices et images. Pense d'abord à exporter tes notes si tu en as besoin.</p>
-    <div class="field"><label for="del-pw">Mot de passe actuel</label><input id="del-pw" type="password" autocomplete="current-password"></div>
-    <div class="row"><button class="btn" id="del-me" style="color:var(--pen);border-color:var(--pen)">Supprimer définitivement mon compte</button></div><div class="status" id="del-st"></div></section>
+    ${S.me?.etab && S.me.etab.collecte === false ? `<p class="small muted" style="margin:0">Désactivé par la direction de ton établissement.</p>` : ""}</section>`};
+  return `<div class="head"><div><h2>Mon compte</h2><p>${esc(S.me?.nom || "")} · ${esc(S.me?.email || "")} · ${isAdmin() ? "Administrateur" : isDir() ? "Direction" : "Professeur"} · ${S.me?.billing && S.me?.acces?.mode !== "inclus" ? esc(accesLabel(S.me)) : `Abonnement ${PLAN[S.me?.plan] || "Essentiel"} · Option Exercices ${S.me?.can?.exercices ? "✓" : "✗"}`}</p></div>
+    <button class="btn" id="out-go">Se déconnecter</button></div>
+  ${tabs}
+  ${sec[tab]()}
   <p class="small muted"><a href="/mentions-legales" target="_blank" rel="noopener">Mentions légales</a> · <a href="/cgu" target="_blank" rel="noopener">Conditions d'utilisation</a> · <a href="/confidentialite" target="_blank" rel="noopener">Confidentialité</a></p>`;
 }
 /* Comptes (administrateur) */
@@ -358,3 +365,46 @@ document.addEventListener("click", async ev => {
 });
 if (/paiement=ok/.test(location.hash)) setTimeout(() => { toast("Merci ! Ton abonnement est en cours d'activation."); history.replaceState(null, "", "#/compte"); setTimeout(refreshMe, 2500); }, 1500);
 const accesLabel = u => { const a = u.acces || {}; return a.mode === "essai" ? `Essai · ${joursRest(a.fin)} ${JRS}` : a.mode === "abonne" ? `Abonné ${PLAN[a.plan] || ""}` : a.mode === "ecole" ? "Payé par l'établissement" : a.mode === "expire" ? "Essai terminé" : a.mode === "inclus" ? "Inclus" : "Bêta"; };
+
+/* ---------- Barème des notes : choisi librement par chaque professeur ---------- */
+const PAS_SUR = {1:"Au point près", 0.5:"Au demi-point", 0.25:"Au quart de point", 0.1:"Au dixième", 0.01:"Au centième"}, PAS_PCT = {1:"À l'unité", 0.1:"Au dixième"};
+function notationPanel(){
+  const N = S.nt || notation(), T = {sur:"Sur des points", pct:"Pourcentage", lettres:"Lettres ou niveaux"}, PS = N.type === "pct" ? PAS_PCT : PAS_SUR;
+  const pas = `<div class="field"><label for="nt-pas">Arrondi</label><select id="nt-pas">${selOpts(Object.keys(PS), String(N.pas ?? (N.type === "pct" ? 1 : 0.1)), x => PS[x])}</select></div>`;
+  const ex = [90, 68, 45, 20].map(p => `${p} % → <b>${esc(noteN(p / 5, N))}</b>`).join(" · ");
+  return `<section class="panel grid" style="max-width:640px" id="notation-pref"><h3>Barème des notes</h3>
+    <p class="small muted" style="margin:0">Choisis librement comment tes notes s'affichent partout : correction, analyse, suivi, copies rendues, espace élève et exports. Les points de chaque question ne changent pas.</p>
+    <div class="seg" role="group" aria-label="Barème">${Object.entries(T).map(([k, l]) => `<button data-ntt="${k}" aria-pressed="${N.type === k}">${l}</button>`).join("")}</div>
+    ${N.type === "sur" ? `<div class="form-row"><div class="field"><label for="nt-sur">Noté sur</label><input id="nt-sur" type="number" min="1" max="1000" step="1" value="${esc(N.sur)}" list="nt-surs"><datalist id="nt-surs">${[5, 10, 20, 30, 40, 50, 60, 100].map(v => `<option value="${v}">`).join("")}</datalist></div>${pas}</div>` : ""}
+    ${N.type === "pct" ? pas : ""}
+    ${N.type === "lettres" ? `<div class="field"><label for="nt-preset">Partir d'un modèle</label><select id="nt-preset"><option value="">Choisir un modèle…</option>${Object.entries(LETTRES_LAB).map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select></div>
+      <div class="grid" style="gap:6px">${N.lettres.map((x, i) => `<div class="row" style="gap:8px;flex-wrap:nowrap"><input data-ntl="${i}" value="${esc(x.l)}" maxlength="30" aria-label="Nom du niveau ${i + 1}" style="flex:1;min-width:0"><span class="small muted" style="white-space:nowrap">dès</span><input data-ntm="${i}" type="number" min="0" max="100" value="${esc(x.min)}" style="width:76px" aria-label="Seuil en pourcentage"><span class="small muted">%</span><button class="btn sm ghost" data-ntdel="${i}" aria-label="Retirer ce niveau"${N.lettres.length <= 2 ? " disabled" : ""}>×</button></div>`).join("")}</div>
+      <div class="row"><button class="btn sm" id="nt-add">+ Ajouter un niveau</button></div>
+      <label class="row small" style="gap:6px"><input type="checkbox" id="nt-pctl"${N.pctLettre !== false ? " checked" : ""}> Afficher aussi le pourcentage à côté du niveau</label>` : ""}
+    <p class="small" style="margin:0;padding:10px 12px;border-radius:10px;background:var(--surface-2)">Aperçu, selon la part des points obtenus : ${ex}</p>
+    <div class="row"><button class="btn primary" id="nt-save"${S.nt ? "" : " disabled"}>Enregistrer</button>${S.nt ? `<button class="btn ghost" id="nt-cancel">Annuler</button>` : ""}</div></section>`;
+}
+const ntDraft = () => (S.nt = S.nt || structuredClone(notation()));
+document.addEventListener("click", async ev => {
+  const t = ev.target.closest("[data-cpt],[data-ntt],[data-ntdel],#nt-add,#nt-save,#nt-cancel"); if (!t) return; const d = t.dataset;
+  if (d.cpt){ S.cptTab = d.cpt; if (S.view === "compte") render(); return; }
+  if (d.ntt){ const N = ntDraft(); if (N.type !== d.ntt) N.pas = d.ntt === "pct" ? 1 : 0.1; N.type = d.ntt; if (N.type === "lettres" && !(N.lettres || []).length) N.lettres = lettresOf("us"); if (N.type === "sur" && !N.sur) N.sur = 20; return render(); }
+  if (d.ntdel){ const N = ntDraft(); N.lettres.splice(+d.ntdel, 1); return render(); }
+  if (t.id === "nt-add"){ const N = ntDraft(); N.lettres.push({l:"", min:0}); return render(); }
+  if (t.id === "nt-cancel"){ S.nt = null; return render(); }
+  if (t.id === "nt-save"){ const N = ntDraft();
+    if (N.type === "lettres"){ N.lettres = N.lettres.map(x => ({l:String(x.l || "").trim().slice(0, 30), min:Math.max(0, Math.min(100, +x.min || 0))})).filter(x => x.l).sort((a, b) => b.min - a.min);
+      if (N.lettres.length < 2) return toast("Il faut au moins deux niveaux.");
+      if (new Set(N.lettres.map(x => x.min)).size !== N.lettres.length) return toast("Deux niveaux ont le même seuil : change l'un des deux.");
+      N.lettres[N.lettres.length - 1].min = 0; }
+    if (N.type === "sur" && !(N.sur >= 1 && N.sur <= 1000)) return toast("Indique un nombre de points entre 1 et 1000.");
+    await savePrefs({notation:{type:N.type, sur:N.sur, pas:N.pas, lettres:N.lettres || [], pctLettre:N.pctLettre !== false}}); S.nt = null; render(); toast("Barème enregistré : toutes les notes s'affichent maintenant ainsi."); return; }
+});
+document.addEventListener("change", ev => { const el = ev.target, d = el.dataset;
+  if (el.id === "nt-sur"){ ntDraft().sur = Math.round(+el.value) || 20; return scheduleRender(); }
+  if (el.id === "nt-pas"){ ntDraft().pas = +el.value; return scheduleRender(); }
+  if (el.id === "nt-preset" && el.value){ ntDraft().lettres = lettresOf(el.value); return scheduleRender(); }
+  if (el.id === "nt-pctl"){ ntDraft().pctLettre = el.checked; return scheduleRender(); }
+  if (d.ntl !== undefined){ ntDraft().lettres[+d.ntl].l = el.value; return scheduleRender(); }
+  if (d.ntm !== undefined){ ntDraft().lettres[+d.ntm].min = +el.value; return scheduleRender(); }
+});

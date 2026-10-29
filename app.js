@@ -60,7 +60,7 @@ const TON_EX = {bienveillant:{tu:"Bonne idée de citer la règle ! Il manque l'e
 /* Compétences évaluées par chaque question (1 ou 2), suivies sur l'année avec l'échelle du livret scolaire */
 const COMPS = {connaitre:"Connaître", comprendre:"Comprendre", raisonner:"Raisonner", lire:"Lire", ecrire:"Écrire"};
 const compsOf = a => Object.keys(COMPS).filter(k => (Array.isArray(a) ? a : []).map(x => String(x).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")).includes(k)).slice(0, 2);
-const COMP_RULE = `\n"competences" : pour chaque question, 1 ou 2 compétences parmi "connaitre" (restituer le cours), "comprendre" (expliquer, reformuler, interpréter), "raisonner" (logique, déduire, résoudre un problème), "lire" (lire et analyser un texte ou un document), "ecrire" (rédiger, argumenter, s'exprimer à l'écrit).`;
+const COMP_RULE = `\n"competences" : pour chaque question, la compétence principale qu'elle évalue vraiment (en premier), et une seconde seulement si la question l'exige clairement. Sur un même contrôle, varie : des questions différentes évaluent en général des compétences différentes. Choix parmi "connaitre" (restituer le cours), "comprendre" (expliquer, reformuler, interpréter), "raisonner" (logique, déduire, résoudre un problème), "lire" (lire et analyser un texte ou un document), "ecrire" (rédiger, argumenter, s'exprimer à l'écrit).`;
 const MAITRISE = r => r == null ? null : r >= .8 ? {k:"tb", t:"ok", l:"Très bonne maîtrise"} : r >= .6 ? {k:"s", t:"ok", l:"Maîtrise satisfaisante"} : r >= .4 ? {k:"f", t:"warn", l:"Maîtrise fragile"} : {k:"i", t:"bad", l:"Maîtrise insuffisante"};
 const MAI_ABR = {tb:"TB", s:"S", f:"F", i:"I"};
 /* Mise en page d'un nouveau contrôle : préférences du prof, réglure Seyès et interligne large au primaire */
@@ -166,15 +166,29 @@ function bonusOf(c, cp){
   return out;
 }
 const final20 = (c, cp) => { const b = bonusOf(c, cp); return Math.min(20, on20(copyTotal(c, cp), maxOf(c)) + b.proprete + b.orthographe); };
-/* Barème affiché : sur 20 (France), sur 10 (Brésil), pourcentage, lettres A–F (États-Unis). Les calculs restent sur 20. */
+/* Barème affiché, choisi par chaque professeur (Mon compte › Notation) : sur un nombre de points, en pourcentage, ou en lettres / niveaux.
+   Les calculs restent sur 20 ; seul l'affichage change. Sans choix enregistré, on part de l'ancien réglage ou de la langue du site. */
 const BAREMES = ["20","10","100","AF"];
-const bareme = () => BAREMES.includes(S.me?.bareme) ? S.me.bareme : ({en:"AF", "pt-BR":"10"})[document.documentElement.lang] || "20";
-const letterOf = p => p >= 90 ? "A" : p >= 80 ? "B" : p >= 70 ? "C" : p >= 60 ? "D" : "F";
-const nv = n => { if (n == null || isNaN(n)) return "—"; const b = bareme(); return b === "10" ? fmt(n / 2) : b === "100" ? String(Math.round(n * 5)) : b === "AF" ? letterOf(n * 5) : fmt(n); };
+const LETTRES = {us:[["A", 90], ["B", 80], ["C", 70], ["D", 60], ["F", 0]], usplus:[["A+", 97], ["A", 93], ["A-", 90], ["B+", 87], ["B", 83], ["B-", 80], ["C+", 77], ["C", 73], ["C-", 70], ["D+", 67], ["D", 63], ["D-", 60], ["F", 0]],
+  acquis:[["Acquis", 70], ["En cours d'acquisition", 40], ["Non acquis", 0]], livret:[["Très bonne maîtrise", 80], ["Maîtrise satisfaisante", 60], ["Maîtrise fragile", 40], ["Maîtrise insuffisante", 0]]};
+const LETTRES_LAB = {us:"A à F", usplus:"A+ à F", acquis:"Acquis · En cours · Non acquis", livret:"4 niveaux du livret scolaire"};
+const lettresOf = k => LETTRES[k].map(([l, min]) => ({l, min}));
+const NOTATION_DEF = () => { const b = BAREMES.includes(S.me?.bareme) ? S.me.bareme : ({en:"AF", "pt-BR":"10"})[document.documentElement.lang] || "20";
+  return b === "AF" ? {type:"lettres", lettres:lettresOf("us"), pctLettre:true, sur:20, pas:0.1} : b === "100" ? {type:"pct", pas:1, sur:20} : {type:"sur", sur:+b, pas:0.1}; };
+const notation = () => { const n = prefs().notation; return n?.type ? {...NOTATION_DEF(), ...n} : NOTATION_DEF(); };
+const bareme = () => { const n = notation(); return n.type === "lettres" ? "AF" : n.type === "pct" ? "100" : String(n.sur); };
 const PCT = () => document.documentElement.lang === "en" ? "%" : " %";
-const sfx = () => ({"10":"/10", "100":PCT(), "AF":""})[bareme()] ?? "/20";
-const sfxN = n => bareme() === "AF" ? (n == null || isNaN(n) ? "" : ` ${Math.round(n * 5)}${PCT()}`) : sfx();
-const noteS = n => n == null || isNaN(n) ? "—" : nv(n) + sfx() + (bareme() === "AF" ? ` (${Math.round(n * 5)}${PCT()})` : "");
+const fmtPas = (x, pas) => { const r = Math.round(x / pas) * pas, d = pas >= 1 ? 0 : pas >= 0.1 ? 1 : 2; return String(+r.toFixed(d)).replace(".", document.documentElement.lang === "en" ? "." : ","); };
+const letterOf = (p, N = notation()) => { const L = [...(N.lettres?.length ? N.lettres : lettresOf("us"))].sort((a, b) => b.min - a.min); return (L.find(x => p >= x.min) || L[L.length - 1]).l; };
+const nvN = (n, N) => n == null || isNaN(n) ? "—" : N.type === "lettres" ? letterOf(n * 5, N) : N.type === "pct" ? fmtPas(n * 5, N.pas || 1) : fmtPas(n / 20 * (N.sur || 20), N.pas || 0.1);
+const sfxOf = N => N.type === "lettres" ? "" : N.type === "pct" ? PCT() : "/" + (N.sur || 20);
+const noteN = (n, N) => n == null || isNaN(n) ? "—" : nvN(n, N) + sfxOf(N) + (N.type === "lettres" && N.pctLettre !== false ? ` (${Math.round(n * 5)}${PCT()})` : "");
+const nv = n => nvN(n, notation());
+const sfx = () => sfxOf(notation());
+const sfxN = n => { const N = notation(); return N.type === "lettres" ? (n == null || isNaN(n) || N.pctLettre === false ? "" : ` ${Math.round(n * 5)}${PCT()}`) : sfx(); };
+const noteS = n => noteN(n, notation());
+/* Des points sur 20 exprimés dans le barème du professeur (bonus de rattrapage…) */
+const ptsS = x => { const N = notation(); return N.type === "sur" ? "+" + fmtPas(x / 20 * N.sur, N.pas || 0.1) + " pt" + (x / 20 * N.sur > 1 ? "s" : "") : N.type === "pct" ? "+" + Math.round(x * 5) + PCT() : "+" + x + " pt" + (x > 1 ? "s" : "") + " /20"; };
 
 /* Serialized writes: one at a time */
 let wq = Promise.resolve();
@@ -634,10 +648,10 @@ function vEdit(){
   ${c.type === "rattrapage" ? (() => { const D = prefs().ratt, R = rattRule(c), own = !!c.regle; return `<section class="panel grid"><div class="row between"><h3 style="margin:0">⚙ Règles de ce rattrapage</h3>${own ? `<button class="btn sm ghost" id="rr-reset">Revenir à mes réglages</button>` : ""}</div>
     <p class="small muted" style="margin:0">${own ? "Règle propre à ce rattrapage." : `Règle de tes réglages (Mon compte) : ${esc(ruleTxt(D))}.`} Elle décide de la note retenue pour l'élève.</p>
     <div class="form-row"><div class="field"><label for="rr-regle">Note retenue</label><select id="rr-regle">${selOpts(Object.keys(RREGLES), R.regle, x => RREGLES[x])}</select></div>
-      ${R.regle === "bonus" ? `<div class="field"><label for="rr-bonus">Bonus maximum</label><select id="rr-bonus">${selOpts(["1","2","3","4","5"], String(R.bonus), x => "+" + x + " point" + (x > 1 ? "s" : ""))}</select></div>` : ""}
+      ${R.regle === "bonus" ? `<div class="field"><label for="rr-bonus">Bonus maximum</label><select id="rr-bonus">${selOpts(["1","2","3","4","5"], String(R.bonus), x => ptsS(+x))}</select></div>` : ""}
       ${["meilleure", "bonus", "remplace"].includes(R.regle) ? `<div class="field"><label for="rr-plaf">Plafond</label><select id="rr-plaf">${selOpts(["10","12","14","16","20"], String(R.plafond), x => x === "20" ? "Aucun" : noteS(+x))}</select></div>` : ""}</div></section>`; })() : ""}
   ${c.remarques?.length ? `<section class="panel grid" style="border-color:var(--warn)"><div class="row between"><h3 style="margin:0">À vérifier</h3><button class="btn sm" id="remOk">C'est vérifié</button></div><ul class="small" style="margin:0;padding-left:18px">${c.remarques.map(x => `<li>${esc(x)}</li>`).join("")}</ul></section>` : ""}
-  <div class="head"><h3>Questions <span class="muted num" style="font-weight:500">· total ${fmt(tot)} pts${tot !== 20 && bareme() === "20" ? " (ramené sur 20)" : ""}</span></h3>
+  <div class="head"><h3>Questions <span class="muted num" style="font-weight:500">· total ${fmt(tot)} pts${(N => N.type === "sur" && tot !== N.sur ? " (ramené sur " + N.sur + ")" : "")(notation())}</span></h3>
     <div class="row">${(c.questions || []).some(q => !(q.comps || []).length) ? `<button class="btn sm" id="compAI" title="L'IA indique les compétences évaluées par chaque question">Compétences (IA)</button>` : ""}${c.type === "exercices" ? (canEx() ? `<button class="btn sm primary" id="regenEx">↻ Régénérer les exercices (IA)</button>` : lockChip()) : (!c.type || c.type === "controle") && c.coursId ? `<button class="btn sm primary" id="regenCtrl">↻ Régénérer le contrôle (IA)</button>` + (canEx() ? `<button class="btn sm" data-exfrom="${c.id}">+ Quiz d'exercices sur ce cours</button>` : lockChip()) : ""}${(!c.type || c.type === "controle") && c.questions?.length ? `<button class="btn sm" id="variante" title="Même structure, mêmes notions et mêmes points, nouveaux énoncés">⧉ Variante (IA)</button>` : ""}<button class="btn sm" id="addQ">+ Question vide</button><button class="btn sm" id="addQcm">+ QCM</button><button class="btn sm" id="addQai">+ Question (IA)</button><button class="btn sm" id="bankOpen">${S.bankOpen ? "Fermer la banque" : "+ Depuis la banque"}</button></div></div>
   ${S.bankOpen ? bankPanel(c) : ""}
   ${(c.questions || []).map((q, i) => qEditor(c, q, i)).join("") || `<div class="panel empty">Aucune question.</div>`}`;
@@ -1492,7 +1506,7 @@ function vAnalyse(){
   <section class="panel grid"><div class="row between"><h3>Synthèse pédagogique</h3><button class="btn sm" id="synth">${c.analyse ? "Actualiser" : "Rédiger"} (IA)</button></div>
     <div class="status" id="syn-st"></div>
     ${c.analyse ? `<div style="white-space:pre-wrap">${esc(c.analyse)}</div>` : `<p class="muted small">L'IA repère les notions non comprises et propose quoi reprendre en classe.</p>`}</section>
-  <section class="panel"><div class="row between"><h3>Élèves</h3><span class="small muted">Rattrapage possible sous ${noteS(seuilR())} · <a href="#/compte" class="rlink">⚙ Règles de rattrapage</a></span></div>
+  <section class="panel"><div class="row between"><h3>Élèves</h3><span class="small muted">Rattrapage possible sous ${noteS(seuilR())} · <a href="#/compte" class="rlink" data-cpt="notation">⚙ Règles de rattrapage</a></span></div>
     <p class="small muted" style="margin:4px 0 0">Note retenue : ${esc(ruleTxt(prefs().ratt))}.</p>
     <div class="status" id="ra-st"></div>
     <div class="tbl-wrap" style="margin-top:6px"><table class="rtab"><thead><tr><th>Élève</th>${c.questions.map((q, k) => `<th class="c">Q${k + 1}</th>`).join("")}<th class="c">Note</th><th class="c">Rattrapage</th><th class="c">Retenue</th><th></th></tr></thead><tbody>
@@ -1692,7 +1706,7 @@ const RREGLES = {meilleure:"Meilleure des deux notes", bonus:"Bonus selon la not
 const seuilR = () => prefs().ratt.seuil;
 const rattRule = r => ({...prefs().ratt, ...(r?.regle || {})});
 const plafTxt = R => R.plafond < 20 ? `, plafonnée à ${noteS(R.plafond)}` : "";
-const ruleTxt = R => R.regle === "bonus" ? `Bonus : jusqu'à +${fmt(R.bonus)} point${R.bonus > 1 ? "s" : ""} (20/20 au rattrapage)${plafTxt(R)}` : R.regle === "formatif" ? RREGLES.formatif : RREGLES[R.regle] + (R.regle === "moyenne" ? "" : plafTxt(R));
+const ruleTxt = R => R.regle === "bonus" ? `Bonus : jusqu'à ${ptsS(R.bonus)} (note parfaite au rattrapage)${plafTxt(R)}` : R.regle === "formatif" ? RREGLES.formatif : RREGLES[R.regle] + (R.regle === "moyenne" ? "" : plafTxt(R));
 /* Publication aux élèves : instantané des notes (copies validées seulement), lu par l'espace élève */
 function pubSnapshot(c){ const res = {}, f = feuille(c.id);
   for (const e of studentsOf(c)){ if (!f?.copies?.[e.id]?.validee) continue; const N = noteRetenue(c, e); if (!N) continue;
@@ -2023,8 +2037,8 @@ document.addEventListener("click", async ev => {
       studentsOf(C).forEach(e => { const k = f.copies[e.id]; if (k && !k.validee && copyDone(C, k) && !Object.values(k.answers || {}).some(a => !a.lisible)) upd.copies[e.id] = {validee:true, answers:Object.fromEntries(C.questions.map(q => [q.id, {valide:true}]))}; });
       await write("feuilles/" + C.id, upd, "update"); toast(Object.keys(upd.copies).length + " copie(s) validée(s)."); return; }
     if (t.id === "csv"){ const f = feuille(C.id) || {copies:{}}, max = maxOf(C);
-      const rows = [["Élève", ...C.questions.map((q, k) => `Q${k + 1} (/${q.points})`), "Total", "Sur 20 (brute)", "Note finale /20", "Rattrapage /20", "Note retenue /20", "Validée"]];
-      studentsOf(C).forEach(e => { const k = f.copies[e.id]; if (isAbs(C, e)) return rows.push([e.prenom + " " + e.nom, ...C.questions.map(() => ""), "ABS", "ABS", "ABS", "", "", ""]); rows.push([e.prenom + " " + e.nom, ...C.questions.map(q => fmt(noteOf(k?.answers?.[q.id]))), copyDone(C, k) ? fmt(copyTotal(C, k)) : "", copyDone(C, k) ? fmt(on20(copyTotal(C, k), max)) : "", copyDone(C, k) ? fmt(final20(C, k)) : "", ...(N => [N?.ratt != null ? fmt(N.ratt) : "", N ? fmt(N.retenue) : ""])(isCtrl(C) ? noteRetenue(C, e) : null), k?.validee ? "oui" : "non"]); });
+      const rows = [["Élève", ...C.questions.map((q, k) => `Q${k + 1} (/${q.points})`), "Total", "Sur 20 (brute)", "Note finale /20", "Rattrapage /20", "Note retenue /20", "Validée", "Note retenue (mon barème)"]];
+      studentsOf(C).forEach(e => { const k = f.copies[e.id]; if (isAbs(C, e)) return rows.push([e.prenom + " " + e.nom, ...C.questions.map(() => ""), "ABS", "ABS", "ABS", "", "", "", "ABS"]); rows.push([e.prenom + " " + e.nom, ...C.questions.map(q => fmt(noteOf(k?.answers?.[q.id]))), copyDone(C, k) ? fmt(copyTotal(C, k)) : "", copyDone(C, k) ? fmt(on20(copyTotal(C, k), max)) : "", copyDone(C, k) ? fmt(final20(C, k)) : "", ...(N => [N?.ratt != null ? fmt(N.ratt) : "", N ? fmt(N.retenue) : ""])(isCtrl(C) ? noteRetenue(C, e) : null), k?.validee ? "oui" : "non", copyDone(C, k) ? noteS(isCtrl(C) ? noteRetenue(C, e)?.retenue ?? final20(C, k) : final20(C, k)) : ""]); });
       const csv = "﻿" + rows.map(r => r.map(x => `"${String(x).replace(/"/g, '""')}"`).join(";")).join("\n");
       if (!DL) return toast("Téléchargement indisponible dans cette vue.");
       try { await DL.save({filename:`Notes - ${C.titre}.csv`.replace(/[\\/:*?"<>|]/g, "-"), data:csv}); } catch(e){ if (e?.code !== "declined") toast("Téléchargement impossible."); } return; }

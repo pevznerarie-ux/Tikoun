@@ -643,7 +643,7 @@ const TON_EX = {bienveillant:{tu:"Bonne idée de citer la règle ! Il manque l'e
 /* Compétences évaluées par chaque question (1 ou 2), suivies sur l'année avec l'échelle du livret scolaire */
 const COMPS = {connaitre:"Connaître", comprendre:"Comprendre", raisonner:"Raisonner", lire:"Lire", ecrire:"Écrire"};
 const compsOf = a => Object.keys(COMPS).filter(k => (Array.isArray(a) ? a : []).map(x => String(x).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")).includes(k)).slice(0, 2);
-const COMP_RULE = `\n"competences" : pour chaque question, 1 ou 2 compétences parmi "connaitre" (restituer le cours), "comprendre" (expliquer, reformuler, interpréter), "raisonner" (logique, déduire, résoudre un problème), "lire" (lire et analyser un texte ou un document), "ecrire" (rédiger, argumenter, s'exprimer à l'écrit).`;
+const COMP_RULE = `\n"competences" : pour chaque question, la compétence principale qu'elle évalue vraiment (en premier), et une seconde seulement si la question l'exige clairement. Sur un même contrôle, varie : des questions différentes évaluent en général des compétences différentes. Choix parmi "connaitre" (restituer le cours), "comprendre" (expliquer, reformuler, interpréter), "raisonner" (logique, déduire, résoudre un problème), "lire" (lire et analyser un texte ou un document), "ecrire" (rédiger, argumenter, s'exprimer à l'écrit).`;
 const MAITRISE = r => r == null ? null : r >= .8 ? {k:"tb", t:"ok", l:"Très bonne maîtrise"} : r >= .6 ? {k:"s", t:"ok", l:"Maîtrise satisfaisante"} : r >= .4 ? {k:"f", t:"warn", l:"Maîtrise fragile"} : {k:"i", t:"bad", l:"Maîtrise insuffisante"};
 const MAI_ABR = {tb:"TB", s:"S", f:"F", i:"I"};
 /* Mise en page d'un nouveau contrôle : préférences du prof, réglure Seyès et interligne large au primaire */
@@ -749,15 +749,29 @@ function bonusOf(c, cp){
   return out;
 }
 const final20 = (c, cp) => { const b = bonusOf(c, cp); return Math.min(20, on20(copyTotal(c, cp), maxOf(c)) + b.proprete + b.orthographe); };
-/* Barème affiché : sur 20 (France), sur 10 (Brésil), pourcentage, lettres A–F (États-Unis). Les calculs restent sur 20. */
+/* Barème affiché, choisi par chaque professeur (Mon compte › Notation) : sur un nombre de points, en pourcentage, ou en lettres / niveaux.
+   Les calculs restent sur 20 ; seul l'affichage change. Sans choix enregistré, on part de l'ancien réglage ou de la langue du site. */
 const BAREMES = ["20","10","100","AF"];
-const bareme = () => BAREMES.includes(S.me?.bareme) ? S.me.bareme : ({en:"AF", "pt-BR":"10"})[document.documentElement.lang] || "20";
-const letterOf = p => p >= 90 ? "A" : p >= 80 ? "B" : p >= 70 ? "C" : p >= 60 ? "D" : "F";
-const nv = n => { if (n == null || isNaN(n)) return "—"; const b = bareme(); return b === "10" ? fmt(n / 2) : b === "100" ? String(Math.round(n * 5)) : b === "AF" ? letterOf(n * 5) : fmt(n); };
+const LETTRES = {us:[["A", 90], ["B", 80], ["C", 70], ["D", 60], ["F", 0]], usplus:[["A+", 97], ["A", 93], ["A-", 90], ["B+", 87], ["B", 83], ["B-", 80], ["C+", 77], ["C", 73], ["C-", 70], ["D+", 67], ["D", 63], ["D-", 60], ["F", 0]],
+  acquis:[["Acquis", 70], ["En cours d'acquisition", 40], ["Non acquis", 0]], livret:[["Très bonne maîtrise", 80], ["Maîtrise satisfaisante", 60], ["Maîtrise fragile", 40], ["Maîtrise insuffisante", 0]]};
+const LETTRES_LAB = {us:"A à F", usplus:"A+ à F", acquis:"Acquis · En cours · Non acquis", livret:"4 niveaux du livret scolaire"};
+const lettresOf = k => LETTRES[k].map(([l, min]) => ({l, min}));
+const NOTATION_DEF = () => { const b = BAREMES.includes(S.me?.bareme) ? S.me.bareme : ({en:"AF", "pt-BR":"10"})[document.documentElement.lang] || "20";
+  return b === "AF" ? {type:"lettres", lettres:lettresOf("us"), pctLettre:true, sur:20, pas:0.1} : b === "100" ? {type:"pct", pas:1, sur:20} : {type:"sur", sur:+b, pas:0.1}; };
+const notation = () => { const n = prefs().notation; return n?.type ? {...NOTATION_DEF(), ...n} : NOTATION_DEF(); };
+const bareme = () => { const n = notation(); return n.type === "lettres" ? "AF" : n.type === "pct" ? "100" : String(n.sur); };
 const PCT = () => document.documentElement.lang === "en" ? "%" : " %";
-const sfx = () => ({"10":"/10", "100":PCT(), "AF":""})[bareme()] ?? "/20";
-const sfxN = n => bareme() === "AF" ? (n == null || isNaN(n) ? "" : ` ${Math.round(n * 5)}${PCT()}`) : sfx();
-const noteS = n => n == null || isNaN(n) ? "—" : nv(n) + sfx() + (bareme() === "AF" ? ` (${Math.round(n * 5)}${PCT()})` : "");
+const fmtPas = (x, pas) => { const r = Math.round(x / pas) * pas, d = pas >= 1 ? 0 : pas >= 0.1 ? 1 : 2; return String(+r.toFixed(d)).replace(".", document.documentElement.lang === "en" ? "." : ","); };
+const letterOf = (p, N = notation()) => { const L = [...(N.lettres?.length ? N.lettres : lettresOf("us"))].sort((a, b) => b.min - a.min); return (L.find(x => p >= x.min) || L[L.length - 1]).l; };
+const nvN = (n, N) => n == null || isNaN(n) ? "—" : N.type === "lettres" ? letterOf(n * 5, N) : N.type === "pct" ? fmtPas(n * 5, N.pas || 1) : fmtPas(n / 20 * (N.sur || 20), N.pas || 0.1);
+const sfxOf = N => N.type === "lettres" ? "" : N.type === "pct" ? PCT() : "/" + (N.sur || 20);
+const noteN = (n, N) => n == null || isNaN(n) ? "—" : nvN(n, N) + sfxOf(N) + (N.type === "lettres" && N.pctLettre !== false ? ` (${Math.round(n * 5)}${PCT()})` : "");
+const nv = n => nvN(n, notation());
+const sfx = () => sfxOf(notation());
+const sfxN = n => { const N = notation(); return N.type === "lettres" ? (n == null || isNaN(n) || N.pctLettre === false ? "" : ` ${Math.round(n * 5)}${PCT()}`) : sfx(); };
+const noteS = n => noteN(n, notation());
+/* Des points sur 20 exprimés dans le barème du professeur (bonus de rattrapage…) */
+const ptsS = x => { const N = notation(); return N.type === "sur" ? "+" + fmtPas(x / 20 * N.sur, N.pas || 0.1) + " pt" + (x / 20 * N.sur > 1 ? "s" : "") : N.type === "pct" ? "+" + Math.round(x * 5) + PCT() : "+" + x + " pt" + (x > 1 ? "s" : "") + " /20"; };
 
 /* Serialized writes: one at a time */
 let wq = Promise.resolve();
@@ -1217,10 +1231,10 @@ function vEdit(){
   ${c.type === "rattrapage" ? (() => { const D = prefs().ratt, R = rattRule(c), own = !!c.regle; return `<section class="panel grid"><div class="row between"><h3 style="margin:0">⚙ Règles de ce rattrapage</h3>${own ? `<button class="btn sm ghost" id="rr-reset">Revenir à mes réglages</button>` : ""}</div>
     <p class="small muted" style="margin:0">${own ? "Règle propre à ce rattrapage." : `Règle de tes réglages (Mon compte) : ${esc(ruleTxt(D))}.`} Elle décide de la note retenue pour l'élève.</p>
     <div class="form-row"><div class="field"><label for="rr-regle">Note retenue</label><select id="rr-regle">${selOpts(Object.keys(RREGLES), R.regle, x => RREGLES[x])}</select></div>
-      ${R.regle === "bonus" ? `<div class="field"><label for="rr-bonus">Bonus maximum</label><select id="rr-bonus">${selOpts(["1","2","3","4","5"], String(R.bonus), x => "+" + x + " point" + (x > 1 ? "s" : ""))}</select></div>` : ""}
+      ${R.regle === "bonus" ? `<div class="field"><label for="rr-bonus">Bonus maximum</label><select id="rr-bonus">${selOpts(["1","2","3","4","5"], String(R.bonus), x => ptsS(+x))}</select></div>` : ""}
       ${["meilleure", "bonus", "remplace"].includes(R.regle) ? `<div class="field"><label for="rr-plaf">Plafond</label><select id="rr-plaf">${selOpts(["10","12","14","16","20"], String(R.plafond), x => x === "20" ? "Aucun" : noteS(+x))}</select></div>` : ""}</div></section>`; })() : ""}
   ${c.remarques?.length ? `<section class="panel grid" style="border-color:var(--warn)"><div class="row between"><h3 style="margin:0">À vérifier</h3><button class="btn sm" id="remOk">C'est vérifié</button></div><ul class="small" style="margin:0;padding-left:18px">${c.remarques.map(x => `<li>${esc(x)}</li>`).join("")}</ul></section>` : ""}
-  <div class="head"><h3>Questions <span class="muted num" style="font-weight:500">· total ${fmt(tot)} pts${tot !== 20 && bareme() === "20" ? " (ramené sur 20)" : ""}</span></h3>
+  <div class="head"><h3>Questions <span class="muted num" style="font-weight:500">· total ${fmt(tot)} pts${(N => N.type === "sur" && tot !== N.sur ? " (ramené sur " + N.sur + ")" : "")(notation())}</span></h3>
     <div class="row">${(c.questions || []).some(q => !(q.comps || []).length) ? `<button class="btn sm" id="compAI" title="L'IA indique les compétences évaluées par chaque question">Compétences (IA)</button>` : ""}${c.type === "exercices" ? (canEx() ? `<button class="btn sm primary" id="regenEx">↻ Régénérer les exercices (IA)</button>` : lockChip()) : (!c.type || c.type === "controle") && c.coursId ? `<button class="btn sm primary" id="regenCtrl">↻ Régénérer le contrôle (IA)</button>` + (canEx() ? `<button class="btn sm" data-exfrom="${c.id}">+ Quiz d'exercices sur ce cours</button>` : lockChip()) : ""}${(!c.type || c.type === "controle") && c.questions?.length ? `<button class="btn sm" id="variante" title="Même structure, mêmes notions et mêmes points, nouveaux énoncés">⧉ Variante (IA)</button>` : ""}<button class="btn sm" id="addQ">+ Question vide</button><button class="btn sm" id="addQcm">+ QCM</button><button class="btn sm" id="addQai">+ Question (IA)</button><button class="btn sm" id="bankOpen">${S.bankOpen ? "Fermer la banque" : "+ Depuis la banque"}</button></div></div>
   ${S.bankOpen ? bankPanel(c) : ""}
   ${(c.questions || []).map((q, i) => qEditor(c, q, i)).join("") || `<div class="panel empty">Aucune question.</div>`}`;
@@ -2075,7 +2089,7 @@ function vAnalyse(){
   <section class="panel grid"><div class="row between"><h3>Synthèse pédagogique</h3><button class="btn sm" id="synth">${c.analyse ? "Actualiser" : "Rédiger"} (IA)</button></div>
     <div class="status" id="syn-st"></div>
     ${c.analyse ? `<div style="white-space:pre-wrap">${esc(c.analyse)}</div>` : `<p class="muted small">L'IA repère les notions non comprises et propose quoi reprendre en classe.</p>`}</section>
-  <section class="panel"><div class="row between"><h3>Élèves</h3><span class="small muted">Rattrapage possible sous ${noteS(seuilR())} · <a href="#/compte" class="rlink">⚙ Règles de rattrapage</a></span></div>
+  <section class="panel"><div class="row between"><h3>Élèves</h3><span class="small muted">Rattrapage possible sous ${noteS(seuilR())} · <a href="#/compte" class="rlink" data-cpt="notation">⚙ Règles de rattrapage</a></span></div>
     <p class="small muted" style="margin:4px 0 0">Note retenue : ${esc(ruleTxt(prefs().ratt))}.</p>
     <div class="status" id="ra-st"></div>
     <div class="tbl-wrap" style="margin-top:6px"><table class="rtab"><thead><tr><th>Élève</th>${c.questions.map((q, k) => `<th class="c">Q${k + 1}</th>`).join("")}<th class="c">Note</th><th class="c">Rattrapage</th><th class="c">Retenue</th><th></th></tr></thead><tbody>
@@ -2275,7 +2289,7 @@ const RREGLES = {meilleure:"Meilleure des deux notes", bonus:"Bonus selon la not
 const seuilR = () => prefs().ratt.seuil;
 const rattRule = r => ({...prefs().ratt, ...(r?.regle || {})});
 const plafTxt = R => R.plafond < 20 ? `, plafonnée à ${noteS(R.plafond)}` : "";
-const ruleTxt = R => R.regle === "bonus" ? `Bonus : jusqu'à +${fmt(R.bonus)} point${R.bonus > 1 ? "s" : ""} (20/20 au rattrapage)${plafTxt(R)}` : R.regle === "formatif" ? RREGLES.formatif : RREGLES[R.regle] + (R.regle === "moyenne" ? "" : plafTxt(R));
+const ruleTxt = R => R.regle === "bonus" ? `Bonus : jusqu'à ${ptsS(R.bonus)} (note parfaite au rattrapage)${plafTxt(R)}` : R.regle === "formatif" ? RREGLES.formatif : RREGLES[R.regle] + (R.regle === "moyenne" ? "" : plafTxt(R));
 /* Publication aux élèves : instantané des notes (copies validées seulement), lu par l'espace élève */
 function pubSnapshot(c){ const res = {}, f = feuille(c.id);
   for (const e of studentsOf(c)){ if (!f?.copies?.[e.id]?.validee) continue; const N = noteRetenue(c, e); if (!N) continue;
@@ -2606,8 +2620,8 @@ document.addEventListener("click", async ev => {
       studentsOf(C).forEach(e => { const k = f.copies[e.id]; if (k && !k.validee && copyDone(C, k) && !Object.values(k.answers || {}).some(a => !a.lisible)) upd.copies[e.id] = {validee:true, answers:Object.fromEntries(C.questions.map(q => [q.id, {valide:true}]))}; });
       await write("feuilles/" + C.id, upd, "update"); toast(Object.keys(upd.copies).length + " copie(s) validée(s)."); return; }
     if (t.id === "csv"){ const f = feuille(C.id) || {copies:{}}, max = maxOf(C);
-      const rows = [["Élève", ...C.questions.map((q, k) => `Q${k + 1} (/${q.points})`), "Total", "Sur 20 (brute)", "Note finale /20", "Rattrapage /20", "Note retenue /20", "Validée"]];
-      studentsOf(C).forEach(e => { const k = f.copies[e.id]; if (isAbs(C, e)) return rows.push([e.prenom + " " + e.nom, ...C.questions.map(() => ""), "ABS", "ABS", "ABS", "", "", ""]); rows.push([e.prenom + " " + e.nom, ...C.questions.map(q => fmt(noteOf(k?.answers?.[q.id]))), copyDone(C, k) ? fmt(copyTotal(C, k)) : "", copyDone(C, k) ? fmt(on20(copyTotal(C, k), max)) : "", copyDone(C, k) ? fmt(final20(C, k)) : "", ...(N => [N?.ratt != null ? fmt(N.ratt) : "", N ? fmt(N.retenue) : ""])(isCtrl(C) ? noteRetenue(C, e) : null), k?.validee ? "oui" : "non"]); });
+      const rows = [["Élève", ...C.questions.map((q, k) => `Q${k + 1} (/${q.points})`), "Total", "Sur 20 (brute)", "Note finale /20", "Rattrapage /20", "Note retenue /20", "Validée", "Note retenue (mon barème)"]];
+      studentsOf(C).forEach(e => { const k = f.copies[e.id]; if (isAbs(C, e)) return rows.push([e.prenom + " " + e.nom, ...C.questions.map(() => ""), "ABS", "ABS", "ABS", "", "", "", "ABS"]); rows.push([e.prenom + " " + e.nom, ...C.questions.map(q => fmt(noteOf(k?.answers?.[q.id]))), copyDone(C, k) ? fmt(copyTotal(C, k)) : "", copyDone(C, k) ? fmt(on20(copyTotal(C, k), max)) : "", copyDone(C, k) ? fmt(final20(C, k)) : "", ...(N => [N?.ratt != null ? fmt(N.ratt) : "", N ? fmt(N.retenue) : ""])(isCtrl(C) ? noteRetenue(C, e) : null), k?.validee ? "oui" : "non", copyDone(C, k) ? noteS(isCtrl(C) ? noteRetenue(C, e)?.retenue ?? final20(C, k) : final20(C, k)) : ""]); });
       const csv = "﻿" + rows.map(r => r.map(x => `"${String(x).replace(/"/g, '""')}"`).join(";")).join("\n");
       if (!DL) return toast("Téléchargement indisponible dans cette vue.");
       try { await DL.save({filename:`Notes - ${C.titre}.csv`.replace(/[\\/:*?"<>|]/g, "-"), data:csv}); } catch(e){ if (e?.code !== "declined") toast("Téléchargement impossible."); } return; }
@@ -3318,7 +3332,7 @@ const KEEP = ["rg-nom","rg-mail","rg-pw","me-nom","ec-nom","ec-ville"]; let kept
 document.addEventListener("change", async ev => { if (ev.target.id === "rg-cgu") S.regCgu = ev.target.checked;
   if (ev.target.id === "et-collecte"){ try { await api("/api/etab/reglages", {method:"POST", body:JSON.stringify({collecte:ev.target.checked})}); toast("Enregistré"); refreshMe(); } catch(e){ toast(e.message || "Impossible"); } return; }
   if (ev.target.id === "me-partage"){ try { const j = await api("/api/me", {method:"PATCH", body:JSON.stringify({partageEcriture:ev.target.checked})}); S.me = j.user; toast("Enregistré"); } catch(e){ toast(e.message); } }
-  if (ev.target.id === "me-bareme"){ try { const j = await api("/api/me", {method:"PATCH", body:JSON.stringify({bareme:ev.target.value})}); S.me = j.user; toast("Enregistré"); render(); } catch(e){ toast(e.message); } } });
+  });
 document.addEventListener("input", ev => { const el = ev.target; if (KEEP.includes(el.id)) S.form[el.id] = el.value; });
 const keepForm = () => { kept = {}; for (const id of KEEP){ const el = $("#" + id); if (el) kept[id] = el.value; } const a = document.querySelector('input[name="aff"]:checked'); if (a) kept.aff = a.dataset.aff; };
 const restoreForm = () => { for (const [id, v] of Object.entries(kept)){ if (id === "aff"){ const r = document.querySelector(`input[data-aff="${v}"]`); if (r) r.checked = true; continue; } const el = $("#" + id); if (el) el.value = v; } };
@@ -3335,13 +3349,45 @@ async function bootAccounts(){
 /* Mon compte */
 function vCompte(){
   if (S.ecFor !== "me"){ S.ec = {q:"", cp:"", res:null, sel:S.me?.ecole || null, manual:false, busy:false, err:""}; S.ecFor = "me"; }
-  return `<div class="head"><div><h2>Mon compte</h2><p>${esc(S.me?.nom || "")} · ${esc(S.me?.email || "")} · ${isAdmin() ? "Administrateur" : isDir() ? "Direction" : "Professeur"} · ${S.me?.billing && S.me?.acces?.mode !== "inclus" ? esc(accesLabel(S.me)) : `Abonnement ${PLAN[S.me?.plan] || "Essentiel"} · Option Exercices ${S.me?.can?.exercices ? "✓" : "✗"}`}</p></div>
-    <button class="btn" id="out-go">Se déconnecter</button></div>
-  <section class="panel grid" style="max-width:640px"><h3>Mon profil</h3>
+  const P = prefs(), Q = P.q;
+  /* Paramètres rangés par thème : le compte, la notation, les feuilles imprimées, l'IA et la correction */
+  const TABS = {compte:"Compte", notation:"Notation", feuilles:"Feuilles", ia:"IA et correction"}, tab = TABS[S.cptTab] ? S.cptTab : "compte"; S.cptTab = tab;
+  const intro = {compte:"Ton profil, ton abonnement, la langue et la sécurité de ton compte.", notation:"Comment tes notes s'affichent, comment l'année est découpée et comment comptent les rattrapages.",
+    feuilles:"Ce qui s'imprime : en-tête, texte, cadres de réponse et consignes. Chaque nouveau contrôle part de ces réglages.", ia:"Ce que l'IA te propose, comment elle s'adresse aux élèves, tes matières."}[tab];
+  const tabs = `<div class="qchips" role="tablist" style="flex-wrap:wrap;margin-bottom:4px">${Object.entries(TABS).map(([k, l]) => `<button class="chip${k === tab ? " cur" : ""}" role="tab" aria-selected="${k === tab}" data-cpt="${k}">${l}</button>`).join("")}</div><p class="small muted" style="margin:0 0 4px">${intro}</p>`;
+  const sec = {
+    compte:() => `  <section class="panel grid" style="max-width:640px"><h3>Mon profil</h3>
     <div class="field"><label for="me-nom">Mon nom</label><input id="me-nom" value="${esc(S.form["me-nom"] ?? S.me?.nom ?? "")}"></div>
     ${ecoleWidget()}
     <div class="row"><button class="btn primary" id="me-save">Enregistrer</button></div><div class="status" id="me-st"></div></section>
-  ${(() => { const P = prefs(), Q = P.q; return `<section class="panel grid" style="max-width:640px"><h3>Mise en page des feuilles</h3>
+  <section class="panel grid" style="max-width:640px"><h3>Langue</h3><p class="row">${[["fr","Français"],["en","English (US)"],["pt","Português (BR)"]].map(([k, l]) => `<a class="btn sm${(document.documentElement.lang || "fr").slice(0, 2) === k ? " cur" : ""}" href="?lang=${k}">${l}</a>`).join("")}</p></section>
+  <section class="panel grid" style="max-width:640px"><h3>Apparence</h3><p class="small muted" style="margin:0">Choix propre à cet appareil. Automatique : clair la journée, sombre le soir et la nuit (de 20 h à 7 h).</p>
+    <div class="seg" role="group" aria-label="Apparence">${[["clair","Clair"],["sombre","Sombre"],["auto","Automatique"]].map(([k, l]) => `<button data-th="${k}" aria-pressed="${themePref() === k}">${l}</button>`).join("")}</div></section>
+  ${abonnementPanel()}${etabPanel()}${devicesPanel()}${parrainagePanel()}
+  <section class="panel grid" style="max-width:640px"><h3>Changer de mot de passe</h3>
+    <div class="field"><label for="mc-old">Mot de passe actuel</label><input id="mc-old" type="password" autocomplete="current-password"></div>
+    <div class="field"><label for="mc-new">Nouveau mot de passe (8 caractères minimum)</label><input id="mc-new" type="password" autocomplete="new-password"></div>
+    <div class="row"><button class="btn primary" id="mc-go">Enregistrer</button></div><div class="status" id="mc-st"></div></section>
+  ${vReglages()}
+  <section class="panel grid" style="max-width:640px"><h3>Supprimer mon compte</h3>
+    <p class="small muted" style="margin:0">Efface définitivement ton compte et tout ce qui t'appartient : contrôles, copies scannées, notes, cours, exercices et images. Pense d'abord à exporter tes notes si tu en as besoin.</p>
+    <div class="field"><label for="del-pw">Mot de passe actuel</label><input id="del-pw" type="password" autocomplete="current-password"></div>
+    <div class="row"><button class="btn" id="del-me" style="color:var(--pen);border-color:var(--pen)">Supprimer définitivement mon compte</button></div><div class="status" id="del-st"></div></section>`,
+    notation:() => `${notationPanel()}
+  ${(() => { const R = {...PREF_DEF.periodes, ...(P.periodes || {})}, dIn = (id, md) => `<input type="date" id="${id}" value="${(+md.slice(0, 2) >= 8 ? "2026" : "2027") + "-" + md}">`;
+    return `<section class="panel grid" style="max-width:640px" id="annee-pref"><h3>Année scolaire</h3>
+    <p class="small muted" style="margin:0">Le découpage utilisé pour les moyennes du suivi des élèves. L'année commence en septembre ; seuls le jour et le mois des dates comptent.</p>
+    <div class="form-row"><div class="field"><label for="ap-mode">Découpage</label><select id="ap-mode">${selOpts(["trim", "sem"], R.mode, x => x === "sem" ? "Semestres" : "Trimestres")}</select></div>
+      ${R.mode === "sem" ? `<div class="field"><label for="ap-s2">Début du 2e semestre</label>${dIn("ap-s2", R.s2)}</div>` : `<div class="field"><label for="ap-t2">Début du 2e trimestre</label>${dIn("ap-t2", R.t2)}</div><div class="field"><label for="ap-t3">Début du 3e trimestre</label>${dIn("ap-t3", R.t3)}</div>`}</div>
+    <div class="row"><button class="btn primary" id="ap-save">Enregistrer</button></div></section>`; })()}
+  <section class="panel grid" style="max-width:640px" id="ratt-regles"><h3>Rattrapage</h3>
+    <p class="small muted" style="margin:0">Qui peut avoir un rattrapage, et comment sa note compte. Chaque rattrapage peut avoir sa propre règle (bouton « ⚙ Règles » sur la page du rattrapage).</p>
+    <div class="form-row"><div class="field"><label for="rp-seuil">Rattrapage proposé sous</label><select id="rp-seuil">${selOpts(["8","9","10","11","12"], String(P.ratt.seuil), x => noteS(+x))}</select></div>
+      <div class="field"><label for="rp-regle">Note retenue</label><select id="rp-regle">${selOpts(Object.keys(RREGLES), P.ratt.regle, x => RREGLES[x])}</select></div></div>
+    <div class="form-row">${P.ratt.regle === "bonus" ? `<div class="field"><label for="rp-bonus">Bonus maximum (note parfaite au rattrapage)</label><select id="rp-bonus">${selOpts(["1","2","3","4","5"], String(P.ratt.bonus), x => ptsS(+x))}</select></div>` : ""}
+      ${["meilleure", "bonus", "remplace"].includes(P.ratt.regle) ? `<div class="field"><label for="rp-plaf">Plafond de la note retenue</label><select id="rp-plaf">${selOpts(["10","12","14","16","20"], String(P.ratt.plafond), x => x === "20" ? "Aucun" : noteS(+x))}</select></div>` : ""}</div>
+    <p class="small" style="margin:0;padding:10px 12px;border-radius:10px;background:var(--surface-2)">Exemple : ${noteS(6)} au contrôle et ${noteS(16)} au rattrapage → note retenue <b>${(() => { const R = P.ratt, b = 6, n = 16, cap = v => Math.min(v, R.plafond); return noteS(R.regle === "bonus" ? Math.max(b, cap(b + R.bonus * n / 20)) : R.regle === "moyenne" ? (b + n) / 2 : R.regle === "remplace" ? cap(n) : R.regle === "formatif" ? b : Math.max(b, cap(n))); })()}</b> (${esc(ruleTxt(P.ratt))}).</p></section>`,
+    feuilles:() => `  <section class="panel grid" style="max-width:640px"><h3>Mise en page des feuilles</h3>
     <p class="small muted" style="margin:0">Chaque nouveau contrôle part de ces réglages. Tu peux toujours les ajuster dans son étape « Mise en page ».</p>
     <div class="field"><label>En-tête des feuilles</label>${affRadios(S.me?.affichage)}</div>
     <p class="small muted" style="margin:0">Aperçu : <b id="me-prev">${esc(headerFrom(S.me?.affichage || "les2"))}</b></p>
@@ -3351,56 +3397,31 @@ function vCompte(){
     <p class="small muted" style="margin:0">Pour une classe de primaire (CP à CM2), les nouveaux contrôles passent automatiquement en Seyès, interligne très large.</p>
     <div class="field"><label for="mp-cons">Consignes imprimées en haut de la feuille</label><textarea id="mp-cons">${esc(P.consignes)}</textarea></div>
     <label class="row small" style="gap:6px"><input type="checkbox" id="mp-bar"${P.bareme ? " checked" : ""}> Afficher le barème de chaque question</label>
-    <div class="row"><button class="btn primary" id="mp-save">Enregistrer</button></div></section>
-  <section class="panel grid" style="max-width:640px"><h3>Questions</h3>
+    <div class="row"><button class="btn primary" id="mp-save">Enregistrer</button></div></section>`,
+    ia:() => `  <section class="panel grid" style="max-width:640px"><h3>Questions</h3>
     <p class="small muted" style="margin:0">Le style des questions que l'IA te propose. Le niveau de la classe est toujours pris en compte, et tu peux tout modifier contrôle par contrôle.</p>
     <div class="form-row"><div class="field"><label for="qp-fmt">Format</label><select id="qp-fmt">${selOpts(["redige","mixte","qcm"], Q.format, x => ({redige:"Réponses rédigées", mixte:"Rédigé et questions à choix", qcm:"Surtout des questions à choix"}[x]))}</select></div>
       <div class="field"><label for="qp-prof">Profondeur</label><select id="qp-prof">${selOpts(["simple","standard","exigeant"], Q.profondeur, x => ({simple:"Simple : appliquer le cours", standard:"Standard : comprendre et expliquer", exigeant:"Exigeant : raisonner et argumenter"}[x]))}</select></div></div>
     <div class="field"><label for="qp-long">Longueur des réponses</label><select id="qp-long">${selOpts(["courte","moyenne","developpee"], Q.longueur, x => ({courte:"Courtes (3 à 5 lignes)", moyenne:"Moyennes (5 à 8 lignes)", developpee:"Développées (8 à 14 lignes)"}[x]))}</select></div>
     <label class="row small" style="gap:6px"><input type="checkbox" id="qp-just"${Q.justif ? " checked" : ""}> <span>Questions à choix : toujours laisser un cadre pour justifier la réponse (corrigé par l'IA)</span></label>
     <div class="row"><button class="btn primary" id="qp-save">Enregistrer</button></div></section>
-  ${(() => { const R = {...PREF_DEF.periodes, ...(P.periodes || {})}, dIn = (id, md) => `<input type="date" id="${id}" value="${(+md.slice(0, 2) >= 8 ? "2026" : "2027") + "-" + md}">`;
-    return `<section class="panel grid" style="max-width:640px" id="annee-pref"><h3>Année scolaire</h3>
-    <p class="small muted" style="margin:0">Le découpage utilisé pour les moyennes du suivi des élèves. L'année commence en septembre ; seuls le jour et le mois des dates comptent.</p>
-    <div class="form-row"><div class="field"><label for="ap-mode">Découpage</label><select id="ap-mode">${selOpts(["trim", "sem"], R.mode, x => x === "sem" ? "Semestres" : "Trimestres")}</select></div>
-      ${R.mode === "sem" ? `<div class="field"><label for="ap-s2">Début du 2e semestre</label>${dIn("ap-s2", R.s2)}</div>` : `<div class="field"><label for="ap-t2">Début du 2e trimestre</label>${dIn("ap-t2", R.t2)}</div><div class="field"><label for="ap-t3">Début du 3e trimestre</label>${dIn("ap-t3", R.t3)}</div>`}</div>
-    <div class="row"><button class="btn primary" id="ap-save">Enregistrer</button></div></section>`; })()}
   <section class="panel grid" style="max-width:640px" id="ton-pref"><h3>Ton des commentaires</h3>
     <p class="small muted" style="margin:0">La façon dont l'IA s'adresse aux élèves dans les commentaires de correction et des quiz, et le ton des appréciations de bulletin.</p>
     <div class="form-row"><div class="field"><label for="tp-ton">Ton</label><select id="tp-ton">${selOpts(Object.keys(TONS), P.ton, x => TONS[x])}</select></div>
       <div class="field"><label for="tp-adr">S'adresser à l'élève</label><select id="tp-adr">${selOpts(["tu","vous"], P.adresse, x => x === "vous" ? "En le vouvoyant" : "En le tutoyant")}</select></div></div>
     <p class="small" style="margin:0;padding:10px 12px;border-radius:10px;background:var(--surface-2)">Exemple : <i>${esc(TON_EX[P.ton]?.[P.adresse] || "")}</i></p></section>
-  <section class="panel grid" style="max-width:640px" id="ratt-regles"><h3>Rattrapage</h3>
-    <p class="small muted" style="margin:0">Qui peut avoir un rattrapage, et comment sa note compte. Chaque rattrapage peut avoir sa propre règle (bouton « ⚙ Règles » sur la page du rattrapage).</p>
-    <div class="form-row"><div class="field"><label for="rp-seuil">Rattrapage proposé sous</label><select id="rp-seuil">${selOpts(["8","9","10","11","12"], String(P.ratt.seuil), x => noteS(+x))}</select></div>
-      <div class="field"><label for="rp-regle">Note retenue</label><select id="rp-regle">${selOpts(Object.keys(RREGLES), P.ratt.regle, x => RREGLES[x])}</select></div></div>
-    <div class="form-row">${P.ratt.regle === "bonus" ? `<div class="field"><label for="rp-bonus">Bonus maximum (20/20 au rattrapage)</label><select id="rp-bonus">${selOpts(["1","2","3","4","5"], String(P.ratt.bonus), x => "+" + x + " point" + (x > 1 ? "s" : ""))}</select></div>` : ""}
-      ${["meilleure", "bonus", "remplace"].includes(P.ratt.regle) ? `<div class="field"><label for="rp-plaf">Plafond de la note retenue</label><select id="rp-plaf">${selOpts(["10","12","14","16","20"], String(P.ratt.plafond), x => x === "20" ? "Aucun" : noteS(+x))}</select></div>` : ""}</div>
-    <p class="small" style="margin:0;padding:10px 12px;border-radius:10px;background:var(--surface-2)">Exemple : 6 au contrôle et 16 au rattrapage → note retenue <b>${(() => { const R = P.ratt, b = 6, n = 16, cap = v => Math.min(v, R.plafond); return noteS(R.regle === "bonus" ? Math.max(b, cap(b + R.bonus * n / 20)) : R.regle === "moyenne" ? (b + n) / 2 : R.regle === "remplace" ? cap(n) : R.regle === "formatif" ? b : Math.max(b, cap(n))); })()}</b> (${esc(ruleTxt(P.ratt))}).</p></section>`; })()}
   <section class="panel grid" style="max-width:640px"><h3>Les matières que j'enseigne</h3>
     <p class="small muted" style="margin:0">Seules ces matières te seront proposées. Si tu n'en enseignes qu'une, elle est choisie toute seule quand tu prépares un contrôle.</p>
     <div class="row">${enseigne().map(m => `<span class="chip">${esc(m)} <button class="btn sm ghost" style="padding:0 4px" data-ensdel="${esc(m)}" aria-label="Retirer">×</button></span>`).join("") || `<span class="small muted">Aucune matière choisie : toute la liste est proposée.</span>`}</div>
     <div class="row"><select id="ens-sel" style="max-width:260px" aria-label="Matière à ajouter"><option value="">Choisir une matière…</option>${selOpts(myMatieres(true).filter(m => !enseigne().includes(m)), "")}</select><button class="btn sm primary" id="ens-go">Ajouter</button></div>
     <div class="row"><input id="mat-new" placeholder="Matière absente de la liste" style="max-width:260px"><button class="btn sm" id="mat-go">Ajouter</button></div></section>
-  ${abonnementPanel()}${etabPanel()}${devicesPanel()}${parrainagePanel()}
   <section class="panel grid" style="max-width:640px"><h3>Amélioration de la lecture</h3>
     <label class="row small" style="gap:8px;align-items:flex-start"><input type="checkbox" id="me-partage" style="width:auto;margin-top:3px"${S.me?.partageEcriture ? " checked" : ""}${isAdmin() ? " disabled" : ""}><span>Aider Mastery à mieux lire l'écriture manuscrite : quand je corrige une lecture, l'image du cadre de réponse et mon texte corrigé sont conservés, sans nom d'élève, de classe, de note ni d'établissement, 2 ans au plus, uniquement pour améliorer la lecture de Mastery.</span></label>
-    ${S.me?.etab && S.me.etab.collecte === false ? `<p class="small muted" style="margin:0">Désactivé par la direction de ton établissement.</p>` : ""}</section>
-  <section class="panel grid" style="max-width:640px"><h3>Notes affichées</h3>
-    <p class="small muted" style="margin:0">Les calculs restent identiques ; seul l'affichage des notes change.</p>
-    <select id="me-bareme" style="max-width:320px">${[["20","Sur 20 (France)"],["10","Sur 10 (Brésil)"],["100","Pourcentage (%)"],["AF","Lettres A à F (États-Unis)"]].map(([k, t]) => `<option value="${k}"${bareme() === k ? " selected" : ""}>${t}</option>`).join("")}</select></section>
-  <section class="panel grid" style="max-width:640px"><h3>Langue</h3><p class="row">${[["fr","Français"],["en","English (US)"],["pt","Português (BR)"]].map(([k, l]) => `<a class="btn sm${(document.documentElement.lang || "fr").slice(0, 2) === k ? " cur" : ""}" href="?lang=${k}">${l}</a>`).join("")}</p></section>
-  <section class="panel grid" style="max-width:640px"><h3>Apparence</h3><p class="small muted" style="margin:0">Choix propre à cet appareil. Automatique : clair la journée, sombre le soir et la nuit (de 20 h à 7 h).</p>
-    <div class="seg" role="group" aria-label="Apparence">${[["clair","Clair"],["sombre","Sombre"],["auto","Automatique"]].map(([k, l]) => `<button data-th="${k}" aria-pressed="${themePref() === k}">${l}</button>`).join("")}</div></section>
-  <section class="panel grid" style="max-width:640px"><h3>Changer de mot de passe</h3>
-    <div class="field"><label for="mc-old">Mot de passe actuel</label><input id="mc-old" type="password" autocomplete="current-password"></div>
-    <div class="field"><label for="mc-new">Nouveau mot de passe (8 caractères minimum)</label><input id="mc-new" type="password" autocomplete="new-password"></div>
-    <div class="row"><button class="btn primary" id="mc-go">Enregistrer</button></div><div class="status" id="mc-st"></div></section>
-  ${vReglages()}
-  <section class="panel grid" style="max-width:640px"><h3>Supprimer mon compte</h3>
-    <p class="small muted" style="margin:0">Efface définitivement ton compte et tout ce qui t'appartient : contrôles, copies scannées, notes, cours, exercices et images. Pense d'abord à exporter tes notes si tu en as besoin.</p>
-    <div class="field"><label for="del-pw">Mot de passe actuel</label><input id="del-pw" type="password" autocomplete="current-password"></div>
-    <div class="row"><button class="btn" id="del-me" style="color:var(--pen);border-color:var(--pen)">Supprimer définitivement mon compte</button></div><div class="status" id="del-st"></div></section>
+    ${S.me?.etab && S.me.etab.collecte === false ? `<p class="small muted" style="margin:0">Désactivé par la direction de ton établissement.</p>` : ""}</section>`};
+  return `<div class="head"><div><h2>Mon compte</h2><p>${esc(S.me?.nom || "")} · ${esc(S.me?.email || "")} · ${isAdmin() ? "Administrateur" : isDir() ? "Direction" : "Professeur"} · ${S.me?.billing && S.me?.acces?.mode !== "inclus" ? esc(accesLabel(S.me)) : `Abonnement ${PLAN[S.me?.plan] || "Essentiel"} · Option Exercices ${S.me?.can?.exercices ? "✓" : "✗"}`}</p></div>
+    <button class="btn" id="out-go">Se déconnecter</button></div>
+  ${tabs}
+  ${sec[tab]()}
   <p class="small muted"><a href="/mentions-legales" target="_blank" rel="noopener">Mentions légales</a> · <a href="/cgu" target="_blank" rel="noopener">Conditions d'utilisation</a> · <a href="/confidentialite" target="_blank" rel="noopener">Confidentialité</a></p>`;
 }
 /* Comptes (administrateur) */
@@ -3589,6 +3610,49 @@ document.addEventListener("click", async ev => {
 if (/paiement=ok/.test(location.hash)) setTimeout(() => { toast("Merci ! Ton abonnement est en cours d'activation."); history.replaceState(null, "", "#/compte"); setTimeout(refreshMe, 2500); }, 1500);
 const accesLabel = u => { const a = u.acces || {}; return a.mode === "essai" ? `Essai · ${joursRest(a.fin)} ${JRS}` : a.mode === "abonne" ? `Abonné ${PLAN[a.plan] || ""}` : a.mode === "ecole" ? "Payé par l'établissement" : a.mode === "expire" ? "Essai terminé" : a.mode === "inclus" ? "Inclus" : "Bêta"; };
 
+/* ---------- Barème des notes : choisi librement par chaque professeur ---------- */
+const PAS_SUR = {1:"Au point près", 0.5:"Au demi-point", 0.25:"Au quart de point", 0.1:"Au dixième", 0.01:"Au centième"}, PAS_PCT = {1:"À l'unité", 0.1:"Au dixième"};
+function notationPanel(){
+  const N = S.nt || notation(), T = {sur:"Sur des points", pct:"Pourcentage", lettres:"Lettres ou niveaux"}, PS = N.type === "pct" ? PAS_PCT : PAS_SUR;
+  const pas = `<div class="field"><label for="nt-pas">Arrondi</label><select id="nt-pas">${selOpts(Object.keys(PS), String(N.pas ?? (N.type === "pct" ? 1 : 0.1)), x => PS[x])}</select></div>`;
+  const ex = [90, 68, 45, 20].map(p => `${p} % → <b>${esc(noteN(p / 5, N))}</b>`).join(" · ");
+  return `<section class="panel grid" style="max-width:640px" id="notation-pref"><h3>Barème des notes</h3>
+    <p class="small muted" style="margin:0">Choisis librement comment tes notes s'affichent partout : correction, analyse, suivi, copies rendues, espace élève et exports. Les points de chaque question ne changent pas.</p>
+    <div class="seg" role="group" aria-label="Barème">${Object.entries(T).map(([k, l]) => `<button data-ntt="${k}" aria-pressed="${N.type === k}">${l}</button>`).join("")}</div>
+    ${N.type === "sur" ? `<div class="form-row"><div class="field"><label for="nt-sur">Noté sur</label><input id="nt-sur" type="number" min="1" max="1000" step="1" value="${esc(N.sur)}" list="nt-surs"><datalist id="nt-surs">${[5, 10, 20, 30, 40, 50, 60, 100].map(v => `<option value="${v}">`).join("")}</datalist></div>${pas}</div>` : ""}
+    ${N.type === "pct" ? pas : ""}
+    ${N.type === "lettres" ? `<div class="field"><label for="nt-preset">Partir d'un modèle</label><select id="nt-preset"><option value="">Choisir un modèle…</option>${Object.entries(LETTRES_LAB).map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select></div>
+      <div class="grid" style="gap:6px">${N.lettres.map((x, i) => `<div class="row" style="gap:8px;flex-wrap:nowrap"><input data-ntl="${i}" value="${esc(x.l)}" maxlength="30" aria-label="Nom du niveau ${i + 1}" style="flex:1;min-width:0"><span class="small muted" style="white-space:nowrap">dès</span><input data-ntm="${i}" type="number" min="0" max="100" value="${esc(x.min)}" style="width:76px" aria-label="Seuil en pourcentage"><span class="small muted">%</span><button class="btn sm ghost" data-ntdel="${i}" aria-label="Retirer ce niveau"${N.lettres.length <= 2 ? " disabled" : ""}>×</button></div>`).join("")}</div>
+      <div class="row"><button class="btn sm" id="nt-add">+ Ajouter un niveau</button></div>
+      <label class="row small" style="gap:6px"><input type="checkbox" id="nt-pctl"${N.pctLettre !== false ? " checked" : ""}> Afficher aussi le pourcentage à côté du niveau</label>` : ""}
+    <p class="small" style="margin:0;padding:10px 12px;border-radius:10px;background:var(--surface-2)">Aperçu, selon la part des points obtenus : ${ex}</p>
+    <div class="row"><button class="btn primary" id="nt-save"${S.nt ? "" : " disabled"}>Enregistrer</button>${S.nt ? `<button class="btn ghost" id="nt-cancel">Annuler</button>` : ""}</div></section>`;
+}
+const ntDraft = () => (S.nt = S.nt || structuredClone(notation()));
+document.addEventListener("click", async ev => {
+  const t = ev.target.closest("[data-cpt],[data-ntt],[data-ntdel],#nt-add,#nt-save,#nt-cancel"); if (!t) return; const d = t.dataset;
+  if (d.cpt){ S.cptTab = d.cpt; if (S.view === "compte") render(); return; }
+  if (d.ntt){ const N = ntDraft(); if (N.type !== d.ntt) N.pas = d.ntt === "pct" ? 1 : 0.1; N.type = d.ntt; if (N.type === "lettres" && !(N.lettres || []).length) N.lettres = lettresOf("us"); if (N.type === "sur" && !N.sur) N.sur = 20; return render(); }
+  if (d.ntdel){ const N = ntDraft(); N.lettres.splice(+d.ntdel, 1); return render(); }
+  if (t.id === "nt-add"){ const N = ntDraft(); N.lettres.push({l:"", min:0}); return render(); }
+  if (t.id === "nt-cancel"){ S.nt = null; return render(); }
+  if (t.id === "nt-save"){ const N = ntDraft();
+    if (N.type === "lettres"){ N.lettres = N.lettres.map(x => ({l:String(x.l || "").trim().slice(0, 30), min:Math.max(0, Math.min(100, +x.min || 0))})).filter(x => x.l).sort((a, b) => b.min - a.min);
+      if (N.lettres.length < 2) return toast("Il faut au moins deux niveaux.");
+      if (new Set(N.lettres.map(x => x.min)).size !== N.lettres.length) return toast("Deux niveaux ont le même seuil : change l'un des deux.");
+      N.lettres[N.lettres.length - 1].min = 0; }
+    if (N.type === "sur" && !(N.sur >= 1 && N.sur <= 1000)) return toast("Indique un nombre de points entre 1 et 1000.");
+    await savePrefs({notation:{type:N.type, sur:N.sur, pas:N.pas, lettres:N.lettres || [], pctLettre:N.pctLettre !== false}}); S.nt = null; render(); toast("Barème enregistré : toutes les notes s'affichent maintenant ainsi."); return; }
+});
+document.addEventListener("change", ev => { const el = ev.target, d = el.dataset;
+  if (el.id === "nt-sur"){ ntDraft().sur = Math.round(+el.value) || 20; return scheduleRender(); }
+  if (el.id === "nt-pas"){ ntDraft().pas = +el.value; return scheduleRender(); }
+  if (el.id === "nt-preset" && el.value){ ntDraft().lettres = lettresOf(el.value); return scheduleRender(); }
+  if (el.id === "nt-pctl"){ ntDraft().pctLettre = el.checked; return scheduleRender(); }
+  if (d.ntl !== undefined){ ntDraft().lettres[+d.ntl].l = el.value; return scheduleRender(); }
+  if (d.ntm !== undefined){ ntDraft().lettres[+d.ntm].min = +el.value; return scheduleRender(); }
+});
+
 
 /* ================= Shared: document pages → PDF ================= */
 function docPages(headHTML, blocks, footTxt){
@@ -3700,12 +3764,20 @@ function yearsOf(cl, mat){ const s = new Set(store.controles.filter(c => c.class
 function moyennes(cs, e){ const rows = cs.map(c => ({c, v:noteDe(c, e), w:coefOf(c), p:periodOf(ctrlDay(c))}));
   return {rows, per:Array.from({length:bornes().length + 1}, (_, i) => wavg(rows.filter(r => r.p === i))), an:wavg(rows)}; }
 /* Compétences : part des points obtenus sur les questions qui évaluent chaque compétence */
+/* La 1re compétence d'une question est la principale (poids 1), la 2e compte pour moitié */
 function compStats(cs, e){ const acc = {};
   for (const c of cs){ const cp = feuille(c.id)?.copies?.[e.id]; if (!copyDone(c, cp) || isAbs(c, e)) continue;
     for (const q of c.questions || []){ const n = noteOf(cp.answers?.[q.id]); if (n == null || !+q.points) continue;
-      for (const k of q.comps || []){ const o = acc[k] = acc[k] || {s:0, p:0}; o.s += n; o.p += +q.points; } } }
+      (q.comps || []).forEach((k, i) => { const w = i ? .5 : 1, o = acc[k] = acc[k] || {s:0, p:0}; o.s += n * w; o.p += +q.points * w; }); } }
   return Object.fromEntries(Object.keys(COMPS).map(k => [k, acc[k] ? acc[k].s / acc[k].p : null])); }
-const maiCell = r => { const m = MAITRISE(r); return m ? `<span class="cell ${m.t}" title="${esc(m.l)} · ${pct(r)}">${MAI_ABR[m.k]}</span>` : `<span class="cell none">—</span>`; };
+/* Combien de questions de l'année évaluent chaque compétence, et lesquelles (pour repérer deux compétences évaluées par les mêmes questions) */
+function compCouv(cs){ const q = Object.fromEntries(Object.keys(COMPS).map(k => [k, []]));
+  for (const c of cs) for (const x of c.questions || []) (x.comps || []).forEach(k => q[k]?.push(c.id + ":" + x.id));
+  return q; }
+const maiCell = r => { const m = MAITRISE(r); return m ? `<span class="cell ${m.t}" title="${esc(m.l)}">${Math.round(r * 100)}<small style="font-weight:500;opacity:.75"> ${MAI_ABR[m.k]}</small></span>` : `<span class="cell none" title="Pas encore évaluée">—</span>`; };
+/* Point fort et point à travailler d'un élève, par rapport à ses propres résultats (écart d'au moins 10 points) */
+const profil = R => { const v = Object.entries(R).filter(([, r]) => r != null).sort((a, b) => b[1] - a[1]); if (v.length < 2) return null; const [hi, lo] = [v[0], v[v.length - 1]];
+  return hi[1] - lo[1] >= .1 ? {fort:hi[0], faible:lo[0]} : {homogene:true}; };
 
 /* ---------- Signaux à observer : des faits tirés des notes et des copies, jamais un diagnostic. Vus du seul professeur. ---------- */
 function signaux(cl, mat, e, y){
@@ -3811,12 +3883,18 @@ function vSuiviBase(){
       </tbody></table></div></section>`;
   }
   if (tab === "comps"){
-    const sans = cs.filter(c => (c.questions || []).some(q => !(q.comps || []).length)), CS = Object.fromEntries(els.map(e => [e.id, compStats(cs, e)]));
-    body = `<section class="panel"><p class="small muted" style="margin:0">Échelle du livret scolaire, sur l'année : <b>TB</b> très bonne maîtrise · <b>S</b> satisfaisante · <b>F</b> fragile · <b>I</b> insuffisante. Chaque question compte pour la ou les compétences qu'elle évalue.</p>
+    const sans = cs.filter(c => (c.questions || []).some(q => !(q.comps || []).length)), CS = Object.fromEntries(els.map(e => [e.id, compStats(cs, e)])), cov = compCouv(cs);
+    const ks = Object.keys(COMPS), used = ks.filter(k => cov[k].length);
+    /* Deux compétences évaluées exactement par les mêmes questions donnent forcément le même résultat : on le dit */
+    const jumelles = []; used.forEach((a, i) => used.slice(i + 1).forEach(b => { if (cov[a].length === cov[b].length && cov[a].every(x => cov[b].includes(x))) jumelles.push(COMPS[a] + " / " + COMPS[b]); }));
+    const pf = x => { const P = profil(CS[x.id]); return !P ? `<span class="small muted">—</span>` : P.homogene ? `<span class="small muted">Profil régulier</span>` : `<span class="small"><b style="color:var(--ok)">↑ ${COMPS[P.fort]}</b> · <b style="color:var(--bad)">↓ ${COMPS[P.faible]}</b></span>`; };
+    body = `<section class="panel"><p class="small muted" style="margin:0">Pour chaque compétence : la part des points obtenus sur l'année aux questions qui l'évaluent, et le niveau du livret scolaire (<b>TB</b> très bonne maîtrise dès 80 · <b>S</b> satisfaisante dès 60 · <b>F</b> fragile dès 40 · <b>I</b> insuffisante). La compétence principale d'une question compte entièrement, la seconde pour moitié.</p>
       ${sans.length ? `<p class="banner" style="margin-top:8px">${sans.length} contrôle(s) de l'année ont des questions sans compétence. <button class="btn sm" id="compAll">Les indiquer avec l'IA</button> <span class="status" id="comp-st"></span></p>` : ""}
-      <div class="tbl-wrap tbl-sticky" style="margin-top:8px"><table><thead><tr><th>Élève</th>${Object.values(COMPS).map(l => `<th class="c">${l}</th>`).join("")}</tr></thead><tbody>
-      ${els.map(x => `<tr ${rowAttr(x)}>${nameTd(x)}${Object.keys(COMPS).map(k => `<td class="c">${maiCell(CS[x.id][k])}</td>`).join("")}</tr>`).join("")}
-      <tr class="tot"><td><b>Classe</b></td>${Object.keys(COMPS).map(k => `<td class="c">${maiCell(mean(els.map(e => CS[e.id][k])))}</td>`).join("")}</tr>
+      ${jumelles.length ? `<p class="banner" style="margin-top:8px">${esc(jumelles.join(" ; "))} : évaluées par exactement les mêmes questions, elles donnent donc le même résultat. Pour les distinguer, change les compétences de quelques questions dans l'éditeur des contrôles.</p>` : ""}
+      ${used.length ? "" : `<p class="small muted" style="margin-top:8px">Aucune question de l'année n'a encore de compétence.</p>`}
+      <div class="tbl-wrap tbl-sticky" style="margin-top:8px"><table><thead><tr><th>Élève</th>${ks.map(k => `<th class="c">${COMPS[k]}<div class="small muted" style="font-weight:500;text-transform:none;letter-spacing:0">${cov[k].length ? cov[k].length + " q." : "non évaluée"}</div></th>`).join("")}<th>Profil</th></tr></thead><tbody>
+      ${els.map(x => `<tr ${rowAttr(x)}>${nameTd(x)}${ks.map(k => `<td class="c">${maiCell(CS[x.id][k])}</td>`).join("")}<td>${pf(x)}</td></tr>`).join("")}
+      <tr class="tot"><td><b>Classe</b></td>${ks.map(k => `<td class="c">${maiCell(mean(els.map(e => CS[e.id][k])))}</td>`).join("")}<td>${(P => !P ? "" : P.homogene ? `<span class="small muted">Profil régulier</span>` : `<span class="small"><b style="color:var(--ok)">↑ ${COMPS[P.fort]}</b> · <b style="color:var(--bad)">↓ ${COMPS[P.faible]}</b></span>`)(profil(Object.fromEntries(ks.map(k => [k, mean(els.map(e => CS[e.id][k]))]))))}</td></tr>
       </tbody></table></div></section>`;
   }
   const e = els.find(x => x.id === S.su.el);
@@ -3848,7 +3926,8 @@ function ficheEleve(cl, mat, e, y, cs){
       <p class="small muted" style="margin:6px 0 0">Des faits tirés des notes et des copies, pour t'aider à observer : jamais un diagnostic. Jamais montré à l'élève ni à sa famille.</p></div>
     <div class="grid g2">
       <div><div class="label" style="margin-bottom:6px">Compétences</div>
-        <div class="bars">${Object.entries(COMPS).map(([k, l]) => { const r = CS[k], m = MAITRISE(r); return `<div class="bar" style="grid-template-columns:110px 1fr auto"><span class="small">${l}</span><div class="track"><div class="fill" style="width:${r == null ? 0 : Math.round(r * 100)}%;background:var(--${m ? m.t : "line"})"></div></div><span class="small ${m ? "" : "muted"}">${m ? esc(m.l) : "—"}</span></div>`; }).join("")}</div></div>
+        <div class="bars">${(cv => Object.entries(COMPS).map(([k, l]) => { const r = CS[k], m = MAITRISE(r); return `<div class="bar" style="grid-template-columns:110px 1fr 150px"><span class="small">${l} <span class="muted">(${cv[k].length})</span></span><div class="track"><div class="fill" style="width:${r == null ? 0 : Math.round(r * 100)}%;background:var(--${m ? m.t : "line"})"></div></div><span class="small ${m ? "" : "muted"}">${m ? `<b class="num">${Math.round(r * 100)} %</b> · ${esc(m.l.replace(/^Maîtrise /, ""))}` : "non évaluée"}</span></div>`; }).join(""))(compCouv(cs))}</div>
+        ${(P => !P || P.homogene ? "" : `<p class="small" style="margin:6px 0 0"><b style="color:var(--ok)">Point fort : ${COMPS[P.fort]}</b> · <b style="color:var(--bad)">À travailler : ${COMPS[P.faible]}</b></p>`)(profil(CS))}</div>
       <div><div class="label" style="margin-bottom:6px">Notions, de la plus fragile à la plus solide</div>
         <div class="bars">${nl.map(x => `<div class="bar" style="grid-template-columns:1fr 90px 44px"><span class="small">${esc(st.labels[x.k])} <span class="muted">(${x.n})</span></span><div class="track"><div class="fill" style="width:${Math.round(x.r * 100)}%;background:var(--${tone(x.r)})"></div></div><span class="num small" style="text-align:right">${pct(x.r)}</span></div>`).join("") || `<p class="muted small">Aucune copie validée.</p>`}</div></div>
     </div>
@@ -4000,8 +4079,8 @@ document.addEventListener("click", async ev => {
   if (d.sutab){ S.su.tab = d.sutab; return render(); }
   if (d.vu){ const cl = classe(S.su.cl); if (!cl) return; const cur = vusOf(cl); await write("bilans/vus_" + cl.id, {classeId:cl.id, k:{...cur, [d.vu]:new Date().toISOString()}}); return; }
   if (t.id === "an-csv"){ const cl = classe(S.su.cl), mat = S.su.mat, y = S.su.y, els = cl.eleves || [], cs = yearCtrls(cl, mat, y).filter(c => els.some(e => noteDe(c, e) != null));
-    const np = bornes().length + 1, f = v => v == null ? "" : String(Math.round(v * 100) / 100).replace(".", ","), q = x => '"' + String(x).replace(/"/g, '""') + '"';
-    const head = ["Élève", ...cs.map(c => `${c.titre} (${ctrlDay(c)}, coef ${coefOf(c)})`), ...Array.from({length:np}, (_, i) => "Moyenne " + perAbr(i)), "Moyenne annuelle"];
+    const np = bornes().length + 1, f = v => v == null ? "" : nv(v), q = x => '"' + String(x).replace(/"/g, '""') + '"';
+    const head = [`Élève (notes ${sfx() || "en niveaux"})`, ...cs.map(c => `${c.titre} (${ctrlDay(c)}, coef ${coefOf(c)})`), ...Array.from({length:np}, (_, i) => "Moyenne " + perAbr(i)), "Moyenne annuelle"];
     const rows = els.map(e => { const M = moyennes(cs, e); return [e.prenom + " " + e.nom, ...cs.map(c => isAbs(c, e) ? "ABS" : f(noteDe(c, e))), ...M.per.map(f), f(M.an)]; });
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["\ufeff" + [head, ...rows].map(r => r.map(q).join(";")).join("\r\n")], {type:"text/csv;charset=utf-8"}));
     a.download = `Suivi ${cl.nom} - ${mat} - ${yearLab(y)}.csv`; a.click(); return; }
