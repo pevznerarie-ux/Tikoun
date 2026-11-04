@@ -1219,6 +1219,7 @@ function wizParams(){
     <div class="field"><label>Types de questions</label><div class="row">${T.map(([k, l]) => `<label class="row small" style="gap:6px"><input type="checkbox" data-type="${k}"${p.types.includes(k) ? " checked" : ""}> ${l}</label>`).join("")}</div>${prefs().q.justif ? `<p class="small muted" style="margin:6px 0 0">Questions à choix : les propositions sont dans l'énoncé, avec un cadre pour justifier (corrigé par l'IA). Pour de vrais QCM à cocher, corrigés sans IA, décoche « toujours laisser un cadre pour justifier » dans Mon compte.</p>` : ""}</div>
     <div class="field"><label>Compétences à évaluer en priorité (facultatif)</label><div class="row">${Object.entries(COMPS).map(([k, l]) => `<label class="row small" style="gap:6px"><input type="checkbox" data-pcomp="${k}"${(p.comps || []).includes(k) ? " checked" : ""}> ${l}</label>`).join("")}</div></div>
     <label class="row small" style="gap:6px"><input type="checkbox" id="p-diff"${p.differencie ? " checked" : ""}> Feuilles différenciées : chaque question en 3 niveaux (socle, standard, approfondi), selon le niveau de chaque élève</label>
+    ${sujetsField(sujetsOf(co, S.params.sujets), "p")}
     <div class="field"><label for="p-cons">Tes consignes à l'IA (facultatif)</label><textarea id="p-cons" data-p="consignes" data-live placeholder="ex. Insister sur la notion d'antécédent. Une question de rédaction à la fin.">${esc(p.consignes)}</textarea></div>
     <div class="row"><button class="btn primary" id="gen" ${store.classes.length ? "" : "disabled"}>${EXO ? "Générer les exercices (IA)" : "Générer le contrôle (IA)"}</button><button class="btn" id="genBlank" ${store.classes.length ? "" : "disabled"}>Partir d'un contrôle vide</button><span class="status" id="gen-st"></span></div>
   </section>`;
@@ -1249,6 +1250,7 @@ function vEdit(){
   ${c.remarques?.length ? `<section class="panel grid" style="border-color:var(--warn)"><div class="row between"><h3 style="margin:0">À vérifier</h3><button class="btn sm" id="remOk">C'est vérifié</button></div><ul class="small" style="margin:0;padding-left:18px">${c.remarques.map(x => `<li>${esc(x)}</li>`).join("")}</ul></section>` : ""}
   <div class="head"><h3>Questions <span class="muted num" style="font-weight:500">· total ${fmt(tot)} pts${(N => N.type === "sur" && tot !== N.sur ? " (ramené sur " + N.sur + ")" : "")(notation())}</span></h3>
     <div class="row">${(c.questions || []).some(q => !(q.comps || []).length) ? `<button class="btn sm" id="compAI" title="L'IA indique les compétences évaluées par chaque question">Compétences (IA)</button>` : ""}${c.type === "exercices" ? (canEx() ? `<button class="btn sm primary" id="regenEx">↻ Régénérer les exercices (IA)</button>` : lockChip()) : (!c.type || c.type === "controle") && c.coursId ? `<button class="btn sm primary" id="regenCtrl">↻ Régénérer le contrôle (IA)</button>` + (canEx() ? `<button class="btn sm" data-exfrom="${c.id}">+ Quiz d'exercices sur ce cours</button>` : lockChip()) : ""}${(!c.type || c.type === "controle") && c.questions?.length ? `<button class="btn sm" id="variante" title="Même structure, mêmes notions et mêmes points, nouveaux énoncés">⧉ Variante (IA)</button>` : ""}<button class="btn sm" id="addQ">+ Question vide</button><button class="btn sm" id="addQcm">+ QCM</button><button class="btn sm" id="addQai">+ Question (IA)</button><button class="btn sm" id="bankOpen">${S.bankOpen ? "Fermer la banque" : "+ Depuis la banque"}</button></div></div>
+  ${isCtrl(c) || c.type === "exercices" ? (() => { const co = store.cours.find(x => x.id === c.coursId); return co ? `<details class="panel" style="padding:10px 14px"><summary class="small"><b>Sujets couverts par la régénération</b> · ${sujetsOf(co, c.gen?.sujets).length || 1} sujet(s)</summary>${sujetsField(sujetsOf(co, c.gen?.sujets), "e")}</details>` : ""; })() : ""}
   ${S.bankOpen ? bankPanel(c) : ""}
   ${(c.questions || []).map((q, i) => qEditor(c, q, i)).join("") || `<div class="panel empty">Aucune question.</div>`}`;
   const partLayout = `  <section class="panel grid">
@@ -2233,7 +2235,7 @@ async function importCourseFiles(files, o = {}){
       for (let i = 1; i <= pdf.numPages; i++){ const tc = await (await pdf.getPage(i)).getTextContent(); txt += tc.items.map(x => x.str + (x.hasEOL ? "\n" : " ")).join("") + "\n\n"; }
       if (hebRatio(txt) > .05){ txt = fixHebrewText(txt); S.hebPdf = [...(S.hebPdf || []), f]; }
       if (txt.replace(/\s/g, "").length > 150 * pdf.numPages) parts.push(txt.trim());
-      else { for (let i = 1; i <= Math.min(pdf.numPages, 12); i++){ const pg = await pdf.getPage(i); const vp = pg.getViewport({scale: 1800 / Math.max(pg.view[2], pg.view[3])}); const cv = document.createElement("canvas"); cv.width = vp.width; cv.height = vp.height; await pg.render({canvasContext:cv.getContext("2d"), viewport:vp}).promise; pendingImgs.push(cv); } }
+      else { for (let i = 1; i <= Math.min(pdf.numPages, 40); i++){ const pg = await pdf.getPage(i); const vp = pg.getViewport({scale: 1800 / Math.max(pg.view[2], pg.view[3])}); const cv = document.createElement("canvas"); cv.width = vp.width; cv.height = vp.height; await pg.render({canvasContext:cv.getContext("2d"), viewport:vp}).promise; pendingImgs.push(cv); } }
     } else { (await fileToCanvases(f)).forEach(cv => pendingImgs.push(cv)); }
   }
   if (pendingImgs.length){
@@ -2256,6 +2258,29 @@ async function importCourseFiles(files, o = {}){
 }
 
 /* ================= Generation ================= */
+/* Plusieurs sujets dans un même cours (ex. 3 chapitres dans un seul PDF) : on les repère pour que le contrôle les couvre tous */
+const SUJ_RE = /^\s*(?:(?:chapitre|sujet|partie|th[eè]me|le[cç]on|s[ée]quence|unit[ée]|chapter|part|topic|lesson|cap[ií]tulo|parte|tema|פרק|נושא|שיעור)\b[^\n]{0,80}|(?:[IVX]{1,4}|\d{1,2})\s*[.)\-–]\s+[A-ZÀ-Ýא-ת][^\n]{2,70})$/gimu;
+function sujetsHeur(texte){
+  const out = []; for (const m of String(texte || "").matchAll(SUJ_RE)){ const t = m[0].trim().replace(/\s+/g, " ").replace(/[:.\s]+$/, ""); if (t.length >= 4 && !out.some(x => x.toLowerCase() === t.toLowerCase())) out.push(t); }
+  const top = out.filter(t => /^(chapitre|sujet|partie|th[eè]me|le[cç]on|s[ée]quence|unit|chapter|part|topic|lesson|cap|tema|פרק|נושא|שיעור)/iu.test(t)), rom = out.filter(t => /^[IVX]{1,4}\s*[.)\-–]/.test(t));
+  return (top.length >= 2 ? top : rom.length >= 2 ? rom : []).slice(0, 10);
+}
+async function sujetsIA(co){
+  const t = String(co?.texte || ""); if (t.length < 200 || !AI) return [];
+  const r = await ai(`Voici un cours (il peut réunir plusieurs sujets, chapitres ou textes différents dans un même document). Liste les SUJETS DISTINCTS qu'il contient, dans l'ordre, avec un titre court (3 à 8 mots) chacun. Ne découpe pas un même sujet en petites notions : un sujet = un chapitre, une leçon ou un texte étudié. S'il n'y a qu'un seul sujet, renvoie une liste d'un seul élément.\n\nCOURS :\n"""${t.slice(0, 60000)}"""\n\nRéponds uniquement en JSON : {"sujets":["…"]}`, {modelTier:"quick"});
+  return (r?.sujets || []).map(x => String(x).trim()).filter(Boolean).slice(0, 10);
+}
+const sujetsOf = (co, list) => (Array.isArray(list) && list.length ? list : co?.sujets || sujetsHeur(co?.texte)).filter(Boolean);
+function sujetsRule(sujets){
+  if (sujets.length >= 2) return `\nLE COURS RÉUNIT PLUSIEURS SUJETS. Le contrôle doit porter sur TOUS ces sujets, répartis équitablement (au moins une question par sujet), et non seulement sur le premier :\n${sujets.map((x, i) => (i + 1) + ". " + x).join("\n")}\nPour chaque question, indique "sujet" (le titre du sujet concerné, tel qu'écrit ci-dessus).\n`;
+  return `\nSi le cours contient plusieurs sujets, chapitres ou textes distincts, répartis les questions sur chacun d'eux : ne te limite pas au premier.\n`;
+}
+/* Champ « Sujets à couvrir » : un par ligne, détection automatique dans le cours */
+function sujetsField(list, k){
+  return `<div class="field"><label for="${k}-sujets">Sujets à couvrir (un par ligne) — le contrôle les répartit tous</label>
+    <textarea id="${k}-sujets" data-sujets="${k}" data-live rows="${Math.min(8, Math.max(2, list.length + 1))}" placeholder="ex.&#10;Chapitre 1 · Les fractions&#10;Chapitre 2 · Les pourcentages&#10;Chapitre 3 · La proportionnalité">${esc(list.join("\n"))}</textarea>
+    <div class="row"><button class="btn sm" data-sujdetect="${k}">↻ Détecter les sujets du cours (IA)</button><span class="small muted">Laisse vide pour un seul sujet.</span><span class="status" id="${k}-suj-st"></span></div></div>`;
+}
 function genPrompt(co, p, n, extra){
   const T = {cours:"questions de cours", application:"exercices d'application", probleme:"problème ou rédaction", texte:"lecture / explication de texte", traduction:"traduction", qcm:"QCM"};
   return `Tu es un professeur expérimenté de ${p.matiere} en France. Prépare ${n === 1 ? "UNE question" : "un contrôle"} pour une classe de ${p.niveau}, à partir du cours ci-dessous.${isPrim(p.niveau) ? "\nÉcole primaire (élèves de 6 à 11 ans) : consignes très courtes et concrètes, une seule tâche par question, vocabulaire simple, réponses de quelques mots ou d'une phrase (2 à 4 lignes de cadre)." : ""}
@@ -2264,6 +2289,7 @@ Durée : ${p.duree} minutes · Difficulté : ${p.difficulte} · Types : ${(p.typ
 ${n > 1 ? `Nombre de questions : ${n}. Total des points : 20 exactement.` : ""}
 ${p.consignes ? "Consignes du professeur : " + p.consignes : ""}
 ${langueRule(p.langue)}
+${sujetsRule(sujetsOf(co, p.sujets))}
 ${questionRule(p)}
 ${(p.comps || []).length ? "Compétences à évaluer en priorité (au moins la moitié des questions) : " + p.comps.map(k => COMPS[k]).join(", ") + "." : ""}
 ${extra || ""}
@@ -2276,11 +2302,11 @@ ${(p.types || []).includes("qcm") && !prefs().q.justif ? `Inclus au moins un QCM
 ${NOSRC}
 
 COURS :
-"""${(co?.texte || "").slice(0, 30000)}"""
+"""${(co?.texte || "").slice(0, 60000)}"""
 
 Réponds uniquement en JSON : {"titre":"…","questions":[{"notion":"…","competences":["…"],"points":4,"lignes":6,"erreurs":["…"],"versions":{"socle":{"enonce":"…","corrige":"…","criteres":"…"},"standard":{…},"approfondi":{…}}}]}` + COMP_RULE;
 }
-const mapQ = x => ({id:"q" + uid(5), ...(x.type === "qcm" ? {type:"qcm"} : {}), notion:String(x.notion || ""), comps:compsOf(x.competences), points:+x.points || 4, lignes:clamp(+x.lignes || 6, 1, 30), erreurs:(x.erreurs || []).map(String).slice(0, 5),
+const mapQ = x => ({id:"q" + uid(5), ...(x.type === "qcm" ? {type:"qcm"} : {}), ...(x.sujet ? {sujet:String(x.sujet).slice(0, 120)} : {}), notion:String(x.notion || ""), comps:compsOf(x.competences), points:+x.points || 4, lignes:clamp(+x.lignes || 6, 1, 30), erreurs:(x.erreurs || []).map(String).slice(0, 5),
   v:Object.fromEntries(LEVELS.map(l => { const y = x.versions?.[l] || {}; const o = {enonce:String(y.enonce || ""), corrige:String(y.corrige || ""), criteres:String(y.criteres || "")};
     if (x.type === "qcm"){ o.choix = (y.choix || []).map(String).slice(0, 6); o.bonnes = (y.bonnes || []).map(Number).filter(n => n >= 0 && n < o.choix.length); o.corrige = "Bonne(s) réponse(s) : " + o.bonnes.map(n => "ABCDEF"[n]).join(", "); o.criteres = "Tout ou rien."; }
     return [l, o]; }))});
@@ -2342,16 +2368,16 @@ async function regenExercices(c, spec){
   const co = store.cours.find(x => x.id === c.coursId);
   if (!co) throw {code:"no_cours"};
   const EXO = c.type === "exercices";
-  const g = c.gen || {}, p = {matiere:c.matiere, niveau:c.niveau, duree:c.duree || 55, difficulte:g.difficulte || "moyen", types:g.types || [], consignes:g.consignes || "", langue:c.langue || ""};
+  const g = c.gen || {}, p = {matiere:c.matiere, niveau:c.niveau, duree:c.duree || 55, difficulte:g.difficulte || "moyen", types:g.types || [], consignes:g.consignes || "", langue:c.langue || "", sujets:g.sujets || []};
   const deja = (c.questions || []).map(q => vOf(q, "standard").enonce).join(" / ").slice(0, 3000);
-  const nq = clamp((c.questions || []).length || 5, 1, 10), extra = EXO ? EXO_TXT + "\nPropose des exercices NOUVEAUX et DIFFÉRENTS de ceux-ci : " + deja : "Propose des questions NOUVELLES et DIFFÉRENTES de celles-ci : " + deja;
+  const nq = clamp(Math.max((c.questions || []).length || 5, sujetsOf(co, p.sujets).length), 1, 10), extra = EXO ? EXO_TXT + "\nPropose des exercices NOUVEAUX et DIFFÉRENTS de ceux-ci : " + deja : "Propose des questions NOUVELLES et DIFFÉRENTES de celles-ci : " + deja;
   if (spec){ const f0 = feuille(c.id), printed0 = f0 && Object.keys(f0.copies || {}).length, prompt = genPrompt(co, p, nq, extra), feature = EXO ? "exercices" : "";
     if (!printed0) return {check:true, prompt, n:nq, path:"controles/" + c.id, mode:"update", titre:{ia:!EXO}, msgOk:EXO ? "Nouveaux exercices prêts" : "Nouveau contrôle généré", feature};
     const n0 = store.controles.filter(x => (x.type || "controle") === (c.type || "controle") && (x.srcId || x.id) === (c.srcId || c.id)).length + 1;
     const doc0 = structuredClone(c); delete doc0.id; delete doc0.owner; delete doc0.questions; Object.assign(doc0, {srcId:c.srcId || c.id, statut:"brouillon", date:""});
     return {check:true, prompt, n:nq, path:"controles/" + uid(12), mode:"create", base:doc0, feature, msgOk:EXO ? "Feuille déjà imprimée : nouvelle feuille d'exercices prête" : "Feuilles déjà imprimées : nouvelle version prête",
       titre:EXO ? {prefixe:"Exercices " + n0 + " · ", defaut:"Exercices " + n0 + " · " + co.titre} : {suffixe:" · version " + n0, defaut:c.titre + " · version " + n0}}; }
-  const r = await genQuestions(co, p, clamp((c.questions || []).length || 5, 1, 10), EXO ? EXO_TXT + "\nPropose des exercices NOUVEAUX et DIFFÉRENTS de ceux-ci : " + deja : "Propose des questions NOUVELLES et DIFFÉRENTES de celles-ci : " + deja, EXO ? {feature:"exercices"} : {}), qs = r.questions;
+  const r = await genQuestions(co, p, nq, EXO ? EXO_TXT + "\nPropose des exercices NOUVEAUX et DIFFÉRENTS de ceux-ci : " + deja : "Propose des questions NOUVELLES et DIFFÉRENTES de celles-ci : " + deja, EXO ? {feature:"exercices"} : {}), qs = r.questions;
   const f = feuille(c.id), printed = f && Object.keys(f.copies || {}).length;
   if (!printed){ const o = structuredClone(ctrl(c.id) || c); o.questions = qs; if (!EXO && r.titre) o.titre = r.titre; await saveCtrl(o); return c.id; }
   /* Feuilles déjà imprimées : on ne touche pas au contrôle d'origine (les copies doivent correspondre), on crée une nouvelle version */
@@ -2450,7 +2476,7 @@ document.addEventListener("click", async ev => {
     if (!confirm("Remplacer le texte extrait du PDF par une lecture IA des pages ? (plus fiable pour l'hébreu, un peu plus coûteux)")) return;
     try { const cvs = [];
       for (const f of files){ const pdf = await pdfjsLib.getDocument({data: await f.arrayBuffer()}).promise;
-        for (let i = 1; i <= Math.min(pdf.numPages, 12); i++){ const pg = await pdf.getPage(i); const vp = pg.getViewport({scale: 2000 / Math.max(pg.view[2], pg.view[3])}); const cv = document.createElement("canvas"); cv.width = vp.width; cv.height = vp.height; await pg.render({canvasContext:cv.getContext("2d"), viewport:vp}).promise; cvs.push(cv); } }
+        for (let i = 1; i <= Math.min(pdf.numPages, 40); i++){ const pg = await pdf.getPage(i); const vp = pg.getViewport({scale: 2000 / Math.max(pg.view[2], pg.view[3])}); const cv = document.createElement("canvas"); cv.width = vp.width; cv.height = vp.height; await pg.render({canvasContext:cv.getContext("2d"), viewport:vp}).promise; cvs.push(cv); } }
       const per = Math.max(1, LIM?.images?.maxCount || 1), out = [];
       for (let i = 0; i < cvs.length; i += per){ st.innerHTML = `<span class="thinking">Lecture IA des pages ${i + 1} à ${Math.min(i + per, cvs.length)} sur ${cvs.length}…</span>`;
         const blobs = await Promise.all(cvs.slice(i, i + per).map(cv => toBlob(scaled(cv, 2000))));
@@ -2483,27 +2509,34 @@ document.addEventListener("click", async ev => {
     const id = uid(10); await write("cours/" + id, {titre, matiere:$("#c-mat").value, niveau:$("#c-niv").value, texte:texte.slice(0, 60000), createdAt:new Date().toISOString()});
     if (S.params.kind === "quiz"){ S.coursDraft = null; S.params.kind = "controle"; S.qn.coursId = id; S.qn.classeId = ""; location.hash = "#/exercices/nouveau"; return; }
     learnMatiere($("#c-mat").value); S.matChg = false;
-    S.coursId = id; S.coursDraft = null; S.params.matiere = $("#c-mat").value; S.params.niveau = $("#c-niv").value; S.params.classeId = ""; S.wizStep = 2; return render(); }
+    S.coursId = id; S.coursDraft = null; S.params.sujets = null; S.params.matiere = $("#c-mat").value; S.params.niveau = $("#c-niv").value; S.params.classeId = ""; S.wizStep = 2; return render(); }
   if (d.usecours && S.params.kind === "quiz"){ S.params.kind = "controle"; S.qn.coursId = d.usecours; S.qn.classeId = ""; location.hash = "#/exercices/nouveau"; return; }
-  if (d.usecours){ const co = store.cours.find(c => c.id === d.usecours); S.coursId = co.id; S.params.matiere = co.matiere; S.params.niveau = co.niveau; S.params.classeId = ""; S.wizStep = 2; return render(); }
+  if (d.usecours){ const co = store.cours.find(c => c.id === d.usecours); S.coursId = co.id; S.params.sujets = null; S.params.matiere = co.matiere; S.params.niveau = co.niveau; S.params.classeId = ""; S.wizStep = 2; return render(); }
   if (d.delcours){ if (!confirm("Supprimer ce cours ? Les contrôles déjà créés à partir de lui restent.")) return; await write("cours/" + d.delcours, null, "delete"); toast("Cours supprimé."); return; }
   if (t.id === "back1"){ S.wizStep = 1; return render(); }
+  if (d.sujdetect){ const k = d.sujdetect, ce = k === "e" ? ctrl(S.editId) : null, co = store.cours.find(x => x.id === (ce ? ce.coursId : S.coursId)), st = $("#" + k + "-suj-st");
+    if (!co) return; t.disabled = true; st.innerHTML = `<span class="thinking">Lecture du cours…</span>`;
+    try { let l = await sujetsIA(co); if (!l.length) l = sujetsHeur(co.texte);
+      await write("cours/" + co.id, {sujets:l}, "update");
+      if (ce){ ce.gen = {...(ce.gen || {}), sujets:l}; await saveCtrl(ce); } else S.params.sujets = l;
+      toast(l.length > 1 ? l.length + " sujets trouvés : le contrôle les couvrira tous." : "Un seul sujet trouvé dans ce cours."); render(); }
+    catch(er){ st.textContent = aiErr(er?.code); t.disabled = false; } return; }
   if (d.fold){ const f = foldGet(); f[d.fold] = !f[d.fold]; try { localStorage.setItem("mastery.fold", JSON.stringify(f)); } catch(e){} return render(); }
   if (t.id === "p-niv-cl"){ S.params.niveau = t.dataset.niv; return render(); }
   if (t.id === "gen" || t.id === "genBlank"){
     if (!S.params.langue) S.params.langue = langueDef(store.cours.find(c => c.id === S.coursId)?.texte);
     const p = S.params, co = store.cours.find(c => c.id === S.coursId), st = $("#gen-st");
     const EXO = p.kind === "exercices" && canEx();
-    const id = uid(12); const base = {type:EXO ? "exercices" : "controle", titre:p.titre || (EXO ? "Exercices · " : "") + (co?.titre || "Contrôle"), gen:{types:p.types, difficulte:p.difficulte, consignes:p.consignes || ""}, matiere:p.matiere, niveau:p.niveau, classeId:p.classeId, coursId:S.coursId, duree:+p.duree || 55,
+    const id = uid(12); const base = {type:EXO ? "exercices" : "controle", titre:p.titre || (EXO ? "Exercices · " : "") + (co?.titre || "Contrôle"), gen:{types:p.types, difficulte:p.difficulte, consignes:p.consignes || "", sujets:sujetsOf(co, p.sujets)}, matiere:p.matiere, niveau:p.niveau, classeId:p.classeId, coursId:S.coursId, duree:+p.duree || 55,
       differencie:!!p.differencie, langue:p.langue || "", statut:"brouillon", date:"", mise:miseDef(p.niveau, EXO ? {consignes:"Feuille d'exercices d'entraînement. Écris uniquement dans les cadres."} : null), questions:[], createdAt:new Date().toISOString()};
     if (t.id === "genBlank"){ base.questions = [mapQ({points:4, lignes:6})]; await write("controles/" + id, base); S.editId = id; S.wizStep = 1; S.step = "preparer"; return go("edit"); }
     const P = structuredClone(p);
-    const nq = clamp(+P.nbq || 5, 1, 10);
+    const nq = clamp(Math.max(+P.nbq || 5, sujetsOf(co, P.sujets).length), 1, 10);   // au moins une question par sujet du cours
     if (await aiTask({key:"gen", label:EXO ? "Nouvelle feuille d'exercices" : "Nouveau contrôle", btn:"#gen",
       spec:() => { S.params.titre = ""; S.params._pref = false; const {questions:_q, ...b0} = base;
         return {check:true, prompt:genPrompt(co, P, nq, EXO ? EXO_TXT : ""), n:nq, path:"controles/" + id, mode:"create", base:b0, titre:{fixe:P.titre || "", prefixe:EXO ? "Exercices · " : "", defaut:base.titre}, msgOk:EXO ? "Exercices prêts" : "Contrôle prêt", feature:EXO ? "exercices" : ""}; },
       run:async () => {
-      const r = await genQuestions(co, P, clamp(+P.nbq || 5, 1, 10), EXO ? EXO_TXT : "", EXO ? {feature:"exercices"} : {}), qs = r.questions;
+      const r = await genQuestions(co, P, nq, EXO ? EXO_TXT : "", EXO ? {feature:"exercices"} : {}), qs = r.questions;
       base.titre = P.titre || (EXO && r.titre ? "Exercices · " + r.titre : r.titre) || base.titre; base.questions = qs;
       await write("controles/" + id, base); S.params.titre = ""; S.params._pref = false; S.wizStep = 1;
       return {open:`#/controle/${id}/preparer`, msg:`${EXO ? "Exercices prêts" : "Contrôle prêt"} : « ${base.titre} ».`}; }}))
@@ -2689,6 +2722,7 @@ document.addEventListener("input", ev => {
   if (el.id === "dc-texte" || el.id === "dc-titre"){ S.dict = {...(S.dict || {}), [el.id === "dc-texte" ? "texte" : "titre"]:el.value}; }
   if (el.id === "c-texte" || el.id === "c-titre"){ S.coursDraft = {...(S.coursDraft || {}), texte:$("#c-texte")?.value, titre:$("#c-titre")?.value}; }
   if (d.p){ S.params[d.p] = el.value; }
+  if (d.sujets === "p") S.params.sujets = el.value.split("\n").map(x => x.trim()).filter(Boolean);
   if (d.live !== undefined && S.view === "edit" && (d.c || d.q !== undefined)){   // texte : enregistré pendant la frappe, sans attendre la sortie du champ
     const c = applyEdit(el); if (!c) return; editPending = c; SAVE.dirty = true; saveState(); clearTimeout(editTimer); editTimer = setTimeout(flushEdit, 700); }
 });
@@ -2731,6 +2765,7 @@ document.addEventListener("change", async ev => {
   if (d.score){ const C = ctrl(S.corrCtrl), q = C.questions.find(x => x.id === d.score); const v = el.value === "" ? null : clamp(half(+el.value), 0, +q.points);
     await write("feuilles/" + C.id, {copies:{[d.eid || S.corrEleve]:{validee:false, answers:{[d.score]:{note:v, valide:false}}}}}, "update"); return; }
   /* editor fields */
+  if (d.sujets === "e"){ const ce = S.view === "edit" ? ctrl(S.editId) : null; if (!ce) return; ce.gen = {...(ce.gen || {}), sujets:el.value.split("\n").map(x => x.trim()).filter(Boolean)}; await saveCtrl(ce); return; }
   if (el.id === "prevEl"){ S.previewEleve = el.value; return drawPreview(); }
   const c = applyEdit(el); if (!c) return;
   editPending = null; clearTimeout(editTimer);
