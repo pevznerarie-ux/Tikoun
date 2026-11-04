@@ -813,6 +813,20 @@ const jobPub = j => ({id:j.id, status:j.status, name:j.name, ctrlId:j.ctrlId, el
 const NO_ANS = /^\s*(je\s*(ne)?\s*sais\s*pas|j'?\s*sais\s*pas|jsp|aucune\s*id[ée]e|pas\s*d'?\s*id[ée]e|je\s*n'?\s*ai\s*pas\s*compris|rien|néant|\?+|-+|\.+|x|i\s*don'?t\s*know|n[ãa]o\s*sei)\s*[.!?]*\s*$/i;
 const isNoAns = t => !String(t || "").replace(/\[illisible\]/g, "").replace(/\$/g, "").trim() || NO_ANS.test(String(t).replace(/\$/g, ""));
 const halfN = x => Math.round(x * 2) / 2, clampN = (v, a, b) => Math.max(a, Math.min(b, v));
+/* Réponse coupée par la limite de longueur : on garde le titre et les questions déjà complètes, la suite est redemandée */
+function salvageQuestions(t){
+  const i = String(t || "").indexOf('"questions"'); if (i < 0) return null; const a = t.indexOf("[", i); if (a < 0) return null;
+  const qs = []; let depth = 0, inStr = false, esc = false, start = -1;
+  for (let k = a + 1; k < t.length; k++){ const ch = t[k];
+    if (inStr){ if (esc) esc = false; else if (ch === "\\") esc = true; else if (ch === '"') inStr = false; continue; }
+    if (ch === '"') inStr = true;
+    else if (ch === "{"){ if (!depth) start = k; depth++; }
+    else if (ch === "}"){ depth--; if (!depth && start >= 0){ try { qs.push(JSON.parse(t.slice(start, k + 1))); } catch(e){} start = -1; } }
+    else if (ch === "]" && !depth) break; }
+  if (!qs.length) return null;
+  let titre = ""; const tm = t.slice(0, i).match(/"titre"\s*:\s*"((?:[^"\\]|\\.)*)"/); try { titre = tm ? JSON.parse('"' + tm[1] + '"') : ""; } catch(e){}
+  return {titre, questions:qs, coupe:true};
+}
 function looseJSON(t){
   try { return JSON.parse(t); } catch(e){}
   const f = t.match(/```(?:json)?\s*([\s\S]*?)```/); if (f){ try { return JSON.parse(f[1]); } catch(e){} }
@@ -911,7 +925,9 @@ async function genAI(u, prompt, tier){
     if (o.status === 200 || (o.status !== 429 && o.status < 500)) break; await new Promise(r => setTimeout(r, 8000 * (k + 1))); }
   if (o.status !== 200) throw new Error(o.json?.error?.message || "IA indisponible (" + o.status + ")");
   const jr = JSON.parse(o.txt || "{}"), txt = (jr.content || []).filter(b => b.type === "text").map(b => b.text).join("");
-  const res = looseJSON(txt); if (!res) throw new Error("Réponse de l'IA illisible"); return res;
+  let res = looseJSON(txt);
+  if (!res && jr.stop_reason === "max_tokens"){ res = salvageQuestions(txt); if (res) console.log(`Génération coupée par la longueur : ${res.questions.length} question(s) gardée(s), la suite est redemandée`); }
+  if (!res) throw new Error(jr.stop_reason === "max_tokens" ? "Réponse de l'IA trop longue : réessaie avec moins de questions" : "Réponse de l'IA illisible"); return res;
 }
 async function dupCheck(u, news, olds){
   if (!news.length || (!olds.length && news.length < 2)) return [];
@@ -936,9 +952,9 @@ async function runGen(j){
   let res = await genAI(u, j.prompt, j.tier); const titreIA = typeof res?.titre === "string" ? res.titre : "", manque = typeof res?.manque === "string" ? res.manque.trim() : "";
   let qs = (Array.isArray(res?.questions) ? res.questions : []).map(genQ);
   /* Réponse coupée (trop longue) : on demande la suite */
-  for (let k = 0; k < 3 && j.n && !manque && qs.length && qs.length < j.n; k++){
+  for (let k = 0; k < 5 && j.n && !manque && qs.length && qs.length < j.n; k++){
     const reste = j.n - qs.length, deja = qs.map(q => stdOf(q).enonce).join(" / ").slice(0, 3000);
-    const r2 = await genAI(u, j.prompt + `\n\nCe contrôle contient déjà ces questions : ${deja}\nRédige UNIQUEMENT les ${reste} question(s) qui manquent, sur d'autres notions, avec le même format JSON.`, j.tier);
+    const r2 = await genAI(u, j.prompt + `\n\nCe contrôle contient déjà ces questions : ${deja}\nRédige UNIQUEMENT les ${reste} question(s) qui manquent, sur d'autres notions, avec le même format JSON. Corrigés et critères concis.`, j.tier);
     const add = (Array.isArray(r2?.questions) ? r2.questions : []).map(genQ); if (!add.length) break; qs = qs.concat(add.slice(0, reste)); }
   if (j.n) qs = qs.slice(0, j.n);
   if (!qs.length) throw new Error("L'IA n'a proposé aucune question : réessaie.");
