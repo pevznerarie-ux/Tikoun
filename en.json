@@ -2143,5 +2143,16 @@
  "élève(s) ont leur nom de famille (en majuscules) rangé à la place du prénom, par exemple": "student(s) have their last name (in capitals) stored as their first name, for example",
  ". Ils ne peuvent pas se connecter à leur espace avec leur nom.": ". They cannot sign in to their space with their last name.",
  "Remettre dans l'ordre": "Fix the order",
- "élève(s) remis dans l'ordre : prénom, puis nom de famille.": "student(s) fixed: first name, then last name."
+ "élève(s) remis dans l'ordre : prénom, puis nom de famille.": "student(s) fixed: first name, then last name.",
+ "Laisse vide pour un seul sujet.": "Leave empty for a single topic.",
+ "Lecture du cours…": "Reading the lesson…",
+ "Sujets couverts par la régénération": "Topics covered when regenerating",
+ "Sujets à couvrir (un par ligne) — le contrôle les répartit tous": "Topics to cover (one per line) — the test spreads questions across all of them",
+ "Un seul sujet trouvé dans ce cours.": "Only one topic found in this lesson.",
+ "sujets trouvés : le contrôle les couvrira tous.": "topics found: the test will cover them all.",
+ "↻ Détecter les sujets du cours (IA)": "↻ Detect the lesson topics (AI)",
+ "\\nLE COURS RÉUNIT PLUSIEURS SUJETS. Le contrôle doit porter sur TOUS ces sujets, répartis équitablement (au moins une question par sujet), et non seulement sur le premier :\\n": "\\nTHE LESSON COVERS SEVERAL TOPICS. The test must cover ALL of them, evenly (at least one question per topic), not only the first one:\\n",
+ "\\nPour chaque question, indique \"sujet\" (le titre du sujet concerné, tel qu'écrit ci-dessus).\\n": "\\nFor each question, give \"sujet\" (the title of the topic concerned, exactly as written above).\\n",
+ "\\nSi le cours contient plusieurs sujets, chapitres ou textes distincts, répartis les questions sur chacun d'eux : ne te limite pas au premier.\\n": "\\nIf the lesson contains several distinct topics, chapters or texts, spread the questions across all of them: don't stop at the first one.\\n",
+ "sujet(s)": "topic(s)"
 }

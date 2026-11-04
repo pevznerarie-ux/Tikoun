@@ -898,7 +898,7 @@ function genQ(x){
       o.corrige = "Bonne(s) réponse(s) : " + o.bonnes.map(n => "ABCDEF"[n]).join(", "); o.criteres = "Tout ou rien."; } return o; };
   const v = isObj(x?.versions) ? Object.fromEntries(LVLS.filter(l => isObj(x.versions[l])).map(l => [l, one(x.versions[l])])) : {standard:one(x)};
   if (!v.standard) v.standard = Object.values(v)[0] || one({});
-  return {id, ...(qcm ? {type:"qcm"} : {}), notion:String(x?.notion || "").slice(0, 120), comps:COMPK.filter(k => (Array.isArray(x?.competences) ? x.competences : []).map(c => String(c).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")).includes(k)).slice(0, 2), points:+x?.points || 4, lignes:clampN(+x?.lignes || 6, 1, 30), erreurs:(Array.isArray(x?.erreurs) ? x.erreurs : []).map(String).slice(0, 5), v};
+  return {id, ...(qcm ? {type:"qcm"} : {}), ...(x?.sujet ? {sujet:String(x.sujet).slice(0, 120)} : {}), notion:String(x?.notion || "").slice(0, 120), comps:COMPK.filter(k => (Array.isArray(x?.competences) ? x.competences : []).map(c => String(c).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")).includes(k)).slice(0, 2), points:+x?.points || 4, lignes:clampN(+x?.lignes || 6, 1, 30), erreurs:(Array.isArray(x?.erreurs) ? x.erreurs : []).map(String).slice(0, 5), v};
 }
 const COMPK = ["connaitre", "comprendre", "raisonner", "lire", "ecrire"];
 const stdOf = q => q.v.standard?.enonce ? q.v.standard : Object.values(q.v).find(y => y?.enonce) || {enonce:"", corrige:""};

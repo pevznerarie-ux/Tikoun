@@ -2145,5 +2145,16 @@
  "élève(s) ont leur nom de famille (en majuscules) rangé à la place du prénom, par exemple": "aluno(s) estão com o sobrenome (em maiúsculas) no lugar do nome, por exemplo",
  ". Ils ne peuvent pas se connecter à leur espace avec leur nom.": ". Eles não conseguem entrar no espaço com o sobrenome.",
  "Remettre dans l'ordre": "Corrigir a ordem",
- "élève(s) remis dans l'ordre : prénom, puis nom de famille.": "aluno(s) corrigidos: nome, depois sobrenome."
+ "élève(s) remis dans l'ordre : prénom, puis nom de famille.": "aluno(s) corrigidos: nome, depois sobrenome.",
+ "Laisse vide pour un seul sujet.": "Deixe vazio para um só tema.",
+ "Lecture du cours…": "Lendo a aula…",
+ "Sujets couverts par la régénération": "Temas cobertos na regeneração",
+ "Sujets à couvrir (un par ligne) — le contrôle les répartit tous": "Temas a cobrir (um por linha) — a avaliação distribui as questões entre todos",
+ "Un seul sujet trouvé dans ce cours.": "Só um tema encontrado nesta aula.",
+ "sujets trouvés : le contrôle les couvrira tous.": "temas encontrados: a avaliação cobrirá todos.",
+ "↻ Détecter les sujets du cours (IA)": "↻ Detectar os temas da aula (IA)",
+ "\\nLE COURS RÉUNIT PLUSIEURS SUJETS. Le contrôle doit porter sur TOUS ces sujets, répartis équitablement (au moins une question par sujet), et non seulement sur le premier :\\n": "\\nA AULA REÚNE VÁRIOS TEMAS. A avaliação deve cobrir TODOS, de forma equilibrada (pelo menos uma questão por tema), e não só o primeiro:\\n",
+ "\\nPour chaque question, indique \"sujet\" (le titre du sujet concerné, tel qu'écrit ci-dessus).\\n": "\\nPara cada questão, indique \"sujet\" (o título do tema, exatamente como escrito acima).\\n",
+ "\\nSi le cours contient plusieurs sujets, chapitres ou textes distincts, répartis les questions sur chacun d'eux : ne te limite pas au premier.\\n": "\\nSe a aula contém vários temas, capítulos ou textos distintos, distribua as questões entre todos: não se limite ao primeiro.\\n",
+ "sujet(s)": "tema(s)"
 }
