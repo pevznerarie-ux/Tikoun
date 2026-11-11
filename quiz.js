@@ -61,7 +61,7 @@ function quizClasses(){ const ids = new Set(myQuizzes().map(q => q.classeId)); r
 function vExercices(){
   const head = `<div class="head"><div><h2>Exercices en ligne</h2><p>Des quiz tirés de tes cours. Chaque élève s'entraîne avec son code personnel, autant qu'il veut : les questions changent à chaque tentative et la correction est immédiate.</p></div>
     ${canEx() ? `<div class="row"><a class="btn primary" href="#/exercices/nouveau">+ Nouveau quiz</a></div>` : ""}</div>`;
-  if (!canEx()) return head + `<section class="panel grid" style="max-width:720px"><div class="row" style="gap:10px">${lockChip()}<b>Réservé au forfait Pro</b></div>
+  if (!canEx()) return head + `<section class="panel grid" style="max-width:720px"><div class="row" style="gap:10px">${lockChip()}<b>À partir du forfait Essentiel</b></div>
     <ul class="muted" style="margin:0;padding-left:20px;display:grid;gap:6px"><li>Une banque de 20 à 50 questions générée à partir de ton cours</li><li>Chaque élève refait le quiz autant qu'il veut, avec des questions différentes</li><li>Correction instantanée, explication après chaque réponse</li><li>Suivi par élève : tentatives, réussite, notions acquises</li></ul>
     <p class="small muted">Demande l'activation à l'équipe Mastery.</p></section>`;
   const list = [...myQuizzes()].sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
@@ -69,7 +69,7 @@ function vExercices(){
     const acq = reps.length && nn ? reps.reduce((s, r) => s + Object.values(r.notions || {}).filter(x => x.acquis).length, 0) / (n * nn || 1) : 0;
     return `<a class="item link" href="#/exercices/${q.id}/${q.statut === "brouillon" ? "questions" : "resultats"}"><div><div class="t">${esc(q.titre)}</div>
       <div class="s">${esc(q.matiere)} · ${esc(cl?.nom || "?")} · ${(q.questions || []).length} questions${q.fermeture ? " · jusqu'au " + esc(frDate(q.fermeture)) : ""}</div></div>
-      <div class="row"><span class="chip ${QSTAT[q.statut]?.[1] || ""}">${QSTAT[q.statut]?.[0] || q.statut}</span>${q.statut !== "brouillon" ? `<span class="chip">${act}/${n} élèves</span><span class="chip">${Math.round(acq * 100)} % des notions acquises</span>` : ""}</div></a>`; };
+      <div class="row"><span class="chip ${QSTAT[q.statut]?.[1] || ""}">${esc(QSTAT[q.statut]?.[0] || q.statut)}</span>${q.statut !== "brouillon" ? `<span class="chip">${act}/${n} élèves</span><span class="chip">${Math.round(acq * 100)} % des notions acquises</span>` : ""}</div></a>`; };
   const sum = cl => { const qs = list.filter(q => q.classeId === cl.id), op = qs.filter(q => q.statut === "ouvert").length; return `${qs.length} quiz${op ? ` · <b style="color:var(--ok)">${op} ouvert(s)</b>` : ""} · ${(cl.eleves || []).length} élèves`; };
   return head + (list.length ? classAcc("quiz", quizClasses(), sum, cl => `<div>${list.filter(q => q.classeId === cl.id).map(row).join("")}</div>`) : `<section class="panel"><div class="empty">Aucun quiz pour l'instant. <a class="btn sm primary" href="#/exercices/nouveau">Créer mon premier quiz</a></div></section>`) + `
   <section class="panel grid" style="gap:6px"><div class="label">Accès des élèves</div><p>Chaque élève se connecte sur <b>${esc(location.origin)}/eleve</b> avec son code personnel et son nom de famille. Génère et imprime les cartes dans <a href="#/classes">Classes → Codes élèves</a>.</p></section>`;
@@ -124,11 +124,11 @@ function vQuiz(){
     inner = `<section class="panel grid" style="gap:10px"><div class="row between"><div class="row">${byT.map(([t, n]) => `<span class="chip">${QTYPES[t].replace(" (sur ordinateur)", "")} × ${n}</span>`).join("")}<span class="chip">${notions.length} notions</span></div>
       <div class="row"><button class="btn sm" id="qz-more">+ 10 questions (IA)</button><button class="btn sm ghost" id="qz-regen">↻ Régénérer toute la banque</button></div></div><div class="status" id="qz-st"></div></section>
     ${(q.questions || []).map((x, i) => `<section class="panel grid" style="gap:10px">
-      <div class="row between"><div class="row"><b>Q${i + 1}</b><span class="chip">${QTYPES[x.type].replace(" (sur ordinateur)", "")}</span><span class="chip" title="Niveau">${stars(x.niveau)}</span>${x.notion ? `<span class="chip blue">${esc(x.notion)}</span>` : ""}</div><button class="btn sm ghost danger" data-qqdel="${x.id}">Supprimer</button></div>
-      <div class="field"><label>Énoncé</label><textarea data-qqf="${x.id}" data-k="enonce">${esc(x.enonce)}</textarea></div>
+      <div class="row between"><div class="row"><b>Q${i + 1}</b><span class="chip">${QTYPES[x.type].replace(" (sur ordinateur)", "")}</span><span class="chip" title="Niveau">${stars(x.niveau)}</span>${x.notion ? `<span class="chip blue">${esc(x.notion)}</span>` : ""}</div><button class="btn sm ghost danger" data-qqdel="${esc(x.id)}">Supprimer</button></div>
+      <div class="field"><label>Énoncé</label><textarea data-qqf="${esc(x.id)}" data-k="enonce">${esc(x.enonce)}</textarea></div>
       ${qAnswerEditor(x)}
-      <div class="form-row"><div class="field"><label>Notion</label><input data-qqf="${x.id}" data-k="notion" value="${esc(x.notion || "")}"></div><div class="field"><label>Niveau</label><select data-qqf="${x.id}" data-k="niveau">${selOpts(["1","2","3"], String(x.niveau || 1), n => stars(n))}</select></div></div>
-      <div class="field"><label>Explication montrée à l'élève</label><textarea data-qqf="${x.id}" data-k="explication" style="min-height:54px">${esc(x.explication || "")}</textarea></div></section>`).join("")}`;
+      <div class="form-row"><div class="field"><label>Notion</label><input data-qqf="${esc(x.id)}" data-k="notion" value="${esc(x.notion || "")}"></div><div class="field"><label>Niveau</label><select data-qqf="${esc(x.id)}" data-k="niveau">${selOpts(["1","2","3"], String(x.niveau || 1), n => stars(n))}</select></div></div>
+      <div class="field"><label>Explication montrée à l'élève</label><textarea data-qqf="${esc(x.id)}" data-k="explication" style="min-height:54px">${esc(x.explication || "")}</textarea></div></section>`).join("")}`;
   }
   if (tab === "reglages"){
     inner = `<section class="panel grid">
@@ -158,7 +158,7 @@ function quizResults(q, cl, notions){
   const red = []; Object.values(R).forEach(r => (r.redigees || []).forEach((a, i) => { if (a.note == null){ const x = (q.questions || []).find(y => y.id === a.qid); if (x) red.push({r, a, i, x, e:studs.find(s => s.id === r.eleveId)}); } }));
   const tone = v => v == null ? "none" : v >= .7 ? "ok" : v >= .5 ? "warn" : "bad";
   return `<section class="panel"><div class="tbl-wrap"><table><thead><tr><th>Élève</th><th class="c">Tentatives</th><th class="c">Questions vues</th><th class="c">Réussite</th><th class="c">Notions acquises</th><th class="c">Temps</th><th>Dernière activité</th></tr></thead><tbody>
-    ${rows.map(x => `<tr class="clickable" data-qzel="${x.e.id}"${S.qz.el === x.e.id ? ' style="background:var(--surface-2)"' : ""}><td><b>${esc(x.e.prenom)} ${esc(x.e.nom)}</b></td><td class="c num">${x.t}</td><td class="c num">${x.vues}</td>
+    ${rows.map(x => `<tr class="clickable" data-qzel="${esc(x.e.id)}"${S.qz.el === x.e.id ? ' style="background:var(--surface-2)"' : ""}><td><b>${esc(x.e.prenom)} ${esc(x.e.nom)}</b></td><td class="c num">${x.t}</td><td class="c num">${x.vues}</td>
       <td class="c"><span class="cell ${tone(x.taux)}">${x.taux == null ? "—" : Math.round(x.taux * 100) + " %"}</span></td><td class="c num">${x.acq}/${notions.length}</td><td class="c num">${x.t ? dur(x.temps) : "—"}</td><td class="small muted">${x.der ? esc(new Date(x.der).toLocaleString("fr-FR", {day:"numeric", month:"short", hour:"2-digit", minute:"2-digit"})) : "pas encore commencé"}</td></tr>`).join("")}
     </tbody></table></div></section>
   ${sel ? `<section class="panel grid"><div class="row between"><h3>${esc(sel.e.prenom)} ${esc(sel.e.nom)}</h3><span class="small muted">${sel.t} tentative(s) · ${sel.vues} question(s) · ${sel.t ? dur(sel.temps) : ""}</span></div>
@@ -195,7 +195,7 @@ function codesPanel(cl){
   const n = (cl.eleves || []).filter(e => e.code).length, tot = (cl.eleves || []).length;
   return `<section class="panel grid" style="gap:10px"><div class="row between"><div><h3>Codes élèves</h3><p class="small muted">Espace élève (résultats publiés, rattrapages, exercices en ligne) : chaque élève se connecte sur <b>${esc(location.origin)}/eleve</b> avec son code personnel et son nom de famille (sans e-mail).</p></div>
     <div class="row"><button class="btn sm" id="codes-gen"${n < tot ? "" : " disabled"}>${n < tot ? "Générer les codes manquants" : "Codes à jour"}</button>${n ? `<button class="btn sm primary" id="codes-print">Imprimer les cartes</button>` : ""}</div></div>
-    ${n ? `<div class="row">${(cl.eleves || []).map(e => `<span class="chip">${esc(e.prenom)} ${esc((e.nom || "").slice(0, 1))}. · <b class="num">${esc(e.code || "—")}</b>${e.code ? ` <button class="btn sm ghost" style="padding:0 4px" data-recode="${e.id}" title="Nouveau code">↻</button>` : ""}</span>`).join("")}</div>` : ""}</section>`;
+    ${n ? `<div class="row">${(cl.eleves || []).map(e => `<span class="chip">${esc(e.prenom)} ${esc((e.nom || "").slice(0, 1))}. · <b class="num">${esc(e.code || "—")}</b>${e.code ? ` <button class="btn sm ghost" style="padding:0 4px" data-recode="${esc(e.id)}" title="Nouveau code">↻</button>` : ""}</span>`).join("")}</div>` : ""}</section>`;
 }
 function printCards(cl){
   const url = location.origin + "/eleve?c=";

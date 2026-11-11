@@ -106,7 +106,7 @@ function vLogin(prefill, err){
 async function home(){
   try { ME = await api("/api/eleve/me"); } catch(e){ return vLogin("", e.status === 401 ? "" : e.message); }
   $("#who").innerHTML = `${esc(ME.eleve.prenom)} · ${esc(ME.eleve.classe)} · <button class="btn ghost small" id="out">Exit</button>`;
-  $("#out").onclick = async () => { await api("/api/eleve/logout", {}); vLogin(); };
+  $("#out").onclick = async () => { try { await api("/api/eleve/logout", {}); } catch(e){} vLogin(); };
   const q = ME.quizzes;
   const C = ME.controles || [], Rt = ME.rattrapages || [];
   app.innerHTML = `<div class="hello"><div class="label">${esc(new Date().toLocaleDateString("en-US", {weekday:"long", day:"numeric", month:"long"}))}</div><h1 style="font-size:32px">Good morning ${esc(ME.eleve.prenom)}</h1><p class="muted">Your graded tests, your retakes and your practice.</p></div>
@@ -150,7 +150,7 @@ function show(){
   let input = "";
   if (q.type === "qcm") input = `<div class="opts">${q.choix.map((c, k) => `<button class="btn opt" dir="auto" data-k="${k}">${esc(c)}</button>`).join("")}</div>${q.multi ? `<p class="small muted">Several correct answers are possible.</p><button class="btn primary" id="val">Submit</button>` : ""}`;
   if (q.type === "vf") input = `<div class="opts" style="grid-template-columns:1fr 1fr"><button class="btn opt" data-vf="true">True</button><button class="btn opt" data-vf="false">False</button></div>`;
-  if (q.type === "num") input = `<div class="row" style="flex-wrap:nowrap"><input id="rep" inputmode="decimal" autocomplete="off" placeholder="Your answer">${q.unite ? `<span class="muted">${esc(q.unite)}</span>` : ""}</div><button class="btn primary" id="val">Submit</button>`;
+  if (q.type === "num") input = `<div class="row" style="flex-wrap:nowrap"><input id="rep" inputmode="text" autocomplete="off" autocapitalize="off" autocorrect="off" placeholder="Your answer">${q.unite ? `<span class="muted">${esc(q.unite)}</span>` : ""}</div><button class="btn primary" id="val">Submit</button>`;
   if (q.type === "trou") input = `<input id="rep" dir="auto" autocomplete="off" autocapitalize="off" placeholder="The missing word"><button class="btn primary" id="val">Submit</button>`;
   if (q.type === "redige") input = `<textarea id="rep" dir="auto" placeholder="Write your answer"></textarea><button class="btn primary" id="val">Send</button>`;
   app.innerHTML = `<section class="card q"><div class="qhead"><span>Question ${R.i + 1} / ${R.qs.length}</span><span>${esc(q.notion || "")} · ${"★".repeat(q.niveau || 1)}</span></div><div class="bar"><i style="width:${pct}%"></i></div>
@@ -165,7 +165,12 @@ function show(){
 }
 async function answer(q, rep){
   const R = RUN; R.answered = true; app.querySelectorAll(".opt,#val,#rep").forEach(x => x.disabled = true);
-  let r; try { r = await api(`/api/eleve/quiz/${R.id}/reponse`, {tirage:R.tirage, qid:q.id, rep, ms:Date.now() - R.t0}); } catch(e){ $("#fb").innerHTML = `<p class="err">${esc(e.message)}</p>`; return; }
+  let r; try { r = await api(`/api/eleve/quiz/${R.id}/reponse`, {tirage:R.tirage, qid:q.id, rep, ms:Date.now() - R.t0}); } catch(e){
+    if (e.status === 401) return vLogin("", "Sign in again with your code.");
+    if (e.status === 410) return play(R.id);
+    R.answered = false; app.querySelectorAll(".opt,#val,#rep").forEach(x => x.disabled = false); app.querySelectorAll(".opt.sel").forEach(x => x.classList.remove("sel")); R.sel?.clear?.();
+    $("#fb").innerHTML = `<p class="err">${esc(e.status ? e.message : "No connection: check your network.")} <button class="btn" id="retry">Try again</button></p>`;
+    $("#retry").onclick = () => { $("#fb").innerHTML = ""; answer(q, rep); }; return; }
   if (r.ok !== null){ R.auto++; if (r.ok) R.ok++; }
   if (q.type === "qcm") app.querySelectorAll("[data-k]").forEach(b => { const k = +b.dataset.k; if ((r.bonne || []).includes(k)) b.classList.add("good"); else if (b.classList.contains("sel")) b.classList.add("badc"); });
   if (q.type === "vf") app.querySelectorAll("[data-vf]").forEach(b => { if (String(r.bonne) === b.dataset.vf) b.classList.add("good"); else if (b.classList.contains("sel")) b.classList.add("badc"); });
@@ -187,7 +192,8 @@ async function finish(){
   $("#again").onclick = () => play(R.id); $("#home").onclick = home;
 }
 const pre = new URLSearchParams(location.search).get("c");
-if (pre){ history.replaceState(null, "", "/eleve"); (async () => { try { ME = await api("/api/eleve/me"); home(); } catch(e){ vLogin(pre); } })(); }
+/* Carte scannée : on repart toujours de la connexion, même si un autre élève était resté connecté sur cet appareil */
+if (pre){ history.replaceState(null, "", "/eleve"); (async () => { try { await api("/api/eleve/logout", {}); } catch(e){} vLogin(pre); })(); }
 else home();
 </script>
 <p style="text-align:center;font-size:12px;opacity:.6;margin:28px 0 20px"><a href="/confidentialite" style="color:inherit">Privacy</a></p>

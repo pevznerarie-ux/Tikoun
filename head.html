@@ -19,7 +19,7 @@ window.themePref = () => { try { return localStorage.getItem("mastery.theme") ||
 window.applyTheme = () => { const p = themePref(), h = new Date().getHours(), dark = p === "sombre" || (p === "auto" && (h >= 20 || h < 7));
   document.documentElement.dataset.theme = dark ? "dark" : "light"; const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = dark ? "#14110F" : "#FFFFFF"; };
 applyTheme(); setInterval(applyTheme, 60000);</script>
-<script>window.MathJax = {tex:{inlineMath:[["$","$"]]}, svg:{fontCache:"global"}, startup:{typeset:false}, options:{enableMenu:false}};</script>
+<script>window.MathJax = {loader:{load:["ui/safe"]}, tex:{inlineMath:[["$","$"]]}, svg:{fontCache:"global"}, startup:{typeset:false}, options:{enableMenu:false}};</script>
 <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js"></script>
 <style>
 :root{

@@ -44,11 +44,23 @@ Suivre **SUPABASE.md**, puis remplir `config.js`. Le site affiche alors un écra
 
 ## Développement
 
-- `index.html` : l'application complète (un seul fichier, aucune installation).
-- `server.js`, `package.json`, `railway.json` : serveur pour Railway (variables SUPABASE_URL, SUPABASE_ANON_KEY, ANTHROPIC_API_KEY).
-- `config.js` : branchement du stockage en ligne si le site est servi sans serveur (GitHub Pages).
-- `supabase/` : schéma SQL et fonction serveur « ai ».
-- `src/` : sources (`head.html`, `app.js`, `standalone.js`, `cloud.js`, `more.js`) ; `python3 build.py` régénère `index.html`.
-- La même application fonctionne aussi comme artifact dans claude.ai (base de données, IA et stockage fournis par Claude).
+Les sources sont à la racine du dépôt ; les pages publiées (`index*.html`, `eleve.en/pt.html`, `landing.en/pt.html`, `scan-engine.js`) sont **générées** : ne les modifie pas à la main.
 
-Modèles IA par défaut (modifiables dans Réglages) : `claude-haiku-4-5-20251001` (rapide), `claude-sonnet-5` (standard), `claude-opus-5-5` (précis).
+- Application : `head.html` (styles, balisage), `app.js`, `standalone.js`, `cloud.js`, `nav.js`, `accounts.js`, `more.js`, `quiz.js`, `training.js`, `devices.js`.
+- Espace élève : `eleve.html` · page d'accueil : `landing.html` · pages légales : `cgu*.html`, `confidentialite*.html`, `mentions-legales*.html`.
+- Traductions : `en.json`, `pt.json` (clé = texte français exact), appliquées par `i18n.js`.
+- Serveur : `server.js` (comptes, données, IA, paiement), `engine_head.js` + `engine_main.js` (analyse des dépôts sur le serveur).
+
+Reconstruire après une modification :
+
+```
+npm ci                 # dépendances du serveur (PDF.js, canvas, jsQR)
+npm install --no-save acorn
+python3 build.py       # régénère index.html, les versions EN / PT et scan-engine.js
+```
+
+`missing.json` et `missing_pt.json` listent les textes français sans traduction.
+
+Lancer en local : `DATA_DIR=./data MASTERY_CODE=test node server.js`, puis ouvrir http://localhost:3000/app.
+
+Modèles IA par défaut (variables `MODEL_QUICK`, `MODEL_DEFAULT`, `MODEL_COMPLEX`) : `claude-haiku-4-5-20251001` pour les tâches rapides, `claude-sonnet-5` pour la rédaction des contrôles et la lecture des copies (`GEN_TIER`, `GRADE_TIER`).

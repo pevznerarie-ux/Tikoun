@@ -26,7 +26,7 @@ window.themePref = () => { try { return localStorage.getItem("mastery.theme") ||
 window.applyTheme = () => { const p = themePref(), h = new Date().getHours(), dark = p === "sombre" || (p === "auto" && (h >= 20 || h < 7));
   document.documentElement.dataset.theme = dark ? "dark" : "light"; const m = document.querySelector('meta[name="theme-color"]'); if (m) m.content = dark ? "#14110F" : "#FFFFFF"; };
 applyTheme(); setInterval(applyTheme, 60000);</script>
-<script>window.MathJax = {tex:{inlineMath:[["$","$"]]}, svg:{fontCache:"global"}, startup:{typeset:false}, options:{enableMenu:false}};</script>
+<script>window.MathJax = {loader:{load:["ui/safe"]}, tex:{inlineMath:[["$","$"]]}, svg:{fontCache:"global"}, startup:{typeset:false}, options:{enableMenu:false}};</script>
 <script defer src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js"></script>
 <style>
 html,body{margin:0}[hidden]{display:none!important}img{max-width:100%}
@@ -599,7 +599,7 @@ const half = v => Math.round(v * 2) / 2;
 document.addEventListener("DOMContentLoaded", () => { try { if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js"; } catch(e){} });
 /* Filet de sécurité : une erreur imprévue ne laisse pas l'écran figé sans explication */
 window.addEventListener("error", ev => { if (!ev.error || /ResizeObserver|Script error/i.test(ev.message || "")) return; console.error(ev.error); try { toast("Something went wrong. If a button stops responding, reload the page.", 6000); } catch(e){} });
-window.addEventListener("unhandledrejection", ev => { console.error(ev.reason); try { const c = ev.reason?.code; toast(c ? aiErr(c) : "Something went wrong. Try again, or reload the page.", 6000); } catch(e){} });
+window.addEventListener("unhandledrejection", ev => { if (ev.reason?.shown) return; console.error(ev.reason); try { const c = ev.reason?.code; toast(c ? aiErr(c) : "Something went wrong. Try again, or reload the page.", 6000); } catch(e){} });
 function toast(msg, ms = 3500){ const t = document.createElement("div"); t.className = "toast"; t.textContent = msg; document.body.append(t); setTimeout(() => t.remove(), ms); }
 
 const MATIERES = ["Math","English Language Arts","Science","Biology","Chemistry","Physics","History","Social Studies","Spanish","French","Hebrew","Computer Science","Economics","Art","Music"];
@@ -761,7 +761,7 @@ const NOTATION_DEF = () => { const b = BAREMES.includes(S.me?.bareme) ? S.me.bar
 const notation = () => { const n = prefs().notation; return n?.type ? {...NOTATION_DEF(), ...n} : NOTATION_DEF(); };
 const bareme = () => { const n = notation(); return n.type === "lettres" ? "AF" : n.type === "pct" ? "100" : String(n.sur); };
 const PCT = () => document.documentElement.lang === "en" ? "%" : " %";
-const fmtPas = (x, pas) => { const r = Math.round(x / pas) * pas, d = pas >= 1 ? 0 : pas >= 0.1 ? 1 : 2; return String(+r.toFixed(d)).replace(".", document.documentElement.lang === "en" ? "." : ","); };
+const fmtPas = (x, pas) => { const r = Math.round(x / pas + 1e-9) * pas, d = pas >= 1 ? 0 : (pas === 0.5 || pas === 0.1) ? 1 : 2; return String(+r.toFixed(d)).replace(".", document.documentElement.lang === "en" ? "." : ","); };
 const letterOf = (p, N = notation()) => { const L = [...(N.lettres?.length ? N.lettres : lettresOf("us"))].sort((a, b) => b.min - a.min); return (L.find(x => p >= x.min) || L[L.length - 1]).l; };
 const nvN = (n, N) => n == null || isNaN(n) ? "—" : N.type === "lettres" ? letterOf(n * 5, N) : N.type === "pct" ? fmtPas(n * 5, N.pas || 1) : fmtPas(n / 20 * (N.sur || 20), N.pas || 0.1);
 const sfxOf = N => N.type === "lettres" ? "" : N.type === "pct" ? PCT() : "/" + (N.sur || 20);
@@ -779,10 +779,13 @@ function write(path, data, mode = "set"){
   const run = () => mode === "update" ? DB.doc(path).update(data) : mode === "delete" ? DB.doc(path).delete() : DB.doc(path).set(data);
   const retry = (n) => run().catch(e => { if (n > 0 && e?.code !== "no_access" && e?.code !== "quota_exceeded" && !/403/.test(e?.message || "")) return new Promise(r => setTimeout(r, n === 2 ? 1500 : 4000)).then(() => retry(n - 1)); throw e; });
   SAVE.n++; saveState();
-  wq = wq.then(() => retry(2)).then(() => { SAVE.err = false; SAVE.at = Date.now(); })
-    .catch(e => { SAVE.err = true; console.error(e); toast(e?.code === "no_access" ? aiErr("no_access") : e?.code === "quota_exceeded" ? "Database full: delete some old tests." : "⚠ Not saved: the connection to the server failed. Check the network, then redo your last change.", 9000); })
+  const p = wq.then(() => retry(2)).then(() => { SAVE.err = false; SAVE.at = Date.now(); })
+    .catch(e => { SAVE.err = true; console.error(e); toast(e?.code === "no_access" ? aiErr("no_access") : e?.code === "quota_exceeded" ? "Database full: delete some old tests." : "⚠ Not saved: the connection to the server failed. Check the network, then redo your last change.", 9000);
+      /* L'échec remonte à l'appelant : la suite (« Corrigée », « Validée »…) ne s'affiche pas alors que rien n'est enregistré */
+      throw Object.assign(new Error("write_failed"), {shown:true, code:e?.code}); })
     .finally(() => { SAVE.n--; saveState(); });
-  return wq;
+  wq = p.catch(() => {});
+  return p;
 }
 /* État de l'enregistrement, affiché dans l'éditeur : Enregistrement… / Enregistré / Échec */
 const SAVE = {n:0, err:false, at:0, dirty:false};
@@ -1396,7 +1399,7 @@ async function printSheets(c, list){
         pdf.addImage(cv.toDataURL("image/jpeg", 0.9), "JPEG", 0, 0, 595.28, 841.89);
       }
       const old = f.copies?.[e.id] || {};
-      copies[e.id] = {version, pages:layout, scans:old.scans || {}, answers:old.answers || {}, validee:!!old.validee};
+      copies[e.id] = {...old, version:Object.keys(old.answers || {}).length && old.version ? old.version : version, pages:layout, scans:old.scans || {}, answers:old.answers || {}, validee:!!old.validee};
     }
     stage.innerHTML = "";
     const blob = pdf.output("blob");
@@ -1572,7 +1575,7 @@ function markersOk(found){
 }
 const levD = (a, b) => { const d = Array.from({length:a.length + 1}, (_, i) => [i]); for (let j = 1; j <= b.length; j++) d[0][j] = j;
   for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); return d[a.length][b.length]; };
-function closest(id, list){ let best = null, bd = 99; for (const x of list){ const v = levD(id, x); if (v < bd){ bd = v; best = x; } } return bd <= 2 ? best : null; }
+function closest(id, list){ let best = null, bd = 99, tie = false; for (const x of list){ const v = levD(id, x); if (v < bd){ bd = v; best = x; tie = false; } else if (v === bd && x !== best) tie = true; } return bd <= 2 && !tie ? best : null; }
 const FOOTER_PROMPT = `Image: bottom of a printed sheet. Copy exactly the line that starts with “Mastery” (two codes of lowercase letters and digits separated by a dot) and the page number “page X / Y”. Beware of l/1, o/0, q/g confusions. In "page", put only the number X (an integer). Reply only in JSON: {"ligne":"…","page":1}`;
 async function footerId(cv){
   if (!AI) return null;
@@ -1657,7 +1660,7 @@ function inkRatio(cv, H, b){ /* part de pixels foncés dans le cadre (lignes gri
   return n ? dark / n : 1;
 }
 /* Garde-fou : une réponse sans contenu vaut 0, quoi qu'en dise l'IA */
-const NO_ANSWER = /^\s*(je\s*(ne)?\s*sais\s*pas|j'?\s*sais\s*pas|jsp|aucune\s*id[ée]e|pas\s*d'?\s*id[ée]e|je\s*n'?\s*ai\s*pas\s*compris|rien|néant|\?+|-+|\.+|x)\s*[.!?]*\s*$/i;
+const NO_ANSWER = /^\s*(je\s*(ne)?\s*sais\s*pas|j'?\s*sais\s*pas|jsp|aucune\s*id[ée]e|pas\s*d'?\s*id[ée]e|je\s*n'?\s*ai\s*pas\s*compris|néant|\?+|-+|\.+)\s*[.!?]*\s*$/i;
 const isNoAnswer = t => !String(t || "").replace(/\[illisible\]/g, "").replace(/\$/g, "").trim() || NO_ANSWER.test(String(t).replace(/\$/g, ""));
 function markFautes(t, fautes){ let out = t; for (const f of (Array.isArray(fautes) ? fautes : []).map(String).filter(x => x.trim()).slice(0, 8)){ const i = out.indexOf(f); if (i >= 0 && !out.slice(0, i).endsWith("⟦")) out = out.slice(0, i) + "⟦" + f + "⟧" + out.slice(i + f.length); } return out; }
 function pix(cv){ if (!cv._d) cv._d = cv.getContext("2d").getImageData(0, 0, cv.width, cv.height).data; return cv._d; }
@@ -1874,7 +1877,7 @@ function vCorrect(){
   const f = feuille(c.id) || {copies:{}}, studs = studentsOf(c), max = maxOf(c);
   if (!S.corrEleve || !studs.find(e => e.id === S.corrEleve)) S.corrEleve = (studs.find(e => { const cp = f.copies[e.id]; return cp && !cp.validee && Object.keys(cp.answers || {}).length; }) || studs[0])?.id;
   const e = studs.find(x => x.id === S.corrEleve), cp = f.copies?.[S.corrEleve];
-  const nAlert = studs.filter(x => { const k = f.copies[x.id]; return k && !k.validee && copyDone(c, k) && !Object.values(k.answers || {}).some(a => !a.lisible); }).length;
+  const nAlert = studs.filter(x => { const k = f.copies[x.id]; return k && !k.validee && copyDone(c, k) && !Object.values(k.answers || {}).some(a => a.lisible === false); }).length;
   return `
   <div class="head"><div><h2>Grading</h2><p>AI proposes; you approve. Passages underlined in red are the ones AI considers incorrect.</p></div>
     <select id="corrSel" style="max-width:440px" aria-label="Test">${selOpts(list, c.id, x => (x.type === "rattrapage" ? "Remediation · " : x.type === "exercices" ? "Practice · " : "") + x.titre + " · " + (classe(x.classeId)?.nom || ""), x => x.id)}</select></div>
@@ -1883,7 +1886,7 @@ function vCorrect(){
     <aside class="panel" style="padding:8px">
       <div class="row between" style="padding:4px 8px 8px"><span class="label">Papers</span>
         ${nAlert ? `<button class="btn sm" id="valAll">Approve the ${nAlert} no alerts</button>` : ""}</div>
-      ${studs.map(x => { const k = f.copies[x.id]; const n = k ? Object.keys(k.answers || {}).length : 0; const done = copyDone(c, k); const warn = k && Object.values(k.answers || {}).some(a => !a.lisible);
+      ${studs.map(x => { const k = f.copies[x.id]; const n = k ? Object.keys(k.answers || {}).length : 0; const done = copyDone(c, k); const warn = k && Object.values(k.answers || {}).some(a => a.lisible === false);
         return `<button class="stu" data-cel="${x.id}" aria-current="${x.id === S.corrEleve}"><span>${esc(x.prenom)} ${esc(x.nom)}</span><span class="row" style="gap:6px">
         ${isAbs(c, x) ? `<span class="chip">absent</span>` : !n ? `<span class="chip">not scanned</span>` : done ? `<span class="num">${noteS(final20(c, k))}</span>${k.validee ? `<span class="chip ok">✓</span>` : `<span class="chip ${warn ? "bad" : "warn"}">${warn ? "to review" : "to approve"}</span>`}` : `<span class="chip warn">${n}/${c.questions.length} q.</span>`}</span></button>`; }).join("")}
       <div style="padding:10px 8px 4px;border-top:1px solid var(--line);margin-top:6px" class="row"><button class="btn sm" id="csv">Export grades (CSV)</button><button class="btn sm" id="renduAll">Class's completed papers (PDF)</button></div>
@@ -1895,7 +1898,7 @@ function vCorrect(){
 function scoreCtl(q, a, eid, k){
   const n = noteOf(a), P = +q.points, opts = [...new Set([0, half(P / 2), P])];
   return `<div class="score">${opts.map(v => `<button class="qs${n === v ? " on" : ""}" data-qset="${v}" data-q="${q.id}" data-eid="${eid}" aria-label="${fmt(v)} point(s)">${fmt(v)}</button>`).join("")}
-    <input type="number" inputmode="decimal" min="0" max="${q.points}" step="0.5" data-score="${q.id}" data-eid="${eid}" value="${n ?? ""}" aria-label="Note question ${k + 1}"><span class="den">/${fmt(P)}</span></div>`;
+    <input type="number" inputmode="decimal" min="0" max="${q.points}" step="0.5" id="sc-${esc(q.id)}-${esc(eid)}" data-live data-score="${esc(q.id)}" data-eid="${esc(eid)}" value="${esc(n ?? "")}" aria-label="Note question ${k + 1}"><span class="den">/${fmt(P)}</span></div>`;
 }
 /* Correction question par question, pour toute la classe */
 function vByQuestion(c, f, studs){
@@ -1921,7 +1924,7 @@ function vByQuestion(c, f, studs){
         ${scoreCtl(q, a, e.id, qi)}</div>
       ${a ? `${a.crop ? `<img class="crop" alt="Scanned box" src="${esc(blobSrc(a.crop))}" data-zoom="${esc(blobSrc(a.crop))}">` : ""}
         <div class="answer" dir="auto">${renderAnnot(a.annot || a.transcription, q.id, e.id) || '<span class="muted">(empty frame)</span>'}</div>
-        ${!a.lisible ? `<div class="small" style="color:var(--warn)">⚠ Uncertain reading: compare with the photo.</div>` : ""}
+        ${a.lisible === false ? `<div class="small" style="color:var(--warn)">⚠ Uncertain reading: compare with the photo.</div>` : ""}
         ${a.commentaire ? `<div class="small note" dir="auto">${esc(a.commentaire)}</div>` : ""}
         ${(a.erreurs || []).length ? `<div class="tags">${a.erreurs.map((t, j) => `<span class="chip bad">${esc(t)} <button class="btn sm ghost" style="padding:0 4px;min-height:0" data-unerr="${q.id}|${j}" data-eid="${e.id}" aria-label="Remove this error">×</button></span>`).join("")}</div>` : ""}`
         : `<div class="small muted">No answer read for this question yet.</div>`}
@@ -2060,7 +2063,7 @@ function copyView(c, e, cp, studs){
       ${a ? `${edT ? `<textarea id="tr-${q.id}" data-live dir="auto">${esc(a.transcription)}</textarea><div class="row"><button class="btn sm primary" data-retr="${q.id}">Regrade with this text (AI)</button><button class="btn sm ghost" data-trx="${q.id}">Cancel</button><span class="status" id="rs-${q.id}"></span></div>`
         : `<div class="answer" dir="auto">${renderAnnot(a.annot || a.transcription, q.id) || '<span class="muted">(empty frame)</span>'}</div>`}
       ${a.crop ? `<img class="crop" alt="Scanned box" src="${esc(blobSrc(a.crop))}" data-zoom="${esc(blobSrc(a.crop))}">` : ""}
-      ${!a.lisible ? `<div class="small" style="color:var(--warn)">⚠ Uncertain reading: compare with the photo${a.crop ? ` ou <button class="btn sm" data-precise="${q.id}">Re-read in precise mode (AI)</button>` : "."}</div><span class="status" id="pr-${q.id}"></span>` : ""}
+      ${a.lisible === false ? `<div class="small" style="color:var(--warn)">⚠ Uncertain reading: compare with the photo${a.crop ? ` ou <button class="btn sm" data-precise="${q.id}">Re-read in precise mode (AI)</button>` : "."}</div><span class="status" id="pr-${q.id}"></span>` : ""}
       <div class="comment">${edC ? `<textarea id="cm-${q.id}" data-live>${esc(a.commentaire)}</textarea><div class="row"><button class="btn sm primary" data-savecm="${q.id}">Save</button><button class="btn sm ghost" data-cmx="${q.id}">Cancel</button></div>`
         : `<div class="note" dir="auto">${esc(a.commentaire)}</div>`}
         <div class="tags">${(a.acquis || []).map(t => `<span class="chip ok">${esc(t)}</span>`).join("")}${(a.erreurs || []).map((t, j) => `<span class="chip bad">${esc(t)} <button class="btn sm ghost" style="padding:0 4px;min-height:0" data-unerr="${q.id}|${j}" aria-label="Remove this error" title="Remove">×</button></span>`).join("")}</div>
@@ -2349,7 +2352,7 @@ function noteRetenue(c, e){
   const rs = store.controles.filter(x => x.type === "rattrapage" && x.parentId === c.id && x.eleves?.includes(e.id)).sort((a, b) => (a.createdAt || "").localeCompare(b.createdAt || ""));
   const r = [...rs].reverse().find(x => copyDone(x, feuille(x.id)?.copies?.[e.id])) || null, R = rattRule(r || rs[rs.length - 1]);
   if (!r) return {base, ratt:null, retenue:base, R, r:rs[rs.length - 1] || null};
-  const n = final20(r, feuille(r.id).copies[e.id]), cap = v => Math.min(v, R.plafond);
+  const n = final20(r, feuille(r.id).copies[e.id]), cap = v => Math.min(v, Math.max(R.plafond, base));
   const v = R.regle === "bonus" ? Math.max(base, cap(base + R.bonus * n / 20)) : R.regle === "moyenne" ? (base + n) / 2 : R.regle === "remplace" ? cap(n) : R.regle === "formatif" ? base : Math.max(base, cap(n));
   return {base, ratt:n, retenue:Math.round(v * 100) / 100, R, r};
 }
@@ -2662,15 +2665,15 @@ document.addEventListener("click", async ev => {
       await write("feuilles/" + C.id, {copies:{[S.corrEleve]:{validee:true, answers}}}, "update");
       bankPush(C.questions.filter(q => q.type !== "qcm").map(q => cp?.answers?.[q.id]).filter(a => a?.crop && a.transcription && a.lisible !== false && !a.auto).map(a => ({asset:a.crop, texteIA:a.transcriptionIA ?? a.transcription, texte:a.transcription, source:"validation", ...bankMeta(C)})));
       const f = feuille(C.id), studs = studentsOf(C); const next = studs.find(e => e.id !== S.corrEleve && f.copies[e.id] && !f.copies[e.id].validee && copyDone(C, f.copies[e.id]));
-      if (studs.every(e => e.id === S.corrEleve || f.copies[e.id]?.validee) && C.statut !== "corrige"){ C.statut = "corrige"; await saveCtrl(C); toast("All papers are approved."); }
+      if (studs.every(e => e.id === S.corrEleve || isAbs(C, e) || f.copies[e.id]?.validee) && C.statut !== "corrige"){ C.statut = "corrige"; await write("controles/" + C.id, {statut:"corrige"}, "update"); toast("All papers are approved."); }
       if (next){ S.corrEleve = next.id; S.editTr = {}; S.editCom = {}; } return render(); }
     if (t.id === "valAll"){ const f = feuille(C.id); const upd = {copies:{}};
-      studentsOf(C).forEach(e => { const k = f.copies[e.id]; if (k && !k.validee && copyDone(C, k) && !Object.values(k.answers || {}).some(a => !a.lisible)) upd.copies[e.id] = {validee:true, answers:Object.fromEntries(C.questions.map(q => [q.id, {valide:true}]))}; });
+      studentsOf(C).forEach(e => { const k = f.copies[e.id]; if (k && !k.validee && copyDone(C, k) && !Object.values(k.answers || {}).some(a => a.lisible === false)) upd.copies[e.id] = {validee:true, answers:Object.fromEntries(C.questions.map(q => [q.id, {valide:true}]))}; });
       await write("feuilles/" + C.id, upd, "update"); toast(Object.keys(upd.copies).length + " paper(s) approved."); return; }
     if (t.id === "csv"){ const f = feuille(C.id) || {copies:{}}, max = maxOf(C);
       const rows = [["Student", ...C.questions.map((q, k) => `Q${k + 1} (/${q.points})`), "Total", "Out of 20 (raw)", "Final grade /20", "Retake /20", "Final score /20", "Approved", "Final grade (my scale)"]];
       studentsOf(C).forEach(e => { const k = f.copies[e.id]; if (isAbs(C, e)) return rows.push([e.prenom + " " + e.nom, ...C.questions.map(() => ""), "ABS", "ABS", "ABS", "", "", "", "ABS"]); rows.push([e.prenom + " " + e.nom, ...C.questions.map(q => fmt(noteOf(k?.answers?.[q.id]))), copyDone(C, k) ? fmt(copyTotal(C, k)) : "", copyDone(C, k) ? fmt(on20(copyTotal(C, k), max)) : "", copyDone(C, k) ? fmt(final20(C, k)) : "", ...(N => [N?.ratt != null ? fmt(N.ratt) : "", N ? fmt(N.retenue) : ""])(isCtrl(C) ? noteRetenue(C, e) : null), k?.validee ? "oui" : "non", copyDone(C, k) ? noteS(isCtrl(C) ? noteRetenue(C, e)?.retenue ?? final20(C, k) : final20(C, k)) : ""]); });
-      const csv = "﻿" + rows.map(r => r.map(x => `"${String(x).replace(/"/g, '""')}"`).join(";")).join("\n");
+      const csv = "﻿" + rows.map(r => r.map(x => { x = String(x); if (/^[=+\-@\t\r]/.test(x) && !/^-?[\d.,]+$/.test(x)) x = "'" + x; return `"${x.replace(/"/g, '""')}"`; }).join(";")).join("\n");
       if (!DL) return toast("Download unavailable in this view.");
       try { await DL.save({filename:`Grades - ${C.titre}.csv`.replace(/[\\/:*?"<>|]/g, "-"), data:csv}); } catch(e){ if (e?.code !== "declined") toast("Download failed."); } return; }
     if (t.id === "mkRatt"){ const e = eleveOf(C, S.corrEleve); rattTask(C, e, "#mkRatt"); return; }
@@ -3078,8 +3081,8 @@ async function serverDB(){
   });
   async function sendDoc(p, val, op, patch){
     const u = "/api/db/doc?path=" + encodeURIComponent(p);
-    const res = op === "delete" ? await fetch(u, {method:"DELETE", credentials:"same-origin"})
-      : await fetch(u, {method:op === "update" ? "PATCH" : "PUT", credentials:"same-origin", headers:{"content-type":"application/json"}, body:JSON.stringify(op === "update" ? patch : val)});
+    const res = op === "delete" ? await fetch(u, {method:"DELETE", credentials:"same-origin", signal:AbortSignal.timeout(25000)})
+      : await fetch(u, {method:op === "update" ? "PATCH" : "PUT", credentials:"same-origin", headers:{"content-type":"application/json"}, body:JSON.stringify(op === "update" ? patch : val), signal:AbortSignal.timeout(25000)});
     if (!res.ok) throw {code:res.status === 401 ? "need_code" : res.status === 402 ? "no_access" : "cloud_write", message:"serveur " + res.status};
   }
   let busy = false;
@@ -3391,6 +3394,9 @@ async function afterLogin(user, mustChange){
   if (!S.auth){ await loadUsers(); if (!SERVERSTORE) await startServer(); else { applyScope(); render(); } } else render();
 }
 async function bootAccounts(){
+  /* Lien « mot de passe oublié » : il passe avant une session restée ouverte sur l'appareil (poste partagé) */
+  const rst = /^#\/reset\/([a-f0-9]{48})$/.exec(location.hash);
+  if (rst){ try { await api("/api/logout", {method:"POST"}); } catch(e){} S.me = null; S.resetTok = rst[1]; S.auth = "reset"; refreshCaps(); return render(); }
   try { const j = await api("/api/me"); await afterLogin(j.user, !!j.user?.mustChange); }
   catch(e){ S.auth = e.status === 401 && e.setup ? "setup" : /^#\/reset\/[a-f0-9]{48}$/.test(location.hash) ? "reset" : /^#\/inscription/.test(location.hash) && window.TIKOUN_CONFIG?.signup ? "register" : "login";
     if (S.auth === "reset") S.resetTok = location.hash.split("/")[2]; if (S.auth === "register"){ const pl = location.hash.split("/")[2]; if (["decouverte", "essentiel", "complet"].includes(pl)) S.regPlan = pl; else if (pl === "pro") S.regPlan = "complet"; S.ecFor = "reg"; S.ec = {q:"", cp:"", res:null, sel:null, manual:false, busy:false, err:""}; } refreshCaps(); render(); }
@@ -3897,7 +3903,7 @@ function vSuiviBase(){
       ${ys.length > 1 ? `<select id="su-y" style="width:auto" aria-label="School year">${selOpts(ys.map(String), String(y), v => "Year " + yearLab(+v))}</select>` : `<span class="small muted">Year ${yearLab(y)}</span>`}</div>
     <div class="qchips" role="tablist">${Object.entries(TABS).map(([k, l]) => `<button class="chip${k === tab ? " cur" : ""}" role="tab" aria-selected="${k === tab}" data-sutab="${k}">${l}</button>`).join("")}</div></div>`;
   const cs = yearCtrls(cl, mat, y), els = cl.eleves || [], flags = Object.fromEntries(els.map(e => [e.id, nonVus(cl, e, signaux(cl, mat, e, y))]));
-  const nameTd = x => `<td><b>${esc(x.prenom)} ${esc(x.nom)}</b>${flagBadge(flags[x.id])}</td>`, rowAttr = x => `class="clickable ${x.id === S.su.el ? "sel" : ""}" data-suel="${x.id}"`;
+  const nameTd = x => `<td><b>${esc(x.prenom)} ${esc(x.nom)}</b>${flagBadge(flags[x.id])}</td>`, rowAttr = x => `class="clickable ${x.id === S.su.el ? "sel" : ""}" data-suel="${esc(x.id)}"`;
   const cell = v => `<td class="c"><span class="cell ${v == null ? "none" : tone(v / 20)}">${v == null ? "—" : nv(v)}</span></td>`;
   let body = "";
   if (tab === "annee"){
@@ -3987,8 +3993,8 @@ function ficheEleve(cl, mat, e, y, cs){
     <div class="grid" style="gap:8px"><div class="row between"><div class="label">Behavior (observed by you)</div><select id="se-p" style="width:auto" aria-label="Period">${selOpts(Array.from({length:bornes().length + 1}, (_, i) => String(i)), String(sp), i => perLab(+i))}</select></div>
       <div class="form-row" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">${Object.entries(SE).map(([k, l]) => `<div class="field"><label for="se-${k}">${l}</label><select id="se-${k}" data-se="${k}">${selOpts(["", "1", "2", "3", "4"], String(seD[k] || ""), v => v ? SE_N[v] : "—")}</select></div>`).join("")}</div>
       <textarea id="se-txt" data-live placeholder="Note (optional)">${esc(seD.txt || "")}</textarea>
-      <div class="row"><button class="btn sm" id="se-save" data-e="${e.id}">Save</button><span class="small muted">Used only to write the report card comment, if you fill it in.</span></div></div>
-    <div class="grid" style="gap:8px"><div class="row between"><div class="label">Report card comment</div><button class="btn sm" id="appr" data-e="${e.id}">${bil ? "Rewrite" : "Draft"} (IA)</button></div>
+      <div class="row"><button class="btn sm" id="se-save" data-e="${esc(e.id)}">Save</button><span class="small muted">Used only to write the report card comment, if you fill it in.</span></div></div>
+    <div class="grid" style="gap:8px"><div class="row between"><div class="label">Report card comment</div><button class="btn sm" id="appr" data-e="${esc(e.id)}">${bil ? "Rewrite" : "Draft"} (IA)</button></div>
       <div class="status" id="appr-st"></div>
       ${bil ? `<textarea id="appr-txt" data-live>${esc(bil.texte)}</textarea><div class="row"><button class="btn sm" id="apprSave">Save my version</button><button class="btn sm ghost" id="apprCopy">Copy</button></div>` : `<p class="muted small">Written from grades, averages, skills, grading comments and your behavior notes. You review and edit it.</p>`}</div>
   </section>`;
@@ -4052,7 +4058,7 @@ function bankPanel_0(c){
   store.controles.filter(x => x.id !== c.id && x.matiere === c.matiere).forEach(x => (x.questions || []).forEach(qq => { const en = vOf(qq, "standard").enonce, k = nkey(en);
     if (!k || seen.has(k)) return; seen.add(k); if (q && !nkey(en + " " + qq.notion).includes(q)) return; list.push({x, qq, en}); }));
   return `<section class="panel grid"><div class="row between"><h3>Bank · ${esc(c.matiere)}</h3><input id="bkq-search" value="${esc(S.bkq || "")}" placeholder="Filter…" style="max-width:220px"></div>
-    <div>${list.slice(0, 40).map(({x, qq, en}) => `<div class="item"><div><div class="small" dir="auto">${esc(en.slice(0, 160))}${en.length > 160 ? "…" : ""}</div><div class="s">${esc(qq.notion || "")} · ${fmt(+qq.points)} pts${qq.type === "qcm" ? " · MCQ" : ""} · ${esc(x.titre)}</div></div><button class="btn sm" data-bankadd="${x.id}|${qq.id}">Add</button></div>`).join("") || `<p class="muted small">No questions in this subject yet.</p>`}</div></section>`;
+    <div>${list.slice(0, 40).map(({x, qq, en}) => `<div class="item"><div><div class="small" dir="auto">${esc(en.slice(0, 160))}${en.length > 160 ? "…" : ""}</div><div class="s">${esc(qq.notion || "")} · ${fmt(+qq.points)} pts${qq.type === "qcm" ? " · MCQ" : ""} · ${esc(x.titre)}</div></div><button class="btn sm" data-bankadd="${esc(x.id)}|${esc(qq.id)}">Add</button></div>`).join("") || `<p class="muted small">No questions in this subject yet.</p>`}</div></section>`;
 }
 
 /* ================= 6. Fiche d'écriture ================= */
@@ -4265,7 +4271,7 @@ function quizClasses(){ const ids = new Set(myQuizzes().map(q => q.classeId)); r
 function vExercices(){
   const head = `<div class="head"><div><h2>Online practice</h2><p>Quizzes built from your lessons. Each student practices with their personal code, as much as they want: the questions change with every attempt and grading is instant.</p></div>
     ${canEx() ? `<div class="row"><a class="btn primary" href="#/exercices/nouveau">+ New quiz</a></div>` : ""}</div>`;
-  if (!canEx()) return head + `<section class="panel grid" style="max-width:720px"><div class="row" style="gap:10px">${lockChip()}<b>Pro plan only</b></div>
+  if (!canEx()) return head + `<section class="panel grid" style="max-width:720px"><div class="row" style="gap:10px">${lockChip()}<b>Available from the Essential plan</b></div>
     <ul class="muted" style="margin:0;padding-left:20px;display:grid;gap:6px"><li>A bank of 20 to 50 questions generated from your lesson</li><li>Each student retakes the quiz as many times as they want, with different questions</li><li>Instant grading, with an explanation after each answer</li><li>Per-student tracking: attempts, success rate, skills mastered</li></ul>
     <p class="small muted">Ask the Mastery team to activate it.</p></section>`;
   const list = [...myQuizzes()].sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
@@ -4273,7 +4279,7 @@ function vExercices(){
     const acq = reps.length && nn ? reps.reduce((s, r) => s + Object.values(r.notions || {}).filter(x => x.acquis).length, 0) / (n * nn || 1) : 0;
     return `<a class="item link" href="#/exercices/${q.id}/${q.statut === "brouillon" ? "questions" : "resultats"}"><div><div class="t">${esc(q.titre)}</div>
       <div class="s">${esc(q.matiere)} · ${esc(cl?.nom || "?")} · ${(q.questions || []).length} questions${q.fermeture ? " · until " + esc(frDate(q.fermeture)) : ""}</div></div>
-      <div class="row"><span class="chip ${QSTAT[q.statut]?.[1] || ""}">${QSTAT[q.statut]?.[0] || q.statut}</span>${q.statut !== "brouillon" ? `<span class="chip">${act}/${n} students</span><span class="chip">${Math.round(acq * 100)} % of skills mastered</span>` : ""}</div></a>`; };
+      <div class="row"><span class="chip ${QSTAT[q.statut]?.[1] || ""}">${esc(QSTAT[q.statut]?.[0] || q.statut)}</span>${q.statut !== "brouillon" ? `<span class="chip">${act}/${n} students</span><span class="chip">${Math.round(acq * 100)} % of skills mastered</span>` : ""}</div></a>`; };
   const sum = cl => { const qs = list.filter(q => q.classeId === cl.id), op = qs.filter(q => q.statut === "ouvert").length; return `${qs.length} quiz${op ? ` · <b style="color:var(--ok)">${op} ouvert(s)</b>` : ""} · ${(cl.eleves || []).length} students`; };
   return head + (list.length ? classAcc("quiz", quizClasses(), sum, cl => `<div>${list.filter(q => q.classeId === cl.id).map(row).join("")}</div>`) : `<section class="panel"><div class="empty">No quizzes yet. <a class="btn sm primary" href="#/exercices/nouveau">Create my first quiz</a></div></section>`) + `
   <section class="panel grid" style="gap:6px"><div class="label">Student access</div><p>Each student logs in at <b>${esc(location.origin)}/eleve</b> with their personal code and last name. Generate and print the cards in <a href="#/classes">Classes → Student codes</a>.</p></section>`;
@@ -4328,11 +4334,11 @@ function vQuiz(){
     inner = `<section class="panel grid" style="gap:10px"><div class="row between"><div class="row">${byT.map(([t, n]) => `<span class="chip">${QTYPES[t].replace(" (on computer)", "")} × ${n}</span>`).join("")}<span class="chip">${notions.length} notions</span></div>
       <div class="row"><button class="btn sm" id="qz-more">+ 10 questions (AI)</button><button class="btn sm ghost" id="qz-regen">↻ Regenerate the whole bank</button></div></div><div class="status" id="qz-st"></div></section>
     ${(q.questions || []).map((x, i) => `<section class="panel grid" style="gap:10px">
-      <div class="row between"><div class="row"><b>Q${i + 1}</b><span class="chip">${QTYPES[x.type].replace(" (on computer)", "")}</span><span class="chip" title="Level">${stars(x.niveau)}</span>${x.notion ? `<span class="chip blue">${esc(x.notion)}</span>` : ""}</div><button class="btn sm ghost danger" data-qqdel="${x.id}">Delete</button></div>
-      <div class="field"><label>Question text</label><textarea data-qqf="${x.id}" data-k="enonce">${esc(x.enonce)}</textarea></div>
+      <div class="row between"><div class="row"><b>Q${i + 1}</b><span class="chip">${QTYPES[x.type].replace(" (on computer)", "")}</span><span class="chip" title="Level">${stars(x.niveau)}</span>${x.notion ? `<span class="chip blue">${esc(x.notion)}</span>` : ""}</div><button class="btn sm ghost danger" data-qqdel="${esc(x.id)}">Delete</button></div>
+      <div class="field"><label>Question text</label><textarea data-qqf="${esc(x.id)}" data-k="enonce">${esc(x.enonce)}</textarea></div>
       ${qAnswerEditor(x)}
-      <div class="form-row"><div class="field"><label>Skill</label><input data-qqf="${x.id}" data-k="notion" value="${esc(x.notion || "")}"></div><div class="field"><label>Level</label><select data-qqf="${x.id}" data-k="niveau">${selOpts(["1","2","3"], String(x.niveau || 1), n => stars(n))}</select></div></div>
-      <div class="field"><label>Explanation shown to the student</label><textarea data-qqf="${x.id}" data-k="explication" style="min-height:54px">${esc(x.explication || "")}</textarea></div></section>`).join("")}`;
+      <div class="form-row"><div class="field"><label>Skill</label><input data-qqf="${esc(x.id)}" data-k="notion" value="${esc(x.notion || "")}"></div><div class="field"><label>Level</label><select data-qqf="${esc(x.id)}" data-k="niveau">${selOpts(["1","2","3"], String(x.niveau || 1), n => stars(n))}</select></div></div>
+      <div class="field"><label>Explanation shown to the student</label><textarea data-qqf="${esc(x.id)}" data-k="explication" style="min-height:54px">${esc(x.explication || "")}</textarea></div></section>`).join("")}`;
   }
   if (tab === "reglages"){
     inner = `<section class="panel grid">
@@ -4362,7 +4368,7 @@ function quizResults(q, cl, notions){
   const red = []; Object.values(R).forEach(r => (r.redigees || []).forEach((a, i) => { if (a.note == null){ const x = (q.questions || []).find(y => y.id === a.qid); if (x) red.push({r, a, i, x, e:studs.find(s => s.id === r.eleveId)}); } }));
   const tone = v => v == null ? "none" : v >= .7 ? "ok" : v >= .5 ? "warn" : "bad";
   return `<section class="panel"><div class="tbl-wrap"><table><thead><tr><th>Student</th><th class="c">Attempts</th><th class="c">Questions seen</th><th class="c">Success rate</th><th class="c">Skills mastered</th><th class="c">Time</th><th>Last activity</th></tr></thead><tbody>
-    ${rows.map(x => `<tr class="clickable" data-qzel="${x.e.id}"${S.qz.el === x.e.id ? ' style="background:var(--surface-2)"' : ""}><td><b>${esc(x.e.prenom)} ${esc(x.e.nom)}</b></td><td class="c num">${x.t}</td><td class="c num">${x.vues}</td>
+    ${rows.map(x => `<tr class="clickable" data-qzel="${esc(x.e.id)}"${S.qz.el === x.e.id ? ' style="background:var(--surface-2)"' : ""}><td><b>${esc(x.e.prenom)} ${esc(x.e.nom)}</b></td><td class="c num">${x.t}</td><td class="c num">${x.vues}</td>
       <td class="c"><span class="cell ${tone(x.taux)}">${x.taux == null ? "—" : Math.round(x.taux * 100) + " %"}</span></td><td class="c num">${x.acq}/${notions.length}</td><td class="c num">${x.t ? dur(x.temps) : "—"}</td><td class="small muted">${x.der ? esc(new Date(x.der).toLocaleString("en-US", {day:"numeric", month:"short", hour:"2-digit", minute:"2-digit"})) : "not started yet"}</td></tr>`).join("")}
     </tbody></table></div></section>
   ${sel ? `<section class="panel grid"><div class="row between"><h3>${esc(sel.e.prenom)} ${esc(sel.e.nom)}</h3><span class="small muted">${sel.t} attempt(s) · ${sel.vues} question(s) · ${sel.t ? dur(sel.temps) : ""}</span></div>
@@ -4399,7 +4405,7 @@ function codesPanel(cl){
   const n = (cl.eleves || []).filter(e => e.code).length, tot = (cl.eleves || []).length;
   return `<section class="panel grid" style="gap:10px"><div class="row between"><div><h3>Student codes</h3><p class="small muted">Student space (published results, retakes, online practice): each student signs in at <b>${esc(location.origin)}/eleve</b> with their personal code and last name (no email).</p></div>
     <div class="row"><button class="btn sm" id="codes-gen"${n < tot ? "" : " disabled"}>${n < tot ? "Generate missing codes" : "Codes up to date"}</button>${n ? `<button class="btn sm primary" id="codes-print">Print the cards</button>` : ""}</div></div>
-    ${n ? `<div class="row">${(cl.eleves || []).map(e => `<span class="chip">${esc(e.prenom)} ${esc((e.nom || "").slice(0, 1))}. · <b class="num">${esc(e.code || "—")}</b>${e.code ? ` <button class="btn sm ghost" style="padding:0 4px" data-recode="${e.id}" title="New code">↻</button>` : ""}</span>`).join("")}</div>` : ""}</section>`;
+    ${n ? `<div class="row">${(cl.eleves || []).map(e => `<span class="chip">${esc(e.prenom)} ${esc((e.nom || "").slice(0, 1))}. · <b class="num">${esc(e.code || "—")}</b>${e.code ? ` <button class="btn sm ghost" style="padding:0 4px" data-recode="${esc(e.id)}" title="New code">↻</button>` : ""}</span>`).join("")}</div>` : ""}</section>`;
 }
 function printCards(cl){
   const url = location.origin + "/eleve?c=";
@@ -4812,7 +4818,7 @@ async function uploadLot(file){
   } catch(e){ it.status = "erreur"; it.msg = "Upload failed (" + (e.message || "erreur") + "): try again."; }
   scheduleRender(); watchJobs(); pollJobs();
 }
-const LOT_MSG = {qr:"QR and footer unreadable", inconnu:"paper from another or deleted test", page:"page of the paper not recognized", kit:"test not prepared for this upload", ecriture:"handwriting sheet"};
+const LOT_MSG = {qr:"QR and footer unreadable", inconnu:"paper from another or deleted test", page:"page of the paper not recognized", kit:"test not prepared for this upload", ecriture:"handwriting sheet", erreur:"unreadable page"};
 function lotItems(){
   for (const l of S.lots || []){ let it = S.queue.find(x => x.lot === l.id);
     if (!it){ if (Date.parse(l.createdAt) <= S.jobsHide || S.lotGone.has(l.id)) continue; it = {id:uid(), name:l.name, lot:l.id, thumb:"", status:"lot", msg:""}; S.queue.push(it); }

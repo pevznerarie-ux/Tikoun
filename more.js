@@ -192,7 +192,7 @@ function vSuiviBase(){
       ${ys.length > 1 ? `<select id="su-y" style="width:auto" aria-label="Année scolaire">${selOpts(ys.map(String), String(y), v => "Année " + yearLab(+v))}</select>` : `<span class="small muted">Année ${yearLab(y)}</span>`}</div>
     <div class="qchips" role="tablist">${Object.entries(TABS).map(([k, l]) => `<button class="chip${k === tab ? " cur" : ""}" role="tab" aria-selected="${k === tab}" data-sutab="${k}">${l}</button>`).join("")}</div></div>`;
   const cs = yearCtrls(cl, mat, y), els = cl.eleves || [], flags = Object.fromEntries(els.map(e => [e.id, nonVus(cl, e, signaux(cl, mat, e, y))]));
-  const nameTd = x => `<td><b>${esc(x.prenom)} ${esc(x.nom)}</b>${flagBadge(flags[x.id])}</td>`, rowAttr = x => `class="clickable ${x.id === S.su.el ? "sel" : ""}" data-suel="${x.id}"`;
+  const nameTd = x => `<td><b>${esc(x.prenom)} ${esc(x.nom)}</b>${flagBadge(flags[x.id])}</td>`, rowAttr = x => `class="clickable ${x.id === S.su.el ? "sel" : ""}" data-suel="${esc(x.id)}"`;
   const cell = v => `<td class="c"><span class="cell ${v == null ? "none" : tone(v / 20)}">${v == null ? "—" : nv(v)}</span></td>`;
   let body = "";
   if (tab === "annee"){
@@ -282,8 +282,8 @@ function ficheEleve(cl, mat, e, y, cs){
     <div class="grid" style="gap:8px"><div class="row between"><div class="label">Savoir-être (observé par toi)</div><select id="se-p" style="width:auto" aria-label="Période">${selOpts(Array.from({length:bornes().length + 1}, (_, i) => String(i)), String(sp), i => perLab(+i))}</select></div>
       <div class="form-row" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">${Object.entries(SE).map(([k, l]) => `<div class="field"><label for="se-${k}">${l}</label><select id="se-${k}" data-se="${k}">${selOpts(["", "1", "2", "3", "4"], String(seD[k] || ""), v => v ? SE_N[v] : "—")}</select></div>`).join("")}</div>
       <textarea id="se-txt" data-live placeholder="Remarque (facultatif)">${esc(seD.txt || "")}</textarea>
-      <div class="row"><button class="btn sm" id="se-save" data-e="${e.id}">Enregistrer</button><span class="small muted">Utilisé seulement pour rédiger l'appréciation, si tu le remplis.</span></div></div>
-    <div class="grid" style="gap:8px"><div class="row between"><div class="label">Appréciation pour le bulletin</div><button class="btn sm" id="appr" data-e="${e.id}">${bil ? "Réécrire" : "Rédiger"} (IA)</button></div>
+      <div class="row"><button class="btn sm" id="se-save" data-e="${esc(e.id)}">Enregistrer</button><span class="small muted">Utilisé seulement pour rédiger l'appréciation, si tu le remplis.</span></div></div>
+    <div class="grid" style="gap:8px"><div class="row between"><div class="label">Appréciation pour le bulletin</div><button class="btn sm" id="appr" data-e="${esc(e.id)}">${bil ? "Réécrire" : "Rédiger"} (IA)</button></div>
       <div class="status" id="appr-st"></div>
       ${bil ? `<textarea id="appr-txt" data-live>${esc(bil.texte)}</textarea><div class="row"><button class="btn sm" id="apprSave">Enregistrer ma version</button><button class="btn sm ghost" id="apprCopy">Copier</button></div>` : `<p class="muted small">Rédigée à partir des notes, des moyennes, des compétences, des commentaires de correction et de ton savoir-être. Tu la relis et la modifies.</p>`}</div>
   </section>`;
@@ -347,7 +347,7 @@ function bankPanel_0(c){
   store.controles.filter(x => x.id !== c.id && x.matiere === c.matiere).forEach(x => (x.questions || []).forEach(qq => { const en = vOf(qq, "standard").enonce, k = nkey(en);
     if (!k || seen.has(k)) return; seen.add(k); if (q && !nkey(en + " " + qq.notion).includes(q)) return; list.push({x, qq, en}); }));
   return `<section class="panel grid"><div class="row between"><h3>Banque · ${esc(c.matiere)}</h3><input id="bkq-search" value="${esc(S.bkq || "")}" placeholder="Filtrer…" style="max-width:220px"></div>
-    <div>${list.slice(0, 40).map(({x, qq, en}) => `<div class="item"><div><div class="small" dir="auto">${esc(en.slice(0, 160))}${en.length > 160 ? "…" : ""}</div><div class="s">${esc(qq.notion || "")} · ${fmt(+qq.points)} pts${qq.type === "qcm" ? " · QCM" : ""} · ${esc(x.titre)}</div></div><button class="btn sm" data-bankadd="${x.id}|${qq.id}">Ajouter</button></div>`).join("") || `<p class="muted small">Aucune question dans cette matière pour l'instant.</p>`}</div></section>`;
+    <div>${list.slice(0, 40).map(({x, qq, en}) => `<div class="item"><div><div class="small" dir="auto">${esc(en.slice(0, 160))}${en.length > 160 ? "…" : ""}</div><div class="s">${esc(qq.notion || "")} · ${fmt(+qq.points)} pts${qq.type === "qcm" ? " · QCM" : ""} · ${esc(x.titre)}</div></div><button class="btn sm" data-bankadd="${esc(x.id)}|${esc(qq.id)}">Ajouter</button></div>`).join("") || `<p class="muted small">Aucune question dans cette matière pour l'instant.</p>`}</div></section>`;
 }
 
 /* ================= 6. Fiche d'écriture ================= */

@@ -5,14 +5,25 @@ let PDFJS = null;
 async function pdfjs(){ if (!PDFJS) PDFJS = await import("pdfjs-dist/legacy/build/pdf.mjs"); return PDFJS; }
 const PDF_BASE = require("path").dirname(require.resolve("pdfjs-dist/package.json")) + "/";
 
+/* Dimensions lues dans l'en-tête (PNG, JPEG) avant tout décodage : une image géante ne remplit pas la mémoire du serveur */
+function imageSize(b){
+  if (b.length > 24 && b[0] === 0x89 && b[1] === 0x50) return {w:b.readUInt32BE(16), h:b.readUInt32BE(20)};
+  if (b[0] === 0xFF && b[1] === 0xD8){ let i = 2; while (i + 9 < b.length){ if (b[i] !== 0xFF){ i++; continue; } const m = b[i + 1];
+    if (m >= 0xC0 && m <= 0xCF && m !== 0xC4 && m !== 0xC8 && m !== 0xCC) return {w:b.readUInt16BE(i + 7), h:b.readUInt16BE(i + 5)};
+    if (m === 0xD8 || (m >= 0xD0 && m <= 0xD7) || m === 0x01){ i += 2; continue; } i += 2 + b.readUInt16BE(i + 2); } }
+  return null;
+}
 async function openFile(buf, mime){
   if (mime === "application/pdf" || buf.slice(0, 5).toString() === "%PDF-"){
     const lib = await pdfjs();
-    const task = lib.getDocument({data:new Uint8Array(buf), isEvalSupported:false, wasmUrl:PDF_BASE + "wasm/", standardFontDataUrl:PDF_BASE + "standard_fonts/"}), pdf = await task.promise;
-    return {n:pdf.numPages, page:async i => { const pg = await pdf.getPage(i); const vp = pg.getViewport({scale:2000 / Math.max(pg.view[2], pg.view[3])});
+    const task = lib.getDocument({data:new Uint8Array(buf), isEvalSupported:false, maxImageSize:40e6, wasmUrl:PDF_BASE + "wasm/", standardFontDataUrl:PDF_BASE + "standard_fonts/"}), pdf = await task.promise;
+    return {n:pdf.numPages, page:async i => { const pg = await pdf.getPage(i); const pw = Math.abs(pg.view[2] - pg.view[0]), ph = Math.abs(pg.view[3] - pg.view[1]);
+      if (!(pw > 10 && ph > 10) || Math.max(pw, ph) / Math.min(pw, ph) > 8) throw new Error("format de page non pris en charge");
+      const vp = pg.getViewport({scale:2000 / Math.max(pw, ph)});
       const cc = pdf.canvasFactory.create(Math.round(vp.width), Math.round(vp.height)); await pg.render({canvasContext:cc.context, viewport:vp, canvas:cc.canvas}).promise; pg.cleanup(); return cc.canvas; },
       close:() => task.destroy()};
   }
+  const dim = imageSize(buf); if (dim && dim.w * dim.h > 80e6) throw new Error("Image trop grande (" + Math.round(dim.w * dim.h / 1e6) + " mégapixels) : réduis-la.");
   const {loadImage} = require("@napi-rs/canvas"); const im = await loadImage(buf);
   const sc = Math.min(1, 2200 / Math.max(im.width, im.height)), cv = createCanvas(Math.round(im.width * sc), Math.round(im.height * sc));
   cv.getContext("2d").drawImage(im, 0, 0, cv.width, cv.height);
@@ -42,14 +53,16 @@ function qcmFrom(q, ver, coches, ambigu, T){
 async function analysePage(cv, ctx, st){
   const T = ctx.kit.txt || {};
   let data = null, found = [];
-  if (st.qrBad >= 2){ data = await footerId(cv, ctx); }
-  if (!data){ found = await detectAll(cv); data = found.find(f => /^TK1W?\|/.test(f.data))?.data || readQR(cv);
-    if (data) st.qrBad = 0; else { data = await footerId(cv, ctx); if (data) st.qrBad++; } }
+  found = await detectAll(cv); data = found.find(f => /^TK1W?\|/.test(f.data))?.data || readQR(cv);
+  if (!data && (st.footFail || 0) < 12){ try { data = await footerId(cv, ctx); } catch(e){ if (e.quota) throw e; console.warn("Bas de page (IA)", e.message); data = null; }
+    st.footFail = data ? 0 : (st.footFail || 0) + 1; }   // une douzaine d'échecs de suite : ce fichier n'est pas un lot de copies, on arrête d'appeler l'IA
   if (!data) return {status:"manuel", msg:"qr"};
   if (data.startsWith("TK1W|")) return {status:"manuel", msg:"ecriture"};
   const [, cid, eid, p] = data.split("|"); let page = +p || 0;
   const c = ctx.doc("controles/" + cid), f = ctx.doc("feuilles/" + cid), cp = f?.copies?.[eid];
   if (!c || !cp || !ctx.allowed(cid)) return {status:"manuel", msg:"inconnu", cid, eid};
+  /* Copie déjà validée par le professeur : un nouveau dépôt du même fichier ne la modifie pas (« Recommencer le scan » pour la refaire) */
+  if (cp.validee) return {status:"fait", msg:"validee", cid, eid, page, job:null};
   const have = found.map(x => /^TK1W?\|/.test(x.data) ? "tl" : x.data.startsWith("TK1C|") ? x.data.slice(5) : "").filter(Boolean);
   let fnd = found;
   if (have.length < 4 && (cp.pages || []).some(pg => pg?.b?.length)){ const extra = blobMarkers(cv, have), all = fnd.concat(extra); if (extra.length && markersOk(all)) fnd = all; }
@@ -102,8 +115,11 @@ async function analyseFile(buf, mime, ctx){
   const doc = await openFile(buf, mime), st = {qrBad:0};
   ctx.setTotal(doc.n);
   try {
+    if (doc.n > 600) throw new Error("Fichier trop long (" + doc.n + " pages, 600 au plus) : découpe-le.");
     for (let i = 1; i <= doc.n; i++){
       if (ctx.done(i)) continue;
+      await new Promise(r => setImmediate(r));   // laisse le serveur répondre aux autres (élèves, professeurs) entre deux pages
+      ctx.pageStart?.(i);
       let r; try { const cv = await doc.page(i); r = await analysePage(cv, ctx, st); cv.width = cv.height = 0; }
       catch(e){ console.warn("Analyse page", i, e.message); r = {status:"erreur", msg:"erreur:" + e.message}; if (e.quota) { ctx.pageDone(i, r); throw e; } }
       ctx.pageDone(i, r);

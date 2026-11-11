@@ -143,7 +143,7 @@ async function uploadLot(file){
   } catch(e){ it.status = "erreur"; it.msg = "Envoi impossible (" + (e.message || "erreur") + ") : réessaie."; }
   scheduleRender(); watchJobs(); pollJobs();
 }
-const LOT_MSG = {qr:"QR et bas de page illisibles", inconnu:"copie d'un autre contrôle ou supprimée", page:"page de la copie non reconnue", kit:"contrôle non préparé pour ce dépôt", ecriture:"fiche d'écriture"};
+const LOT_MSG = {qr:"QR et bas de page illisibles", inconnu:"copie d'un autre contrôle ou supprimée", page:"page de la copie non reconnue", kit:"contrôle non préparé pour ce dépôt", ecriture:"fiche d'écriture", erreur:"page illisible"};
 function lotItems(){
   for (const l of S.lots || []){ let it = S.queue.find(x => x.lot === l.id);
     if (!it){ if (Date.parse(l.createdAt) <= S.jobsHide || S.lotGone.has(l.id)) continue; it = {id:uid(), name:l.name, lot:l.id, thumb:"", status:"lot", msg:""}; S.queue.push(it); }

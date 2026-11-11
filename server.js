@@ -9,7 +9,7 @@
 //   AI_BUDGET_PER_CTRL : filet de sécurité IA par mois, en dollars par contrôle du forfait (défaut 3) ; AI_BUDGET_USER_MONTH pour les comptes sans forfait (défaut 60, ×5 administrateur)
 //   AI_BUDGET_DAY      : budget IA total par jour, en dollars (défaut 150)
 //   AI_MAX_PER_USER_DAY, AI_MAX_PER_DAY : plafonds d'appels (garde-fou supplémentaire)
-//   FILE_RETENTION_DAYS : durée de conservation des images de copies (défaut 400 jours)
+//   FILE_RETENTION_DAYS : durée de conservation des images de copies (défaut 395 jours, soit 13 mois)
 //   BACKUP_KEY        : si défini, les sauvegardes quotidiennes sont chiffrées (AES-256-GCM)
 //   LEGAL_NAME, LEGAL_FORM, LEGAL_SIREN, LEGAL_ADDRESS, LEGAL_EMAIL, LEGAL_PHONE, LEGAL_DIRECTOR, LEGAL_HOST : mentions légales
 //   ADMIN_EMAIL, ADMIN_PASSWORD (+ ADMIN_NAME) : crée automatiquement l'administrateur au démarrage s'il n'existe aucun compte
@@ -28,7 +28,7 @@ const GRADE_TIER = () => ["quick","default","complex"].includes(env("GRADE_TIER"
 const MODELS = () => ({quick:env("MODEL_QUICK") || "claude-haiku-4-5-20251001", default:env("MODEL_DEFAULT") || "claude-haiku-4-5-20251001", complex:env("MODEL_COMPLEX") || "claude-sonnet-5"});
 
 const SEC_HEADERS = {"X-Content-Type-Options":"nosniff", "Referrer-Policy":"same-origin", "X-Frame-Options":"DENY", "Strict-Transport-Security":"max-age=31536000",
-  "Content-Security-Policy":"frame-ancestors 'none'; object-src 'none'; base-uri 'self'", "Permissions-Policy":"geolocation=(), microphone=()"};
+  "Content-Security-Policy":"frame-ancestors 'none'; object-src 'none'; base-uri 'self'", "Permissions-Policy":"geolocation=(), microphone=(self)"};
 /* Réponses texte (JSON, HTML, JS) compressées quand le navigateur l'accepte : l'application et les données pèsent 5 à 8 fois moins sur le réseau */
 const COMPRESSIBLE = /^(text\/|application\/(json|manifest\+json)|image\/svg)/;
 function send(res, status, body, type = "text/plain; charset=utf-8", extra = {}){
@@ -678,13 +678,16 @@ function detailEleve(el, id){
 }
 async function eleveApi(req, res, url, p){
   if (p === "/api/eleve/login" && req.method === "POST"){
-    if (tooMany("el:" + ipOf(req))) return sendJ(res, 429, {error:{message:"Trop d'essais : réessaie dans 15 minutes"}});
+    const elK = "el:" + ipOf(req), elFails = (tries.get(elK) || []).filter(t => Date.now() - t < 15 * 60e3);
+    if (elFails.length >= 40) return sendJ(res, 429, {error:{message:"Trop d'essais : réessaie dans 15 minutes"}});
     const b = await readJSON(req, 2e3) || {}; const hit = findCode(b.code);
+    const codeK = "elc:" + String(b.code || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 20);
+    if ((tries.get(codeK) || []).filter(t => Date.now() - t < 15 * 60e3).length >= 8) return sendJ(res, 429, {error:{message:"Trop d'essais : réessaie dans 15 minutes"}});
     /* Code personnel + nom de famille : deviner un code ne suffit pas */
     const norm = t => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9\u0590-\u05ff]+/g, "");
     /* Nom de famille attendu ; le prénom ou le nom complet sont aussi acceptés (listes importées « NOM Prénom » rangées à l'envers) */
     const t = norm(b.nom), N = norm(hit?.e.nom), P = norm(hit?.e.prenom), nameOk = !!t && (!N || [N, P, N + P, P + N].includes(t));
-    if (!hit || !nameOk) return sendJ(res, 401, {error:{message:"Code ou nom de famille incorrect : vérifie ta carte"}});
+    if (!hit || !nameOk){ tooMany(elK); tooMany(codeK); return sendJ(res, 401, {error:{message:"Code ou nom de famille incorrect : vérifie ta carte"}}); }
     const tok = crypto.randomBytes(24).toString("hex"); ESESS.set(tok, {classeId:hit.classeId, eleveId:hit.e.id, code:hit.code, espace:hit.cl.espace, exp:Date.now() + 120 * 864e5}); saveEsess();
     const secure = String(req.headers["x-forwarded-proto"] || "").includes("https") ? "; Secure" : "";
     return sendJ(res, 200, {ok:true}, {"Set-Cookie":`esid=${tok}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${120 * 86400}${secure}`});
@@ -833,7 +836,7 @@ const JOBS_F = path.join(DATA, "jobs.json"); let JOBS = readJ(JOBS_F, []);
 for (const j of JOBS) if (j.status === "en_cours") j.status = "attente";
 let jobsTimer = null; const saveJobs = () => { clearTimeout(jobsTimer); jobsTimer = setTimeout(() => writeAtomic(JOBS_F, JOBS), 300); };
 const jobPub = j => ({id:j.id, status:j.status, name:j.name, ctrlId:j.ctrlId, eleveId:j.eleveId, page:j.page, msg:j.msg || "", createdAt:j.createdAt, doneAt:j.doneAt || null});
-const NO_ANS = /^\s*(je\s*(ne)?\s*sais\s*pas|j'?\s*sais\s*pas|jsp|aucune\s*id[ée]e|pas\s*d'?\s*id[ée]e|je\s*n'?\s*ai\s*pas\s*compris|rien|néant|\?+|-+|\.+|x|i\s*don'?t\s*know|n[ãa]o\s*sei)\s*[.!?]*\s*$/i;
+const NO_ANS = /^\s*(je\s*(ne)?\s*sais\s*pas|j'?\s*sais\s*pas|jsp|aucune\s*id[ée]e|pas\s*d'?\s*id[ée]e|je\s*n'?\s*ai\s*pas\s*compris|néant|\?+|-+|\.+|i\s*don'?t\s*know|n[ãa]o\s*sei)\s*[.!?]*\s*$/i;
 const isNoAns = t => !String(t || "").replace(/\[illisible\]/g, "").replace(/\$/g, "").trim() || NO_ANS.test(String(t).replace(/\$/g, ""));
 const halfN = x => Math.round(x * 2) / 2, clampN = (v, a, b) => Math.max(a, Math.min(b, v));
 /* Réponse coupée par la limite de longueur : on garde le titre et les questions déjà complètes, la suite est redemandée */
@@ -1086,7 +1089,7 @@ async function jobsApi(req, res, url, p, u){
 let ENGINE = null; try { ENGINE = require("./scan-engine.js"); } catch(e){ console.warn("Analyse serveur indisponible (npm install ?) :", e.message); }
 const LOTDIR = path.join(DATA, "lots"); fs.mkdirSync(LOTDIR, {recursive:true});
 const LOTS_F = path.join(DATA, "lots.json"); let LOTS = readJ(LOTS_F, []);
-for (const l of LOTS) if (l.status === "analyse") l.status = "attente";
+for (const l of LOTS) if (l.status === "analyse"){ if (l.cur && !l.pages?.[l.cur]) (l.pages = l.pages || {})[l.cur] = {status:"erreur", msg:"erreur:page illisible (analyse interrompue)"}; delete l.cur; l.status = "attente"; }
 let lotsTimer = null; const saveLots = () => { clearTimeout(lotsTimer); lotsTimer = setTimeout(() => writeAtomic(LOTS_F, LOTS), 400); };
 const lotPub = l => ({id:l.id, name:l.name, status:l.status, total:l.total || 0, done:Object.keys(l.pages || {}).length, msg:l.msg || "", createdAt:l.createdAt,
   pages:Object.entries(l.pages || {}).filter(([, r]) => r.status !== "serveur" && r.status !== "fait").map(([i, r]) => ({i:+i, status:r.status, msg:r.msg || "", cid:r.cid || null, eid:r.eid || null})),
@@ -1119,12 +1122,13 @@ async function pumpLots(){
       ctrlId:b.ctrlId, eleveId:b.eleveId, page:b.page, prompt:b.prompt, tier:GRADE_TIER(), images:b.images, bonus:b.bonus, txt:b.txt, qs:b.qs}; JOBS.push(j); saveJobs(); setTimeout(pumpJobs, 10); return j.id; },
     footerAI:async jpg => looseJSON(await claude(u, [{type:"image", source:{type:"base64", media_type:"image/jpeg", data:jpg.toString("base64")}}, {type:"text", text:String(kit.footerPrompt || "")}], "quick", 300)),
     setTotal:n => { l.total = n; saveLots(); },
+    pageStart:i => { l.cur = i; clearTimeout(lotsTimer); writeAtomic(LOTS_F, LOTS); },
     done:i => !!l.pages[i],
     pageDone:(i, r) => { l.pages[i] = {status:r.status, msg:r.msg || "", cid:r.cid, eid:r.eid, page:r.page, job:r.job || null}; saveLots(); }};
   try {
     const buf = fs.readFileSync(path.join(LOTDIR, l.id + ".bin"));
     await ENGINE.analyseFile(buf, l.mime, ctx);
-    l.status = "fini";
+    l.status = "fini"; delete l.cur;
   } catch(e){ console.warn("Lot", l.id, e.message); l.status = e.quota ? "attente" : "erreur"; l.msg = e.message; if (e.quota) l.notBefore = Date.now() + 3600e3; }
   finally { lotRunning = false; saveLots(); setTimeout(pumpLots, 100); }
 }
@@ -1203,8 +1207,10 @@ function conseils(){
   const cnt = new Map();
   for (const s of BANQUE){
     const pairs = Array.isArray(s.corrections) ? s.corrections.map(x => [x.ia, x.vrai]) : s.texteIA && s.texte && s.texteIA !== s.texte ? confusions(s.texteIA, s.texte) : [];
-    for (const [a, v] of pairs){ if (!a || a === v) continue; const k = a + "→" + v; const c = cnt.get(k) || {ia:a, vrai:v, n:0, langues:new Set(), explicite:false}; c.n++; c.langues.add(s.langue || ""); if (Array.isArray(s.corrections)) c.explicite = true; cnt.set(k, c); } }
-  const auto = [...cnt.entries()].filter(([k, c]) => (c.n >= 2 || c.explicite) && !REGLES.off.includes(k)).sort((x, y) => y[1].n - x[1].n).slice(0, 60).map(([k, c]) => ({k, ia:c.ia, vrai:c.vrai, n:c.n, langues:[...c.langues].filter(Boolean)}));
+    for (const [a, v] of pairs){ if (!a || a === v) continue; const k = a + "→" + v; if (a.length > 40 || v.length > 40 || /[\n\r:{}<>\[\]]/.test(a + v)) continue;
+      const c = cnt.get(k) || {ia:a, vrai:v, n:0, langues:new Set(), qui:new Set(), explicite:false}; c.n++; c.langues.add(s.langue || ""); c.qui.add(s.par || "");
+      if (Array.isArray(s.corrections) && (s.source === "admin" || USERS.find(u => u.id === s.par)?.role === "admin")) c.explicite = true; cnt.set(k, c); } }
+  const auto = [...cnt.entries()].filter(([k, c]) => ((c.n >= 2 && c.qui.size >= 2) || c.explicite) && !REGLES.off.includes(k)).sort((x, y) => y[1].n - x[1].n).slice(0, 60).map(([k, c]) => ({k, ia:c.ia, vrai:c.vrai, n:c.n, langues:[...c.langues].filter(Boolean)}));
   return {regles:REGLES.texte || "", ajouts:REGLES.ajouts || [], off:REGLES.off || [], confusions:auto};
 }
 function banqueStats(){
@@ -1215,7 +1221,7 @@ function banqueStats(){
 }
 const SRC_OK = ["correction", "validation", "modele", "admin", "public"];
 /* Conservation limitée : les exemples de plus de 2 ans sont effacés */
-function purgeBanque(){ const lim = Date.now() - 730 * 864e5, n = BANQUE.length; BANQUE = BANQUE.filter(x => x.source !== "correction" || !x.at || Date.parse(x.at) > lim); if (BANQUE.length !== n){ saveBanque(); console.log("Banque d'écriture : " + (n - BANQUE.length) + " exemple(s) de plus de 2 ans effacé(s)"); } }
+function purgeBanque(){ const lim = Date.now() - 730 * 864e5, n = BANQUE.length; BANQUE = BANQUE.filter(x => ["public", "admin"].includes(x.source) || !x.at || Date.parse(x.at) > lim); if (BANQUE.length !== n){ saveBanque(); console.log("Banque d'écriture : " + (n - BANQUE.length) + " exemple(s) de plus de 2 ans effacé(s)"); } }
 setTimeout(() => { try { purgeBanque(); } catch(e){} }, 5000); setInterval(() => { try { purgeBanque(); } catch(e){} }, 864e5).unref();
 function addSample(u, b){
   const texte = String(b.texte || "").slice(0, 4000), texteIA = String(b.texteIA ?? "").slice(0, 4000), asset = /^[a-z0-9]{8,40}$/.test(b.asset || "") ? b.asset : null;
@@ -1376,7 +1382,7 @@ function autoBackup(){
 setTimeout(autoBackup, 60e3); setInterval(autoBackup, 3600e3);
 function purgeOldFiles(){
   try {
-    const keepDays = Number(env("FILE_RETENTION_DAYS")) || 400, lim = Date.now() - keepDays * 864e5, inBank = new Set(BANQUE.map(b => b.asset)); let n = 0;
+    const keepDays = Number(env("FILE_RETENTION_DAYS")) || 395, lim = Date.now() - keepDays * 864e5, inBank = new Set(BANQUE.map(b => b.asset)); let n = 0;
     for (const f of fs.readdirSync(FILEDIR)){ if (!f.endsWith(".jpg")) continue; const id = f.slice(0, -4); if (inBank.has(id)) continue;
       const st = fs.statSync(path.join(FILEDIR, f)); if (st.mtimeMs < lim){ fs.rmSync(path.join(FILEDIR, f), {force:true}); delete FOWN[id]; n++; } }
     if (n){ saveFown(); console.log("Images de copies supprimées (plus de " + keepDays + " jours) :", n); }
@@ -1440,7 +1446,7 @@ const SERVER = http.createServer(async (req, res) => {
     if (res._lang !== "fr" && /\.html$/.test(p) && fs.existsSync(path.join(ROOT, p.replace(/\.html$/, "." + res._lang + ".html")))) p = p.replace(/\.html$/, "." + res._lang + ".html");
     const file = path.normalize(path.join(ROOT, p));
     if (!file.startsWith(ROOT + path.sep) || file.startsWith(path.resolve(DATA)) || /^\/(data|src|node_modules)(\/|$)/.test(p) || p.split("/").some(s => s.startsWith("."))
-      || !/\.(html|png|jpg|svg|ico|webmanifest|txt|xml|woff2?)$/.test(file) || /\/(README|RAILWAY|SUPABASE)/i.test(file)) return send(res, 404, "Introuvable");
+      || !/\.(html|png|jpg|svg|ico|webmanifest|txt|xml|woff2?)$/.test(file) || /\/(README|RAILWAY|SUPABASE|A_LIRE)/i.test(file)) return send(res, 404, "Introuvable");
     fs.stat(file, (err, st) => {
       if (err || !st.isFile()) return send(res, 404, "Introuvable");
       const type = TYPES[path.extname(file)] || "application/octet-stream", etag = `"${st.size.toString(36)}-${Math.round(st.mtimeMs).toString(36)}"`;
@@ -1458,6 +1464,7 @@ const SERVER = http.createServer(async (req, res) => {
 let stopping = false;
 function flushAll(){
   for (const t of [fownTimer, sessTimer, esessTimer, usageTimer, jobsTimer, gensTimer, lotsTimer, bqTimer, inTimer]) clearTimeout(t);
+  for (const l of LOTS) delete l.cur;   // arrêt normal : la page en cours d'analyse sera simplement reprise, elle n'est pas fautive
   const all = [[FOWN_F, FOWN], [SESS_F, SESS], [ESESS_F, Object.fromEntries(ESESS)], [USAGE_F, USAGE], [JOBS_F, JOBS], [GENS_F, GENS], [LOTS_F, LOTS], [BANQUE_F, BANQUE], [INBOX_F, INBOX]];
   for (const [f, v] of all){ try { if (v) writeAtomic(f, v); } catch(e){ console.error("Écriture impossible à l'arrêt :", f, e.message); } }
 }
