@@ -2,7 +2,7 @@
 // Usage : node i18n/i18n.js apply in.html dict.json out.html   → écrit aussi out.html.missing.json
 "use strict";
 const fs = require("fs"), path = require("path");
-const acorn = require(process.env.ACORN || path.join(__dirname, "..", "node_modules", "acorn"));
+const acorn = require(process.env.ACORN || (fs.existsSync(path.join(__dirname, "node_modules", "acorn")) ? path.join(__dirname, "node_modules", "acorn") : path.join(__dirname, "..", "node_modules", "acorn")));
 const [, , cmd, inF, dictF, outF] = process.argv;
 if (cmd !== "apply") { console.error("usage: apply in dict out"); process.exit(1); }
 const html = fs.readFileSync(inF, "utf8"), D = JSON.parse(fs.readFileSync(dictF, "utf8"));

@@ -1,13 +1,14 @@
 # Génère les versions portugaises (Brésil) : dist/index.pt.html, dist/landing.pt.html, dist/eleve.pt.html
 import subprocess, json, re, os
+SRC = "src/" if os.path.isdir("src") else ""; OUT = "dist/" if SRC else ""; I18N = "i18n/" if os.path.isdir("i18n") else ""
 ACORN = os.environ.get("ACORN", os.path.join(os.path.dirname(os.path.abspath(__file__)), "node_modules", "acorn"))
 NIV_BR = '["6º ano","7º ano","8º ano","9º ano","1º ano EM","2º ano EM","3º ano EM"]'
-MAT_SUGG_BR = '[]'
-MAT_BR = '["Matemática","Língua Portuguesa","Ciências","Biologia","Química","Física","História","Geografia","Inglês","Espanhol","Filosofia","Sociologia","Artes","Educação Física"]'
+MAT_SUGG_BR = '["Guemará","Mishná","Chumash","Neviim","Halachá","Chassidut","Pensamento judaico"]'
+MAT_BR = '["Matemática","Língua Portuguesa","Ciências","Biologia","Química","Física","História","Geografia","Inglês","Espanhol","Hebraico","Filosofia","Sociologia","Artes","Educação Física"]'
 missing = set()
 for name in ["index", "landing", "eleve"]:
-    src, out = f"dist/{name}.html", f"dist/{name}.pt.html"
-    subprocess.run(["node", "i18n/i18n.js", "apply", src, "i18n/pt.json", out], check=True, env={**os.environ, "ACORN": ACORN}, stdout=subprocess.DEVNULL)
+    src, out = f"{OUT}{name}.html", f"{OUT}{name}.pt.html"
+    subprocess.run(["node", I18N + "i18n.js", "apply", src, I18N + "pt.json", out], check=True, env={**os.environ, "ACORN": ACORN}, stdout=subprocess.DEVNULL)
     if os.path.exists(out + ".missing.json"):
         missing |= set(json.load(open(out + ".missing.json"))); os.remove(out + ".missing.json")
     s = open(out).read()
@@ -18,5 +19,5 @@ for name in ["index", "landing", "eleve"]:
     s = s.replace('|| "3e"', '|| "9º ano"')
     s = s.replace('<div class="grade">14<small>/20</small>', '<div class="grade">7<small>/10</small>')
     open(out, "w").write(s)
-json.dump(sorted(missing), open("i18n/missing_pt.json", "w"), ensure_ascii=False, indent=1)
-print("PT ok ·", len(missing), "texte(s) sans traduction (i18n/missing_pt.json)")
+json.dump(sorted(missing), open(I18N + "missing_pt.json", "w"), ensure_ascii=False, indent=1)
+print("PT ok ·", len(missing), "texte(s) sans traduction (missing_pt.json)")

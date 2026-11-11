@@ -1468,7 +1468,7 @@ function qItem(it){
 }
 async function fileToCanvases(file){
   if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)){
-    const pdf = await pdfjsLib.getDocument({data: await file.arrayBuffer()}).promise; const out = [];
+    const pdf = await pdfjsLib.getDocument({isEvalSupported:false, data: await file.arrayBuffer()}).promise; const out = [];
     for (let i = 1; i <= pdf.numPages; i++){ const pg = await pdf.getPage(i); const vp = pg.getViewport({scale: 2000 / Math.max(pg.view[2], pg.view[3])});
       const cv = document.createElement("canvas"); cv.width = vp.width; cv.height = vp.height; await pg.render({canvasContext:cv.getContext("2d"), viewport:vp}).promise; out.push(cv); }
     return out;
@@ -1686,7 +1686,7 @@ async function pdfPage(pdf, i, side){ const pg = await pdf.getPage(i); const vp 
   const cv = document.createElement("canvas"); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height); await pg.render({canvasContext:cv.getContext("2d"), viewport:vp}).promise; pg.cleanup(); return cv; }
 async function lazyPages(file){
   if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)){
-    const pdf = await pdfjsLib.getDocument({data: await file.arrayBuffer()}).promise, out = [], src = {qrBad:0};
+    const pdf = await pdfjsLib.getDocument({isEvalSupported:false, data: await file.arrayBuffer()}).promise, out = [], src = {qrBad:0};
     for (let i = 1; i <= pdf.numPages; i++){ let thumb = ""; try { thumb = (await pdfPage(pdf, i, 120)).toDataURL("image/jpeg", .6); } catch(e){}
       out.push({n:pdf.numPages, i, thumb, src, load:() => pdfPage(pdf, i, 2000)}); }
     return out;
@@ -2231,7 +2231,7 @@ async function importCourseFiles(files, o = {}){
   for (const f of files){
     if (f.type === "application/pdf" || /\.pdf$/i.test(f.name)){
       st.innerHTML = `<span class="thinking">Reading the PDF " ${esc(f.name)} »…</span>`;
-      const pdf = await pdfjsLib.getDocument({data: await f.arrayBuffer()}).promise; let txt = "";
+      const pdf = await pdfjsLib.getDocument({isEvalSupported:false, data: await f.arrayBuffer()}).promise; let txt = "";
       for (let i = 1; i <= pdf.numPages; i++){ const tc = await (await pdf.getPage(i)).getTextContent(); txt += tc.items.map(x => x.str + (x.hasEOL ? "\n" : " ")).join("") + "\n\n"; }
       if (hebRatio(txt) > .05){ txt = fixHebrewText(txt); S.hebPdf = [...(S.hebPdf || []), f]; }
       if (txt.replace(/\s/g, "").length > 150 * pdf.numPages) parts.push(txt.trim());
@@ -2475,7 +2475,7 @@ document.addEventListener("click", async ev => {
   if (t.id === "c-heb-ai"){ const st = $("#c-st"), files = S.hebPdf || []; if (!files.length) return;
     if (!confirm("Replace the text extracted from the PDF with an AI reading of the pages? (more reliable for Hebrew, slightly more costly)")) return;
     try { const cvs = [];
-      for (const f of files){ const pdf = await pdfjsLib.getDocument({data: await f.arrayBuffer()}).promise;
+      for (const f of files){ const pdf = await pdfjsLib.getDocument({isEvalSupported:false, data: await f.arrayBuffer()}).promise;
         for (let i = 1; i <= Math.min(pdf.numPages, 40); i++){ const pg = await pdf.getPage(i); const vp = pg.getViewport({scale: 2000 / Math.max(pg.view[2], pg.view[3])}); const cv = document.createElement("canvas"); cv.width = vp.width; cv.height = vp.height; await pg.render({canvasContext:cv.getContext("2d"), viewport:vp}).promise; cvs.push(cv); } }
       const per = Math.max(1, LIM?.images?.maxCount || 1), out = [];
       for (let i = 0; i < cvs.length; i += per){ st.innerHTML = `<span class="thinking">AI reading pages ${i + 1} à ${Math.min(i + per, cvs.length)} sur ${cvs.length}…</span>`;

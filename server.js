@@ -16,7 +16,7 @@
 //   ADMIN_RESET_PASSWORD : mot de passe oublié, réinitialise le compte ADMIN_EMAIL (une fois par valeur)
 //   SIGNUP            : "off" pour fermer l'inscription libre des professeurs (ouverte par défaut)
 //   MODEL_QUICK, MODEL_DEFAULT, MODEL_COMPLEX : modèles (défaut économique)
-const http = require("http"), fs = require("fs"), path = require("path"), crypto = require("crypto");
+const http = require("http"), fs = require("fs"), path = require("path"), crypto = require("crypto"), zlib = require("zlib");
 const ROOT = __dirname, PORT = process.env.PORT || 3000;
 const TYPES = {".html":"text/html; charset=utf-8", ".js":"text/javascript; charset=utf-8", ".css":"text/css; charset=utf-8", ".json":"application/json",
   ".md":"text/markdown; charset=utf-8", ".png":"image/png", ".jpg":"image/jpeg", ".svg":"image/svg+xml", ".ico":"image/x-icon", ".webmanifest":"application/manifest+json", ".txt":"text/plain; charset=utf-8"};
@@ -29,8 +29,26 @@ const MODELS = () => ({quick:env("MODEL_QUICK") || "claude-haiku-4-5-20251001", 
 
 const SEC_HEADERS = {"X-Content-Type-Options":"nosniff", "Referrer-Policy":"same-origin", "X-Frame-Options":"DENY", "Strict-Transport-Security":"max-age=31536000",
   "Content-Security-Policy":"frame-ancestors 'none'; object-src 'none'; base-uri 'self'", "Permissions-Policy":"geolocation=(), microphone=()"};
+/* Réponses texte (JSON, HTML, JS) compressées quand le navigateur l'accepte : l'application et les données pèsent 5 à 8 fois moins sur le réseau */
+const COMPRESSIBLE = /^(text\/|application\/(json|manifest\+json)|image\/svg)/;
 function send(res, status, body, type = "text/plain; charset=utf-8", extra = {}){
-  res.writeHead(status, {"Content-Type":type, ...SEC_HEADERS, ...extra}); res.end(body);
+  const head = {"Content-Type":type, ...SEC_HEADERS, ...extra}, buf = Buffer.isBuffer(body) ? body : Buffer.from(String(body ?? ""));
+  if (buf.length < 1400 || !COMPRESSIBLE.test(type) || !/\bgzip\b/.test(res._ae || "")){ res.writeHead(status, head); return res.end(buf); }
+  zlib.gzip(buf, {level:5}, (err, z) => { if (res.headersSent || res.destroyed) return;
+    if (err){ res.writeHead(status, head); return res.end(buf); }
+    res.writeHead(status, {...head, "Content-Encoding":"gzip", "Vary":"Accept-Encoding"}); res.end(z); });
+}
+/* Fichiers du site : compressés une fois (Brotli ou gzip) puis gardés en mémoire ; le navigateur ne retélécharge que ce qui a changé (ETag) */
+const STATIC_Z = new Map();
+function staticZ(file, etag, enc){
+  const k = file + "|" + enc; let e = STATIC_Z.get(k);
+  if (!e || e.etag !== etag){
+    e = {etag, p:fs.promises.readFile(file).then(b => new Promise((ok, ko) => (enc === "br"
+      ? zlib.brotliCompress(b, {params:{[zlib.constants.BROTLI_PARAM_QUALITY]:9, [zlib.constants.BROTLI_PARAM_SIZE_HINT]:b.length}}, (er, z) => er ? ko(er) : ok(z))
+      : zlib.gzip(b, {level:8}, (er, z) => er ? ko(er) : ok(z)))))};
+    e.p.catch(() => STATIC_Z.delete(k)); STATIC_Z.set(k, e);
+  }
+  return e.p;
 }
 /* Langue : cookie « lang » (fr / en), sinon en-tête du navigateur. Messages d'erreur traduits pour l'anglais. */
 const EN_MSG = {"Tu as utilisé tous les contrôles de ton forfait ce mois-ci : ajoute un contrôle ou passe au forfait supérieur dans Mon compte.":"You have used all the tests in your plan this month: add a test or upgrade your plan in My account.", "Ton forfait ne permet pas plus de classes : passe au forfait supérieur dans Mon compte.":"Your plan doesn't allow more classes: upgrade your plan in My account.", "Plafond mensuel de l'IA atteint pour ton compte : écris à l'équipe Mastery si tu en as besoin.":"Monthly AI limit reached for your account: contact the Mastery team if you need more.", "Contrôle introuvable":"Test not found", "Indique le nom de l'école et sa ville":"Enter the school's name and city", "8 caractères minimum":"8 characters minimum","ANTHROPIC_API_KEY manquante sur le serveur":"ANTHROPIC_API_KEY is missing on the server",
@@ -600,7 +618,10 @@ async function deleteAccount(req, res, u, x){
 }
 
 /* ---------- Espace élève : quiz d'exercices en ligne (code personnel, sans e-mail) ---------- */
-const ESESS = new Map();                       // jeton élève → {classeId, eleveId, espace, exp}
+/* Sessions des élèves : enregistrées sur le disque, un élève reste connecté après une mise à jour du serveur */
+const ESESS_F = path.join(DATA, "sessions-eleves.json");
+const ESESS = new Map(Object.entries(readJ(ESESS_F, {})).filter(([, v]) => v && v.exp > Date.now()));   // jeton élève → {classeId, eleveId, espace, exp}
+let esessTimer = null; const saveEsess = () => { clearTimeout(esessTimer); esessTimer = setTimeout(() => { for (const [k, v] of ESESS) if (v.exp < Date.now()) ESESS.delete(k); writeAtomic(ESESS_F, Object.fromEntries(ESESS)); }, 500); };
 const TIRAGES = new Map();                     // tirage en cours → {quizId, key, qids, used, answered, start, exp}
 const esidOf = req => ((req.headers.cookie || "").match(/(?:^|;\s*)esid=([a-f0-9]{48})/) || [])[1] || "";
 function eleveOf(req){ const s = ESESS.get(esidOf(req)); if (!s || s.exp < Date.now()) return null; const cl = DOCS.get("classes/" + s.classeId); const e = cl?.eleves?.find(x => x.id === s.eleveId && x.code === s.code); return e ? {...s, cl, e} : null; }
@@ -664,11 +685,11 @@ async function eleveApi(req, res, url, p){
     /* Nom de famille attendu ; le prénom ou le nom complet sont aussi acceptés (listes importées « NOM Prénom » rangées à l'envers) */
     const t = norm(b.nom), N = norm(hit?.e.nom), P = norm(hit?.e.prenom), nameOk = !!t && (!N || [N, P, N + P, P + N].includes(t));
     if (!hit || !nameOk) return sendJ(res, 401, {error:{message:"Code ou nom de famille incorrect : vérifie ta carte"}});
-    const tok = crypto.randomBytes(24).toString("hex"); ESESS.set(tok, {classeId:hit.classeId, eleveId:hit.e.id, code:hit.code, espace:hit.cl.espace, exp:Date.now() + 120 * 864e5});
+    const tok = crypto.randomBytes(24).toString("hex"); ESESS.set(tok, {classeId:hit.classeId, eleveId:hit.e.id, code:hit.code, espace:hit.cl.espace, exp:Date.now() + 120 * 864e5}); saveEsess();
     const secure = String(req.headers["x-forwarded-proto"] || "").includes("https") ? "; Secure" : "";
     return sendJ(res, 200, {ok:true}, {"Set-Cookie":`esid=${tok}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${120 * 86400}${secure}`});
   }
-  if (p === "/api/eleve/logout" && req.method === "POST"){ ESESS.delete(esidOf(req)); return sendJ(res, 200, {}, {"Set-Cookie":"esid=; Path=/; Max-Age=0"}); }
+  if (p === "/api/eleve/logout" && req.method === "POST"){ ESESS.delete(esidOf(req)); saveEsess(); return sendJ(res, 200, {}, {"Set-Cookie":"esid=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0"}); }
   const el = eleveOf(req); if (!el) return sendJ(res, 401, {error:{message:"Connexion requise"}});
   if (p === "/api/eleve/me" && req.method === "GET"){
     const list = quizzesFor(el).map(({id, q}) => { const rd = DOCS.get("quizrep/" + id + "_" + el.eleveId) || {}; const notions = [...new Set((q.questions || []).map(x => x.notion).filter(Boolean))];
@@ -743,7 +764,9 @@ function spend(u, tier, usage){
   USAGE.users[u.id] = (USAGE.users[u.id] || 0) + cost; USAGE.mois.users[u.id] = (USAGE.mois.users[u.id] || 0) + cost; USAGE.total = (USAGE.total || 0) + cost; saveUsage();
 }
 const tierOk = t => ["quick", "default", "complex"].includes(t) ? t : "default";
-const MAXTOK = {quick:2000, default:8000, complex:12000};
+/* Plafond de longueur par niveau. Les modèles récents réfléchissent avant de répondre et cette réflexion compte dans la sortie :
+   à 12 000 jetons, les contrôles longs étaient coupés (journaux : sorties à 12 000 tout rond, « Réponse de l'IA illisible »). */
+const MAXTOK = {quick:2000, default:8000, complex:20000};
 let counter = {day:day(), n:0}; const perIp = new Map(), perUser = new Map();
 function allowCall(ip, uid){
   const who = USERS.find(x => x.id === uid); if (who){ const b = budgetLeft(who); if (b) return b; }
@@ -791,7 +814,7 @@ setInterval(() => { const old = Date.now() - 20 * 60e3; for (const [k, v] of AIR
 async function aiCall(body, u){
   scrubNames(body, u);
   const tier = tierOk(body?.tier), M = MODELS(), model = M[tier];
-  const r = await fetch((env("ANTHROPIC_BASE_URL") || "https://api.anthropic.com") + "/v1/messages", {method:"POST", signal:AbortSignal.timeout(200000),
+  const r = await fetch((env("ANTHROPIC_BASE_URL") || "https://api.anthropic.com") + "/v1/messages", {method:"POST", signal:AbortSignal.timeout(300000),
     headers:{"content-type":"application/json", "x-api-key":env("ANTHROPIC_API_KEY"), "anthropic-version":"2023-06-01"},
     body:JSON.stringify({model, max_tokens:Math.min(+env("AI_MAX_TOKENS") || 32000, MAXTOK[tier]), messages:body.messages})}).catch(() => null);
   if (!r) return {status:502, json:{error:{message:"IA injoignable"}}};
@@ -1127,7 +1150,7 @@ async function lotsApi(req, res, url, p, u){
     fs.writeFileSync(path.join(LOTDIR, l.id + ".bin"), buf); l.file = true; l.status = "attente"; saveLots(); setTimeout(pumpLots, 10); return sendJ(res, 200, {});
   }
   if (m && m[2] && req.method === "GET"){ const f = path.join(LOTDIR, l.id + ".bin"); if (!fs.existsSync(f)) return send(res, 404, "Introuvable");
-    res.writeHead(200, {"Content-Type":l.mime || "application/octet-stream"}); return pipeFile(f, res); }
+    res.writeHead(200, {"Content-Type":["application/pdf", "image/jpeg", "image/png"].includes(l.mime) ? l.mime : "application/octet-stream", "Content-Disposition":"attachment", "Cache-Control":"private, no-store", ...SEC_HEADERS}); return pipeFile(f, res); }
   return sendJ(res, 404, {error:{message:"Route inconnue"}});
 }
 
@@ -1368,13 +1391,13 @@ function backups(req, res, p, u){
   if (p === "/api/backups/now" && req.method === "POST"){ for (const x of [".json", ".json.enc"]) fs.rmSync(path.join(BAKDIR, "mastery-" + new Date().toISOString().slice(0, 10) + x), {force:true}); autoBackup(); return sendJ(res, 200, {ok:true}); }
   const m = p.match(/^\/api\/backups\/(mastery-\d{4}-\d{2}-\d{2}\.json(?:\.enc)?)$/);
   if (m && req.method === "GET"){ const f = path.join(BAKDIR, m[1]); if (!fs.existsSync(f)) return sendJ(res, 404, {error:{message:"Document introuvable"}});
-    res.writeHead(200, {"Content-Type":m[1].endsWith(".enc") ? "application/octet-stream" : TYPES[".json"], "Content-Disposition":`attachment; filename="${m[1]}"`, "Cache-Control":"no-store"}); return pipeFile(f, res); }
+    res.writeHead(200, {"Content-Type":m[1].endsWith(".enc") ? "application/octet-stream" : TYPES[".json"], "Content-Disposition":`attachment; filename="${m[1]}"`, "Cache-Control":"no-store", ...SEC_HEADERS}); return pipeFile(f, res); }
   return sendJ(res, 404, {error:{message:"Route inconnue"}});
 }
-http.createServer(async (req, res) => {
+const SERVER = http.createServer(async (req, res) => {
   try {
-    const url = new URL(req.url, "http://x"); let p = decodeURIComponent(url.pathname);
-    res._lang = langOf(req);
+    res._lang = langOf(req); res._ae = String(req.headers["accept-encoding"] || "");
+    let url, p; try { url = new URL(req.url, "http://x"); p = decodeURIComponent(url.pathname); } catch(e){ return send(res, 400, "Adresse invalide"); }
     const wantLang = url.searchParams.get("lang");
     if (/^(fr|en|pt)$/.test(wantLang || "") && !p.startsWith("/api/")){ url.searchParams.delete("lang"); const q = url.searchParams.toString();
       res.writeHead(302, {"Location":p + (q ? "?" + q : ""), "Set-Cookie":`lang=${wantLang}; Path=/; SameSite=Lax; Max-Age=${365 * 86400}`}); return res.end(); }
@@ -1420,9 +1443,24 @@ http.createServer(async (req, res) => {
       || !/\.(html|png|jpg|svg|ico|webmanifest|txt|xml|woff2?)$/.test(file) || /\/(README|RAILWAY|SUPABASE)/i.test(file)) return send(res, 404, "Introuvable");
     fs.stat(file, (err, st) => {
       if (err || !st.isFile()) return send(res, 404, "Introuvable");
-      res.writeHead(200, {"Content-Type":TYPES[path.extname(file)] || "application/octet-stream", ...SEC_HEADERS, "Cache-Control":/\.html$/.test(p) ? "no-cache" : "public, max-age=300"});
-      if (req.method === "HEAD") return res.end();
-      pipeFile(file, res);
+      const type = TYPES[path.extname(file)] || "application/octet-stream", etag = `"${st.size.toString(36)}-${Math.round(st.mtimeMs).toString(36)}"`;
+      const head = {"Content-Type":type, ...SEC_HEADERS, "Cache-Control":/\.html$/.test(p) ? "no-cache" : "public, max-age=300", "ETag":etag, "Vary":"Accept-Encoding"};
+      if (req.headers["if-none-match"] === etag){ res.writeHead(304, head); return res.end(); }
+      const enc = !COMPRESSIBLE.test(type) || st.size < 1400 || st.size > 8e6 ? "" : /\bbr\b/.test(res._ae) ? "br" : /\bgzip\b/.test(res._ae) ? "gzip" : "";
+      if (!enc){ res.writeHead(200, {...head, "Content-Length":st.size}); if (req.method === "HEAD") return res.end(); return pipeFile(file, res); }
+      staticZ(file, etag, enc).then(z => { res.writeHead(200, {...head, "Content-Encoding":enc, "Content-Length":z.length}); res.end(req.method === "HEAD" ? undefined : z); })
+        .catch(() => { res.writeHead(200, head); if (req.method === "HEAD") return res.end(); pipeFile(file, res); });
     });
   } catch(e){ console.error(e); send(res, 500, "Erreur serveur"); }
-}).listen(PORT, "0.0.0.0", () => console.log(`Mastery en ligne sur le port ${PORT} · ${USERS.length} compte(s) · ${env("ANTHROPIC_API_KEY") ? "IA serveur" : "IA non configurée"} · données ${PERSISTENT ? "sur le volume " + DATA : "TEMPORAIRES : ajoute un Volume Railway monté sur /data"}`));
+});
+/* Arrêt du serveur (chaque mise à jour Railway envoie SIGTERM) : ce qui attendait d'être écrit sur le disque est enregistré avant de quitter.
+   Sans cela, les dernières secondes de travail (propriétaire d'une image, tâche de correction, session) pouvaient être perdues. */
+let stopping = false;
+function flushAll(){
+  for (const t of [fownTimer, sessTimer, esessTimer, usageTimer, jobsTimer, gensTimer, lotsTimer, bqTimer, inTimer]) clearTimeout(t);
+  const all = [[FOWN_F, FOWN], [SESS_F, SESS], [ESESS_F, Object.fromEntries(ESESS)], [USAGE_F, USAGE], [JOBS_F, JOBS], [GENS_F, GENS], [LOTS_F, LOTS], [BANQUE_F, BANQUE], [INBOX_F, INBOX]];
+  for (const [f, v] of all){ try { if (v) writeAtomic(f, v); } catch(e){ console.error("Écriture impossible à l'arrêt :", f, e.message); } }
+}
+for (const sig of ["SIGTERM", "SIGINT"]) process.on(sig, () => { if (stopping) return; stopping = true; console.log("Arrêt demandé (" + sig + ") : enregistrement des données en attente");
+  flushAll(); SERVER.close(() => process.exit(0)); SERVER.closeIdleConnections?.(); setTimeout(() => process.exit(0), 8000).unref(); });
+SERVER.listen(PORT, "0.0.0.0", () => console.log(`Mastery en ligne sur le port ${PORT} · ${USERS.length} compte(s) · ${env("ANTHROPIC_API_KEY") ? "IA serveur" : "IA non configurée"} · données ${PERSISTENT ? "sur le volume " + DATA : "TEMPORAIRES : ajoute un Volume Railway monté sur /data"}`));

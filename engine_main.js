@@ -8,10 +8,10 @@ const PDF_BASE = require("path").dirname(require.resolve("pdfjs-dist/package.jso
 async function openFile(buf, mime){
   if (mime === "application/pdf" || buf.slice(0, 5).toString() === "%PDF-"){
     const lib = await pdfjs();
-    const pdf = await lib.getDocument({data:new Uint8Array(buf), isEvalSupported:false, wasmUrl:PDF_BASE + "wasm/", standardFontDataUrl:PDF_BASE + "standard_fonts/"}).promise;
+    const task = lib.getDocument({data:new Uint8Array(buf), isEvalSupported:false, wasmUrl:PDF_BASE + "wasm/", standardFontDataUrl:PDF_BASE + "standard_fonts/"}), pdf = await task.promise;
     return {n:pdf.numPages, page:async i => { const pg = await pdf.getPage(i); const vp = pg.getViewport({scale:2000 / Math.max(pg.view[2], pg.view[3])});
       const cc = pdf.canvasFactory.create(Math.round(vp.width), Math.round(vp.height)); await pg.render({canvasContext:cc.context, viewport:vp, canvas:cc.canvas}).promise; pg.cleanup(); return cc.canvas; },
-      close:() => pdf.destroy()};
+      close:() => task.destroy()};
   }
   const {loadImage} = require("@napi-rs/canvas"); const im = await loadImage(buf);
   const sc = Math.min(1, 2200 / Math.max(im.width, im.height)), cv = createCanvas(Math.round(im.width * sc), Math.round(im.height * sc));
