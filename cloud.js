@@ -93,8 +93,8 @@ async function serverDB(){
   });
   async function sendDoc(p, val, op, patch){
     const u = "/api/db/doc?path=" + encodeURIComponent(p);
-    const res = op === "delete" ? await fetch(u, {method:"DELETE", credentials:"same-origin"})
-      : await fetch(u, {method:op === "update" ? "PATCH" : "PUT", credentials:"same-origin", headers:{"content-type":"application/json"}, body:JSON.stringify(op === "update" ? patch : val)});
+    const res = op === "delete" ? await fetch(u, {method:"DELETE", credentials:"same-origin", signal:AbortSignal.timeout(25000)})
+      : await fetch(u, {method:op === "update" ? "PATCH" : "PUT", credentials:"same-origin", headers:{"content-type":"application/json"}, body:JSON.stringify(op === "update" ? patch : val), signal:AbortSignal.timeout(25000)});
     if (!res.ok) throw {code:res.status === 401 ? "need_code" : res.status === 402 ? "no_access" : "cloud_write", message:"serveur " + res.status};
   }
   let busy = false;

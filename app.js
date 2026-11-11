@@ -16,7 +16,7 @@ const half = v => Math.round(v * 2) / 2;
 document.addEventListener("DOMContentLoaded", () => { try { if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js"; } catch(e){} });
 /* Filet de sécurité : une erreur imprévue ne laisse pas l'écran figé sans explication */
 window.addEventListener("error", ev => { if (!ev.error || /ResizeObserver|Script error/i.test(ev.message || "")) return; console.error(ev.error); try { toast("Un problème est survenu. Si un bouton ne répond plus, recharge la page.", 6000); } catch(e){} });
-window.addEventListener("unhandledrejection", ev => { console.error(ev.reason); try { const c = ev.reason?.code; toast(c ? aiErr(c) : "Un problème est survenu. Réessaie, ou recharge la page.", 6000); } catch(e){} });
+window.addEventListener("unhandledrejection", ev => { if (ev.reason?.shown) return; console.error(ev.reason); try { const c = ev.reason?.code; toast(c ? aiErr(c) : "Un problème est survenu. Réessaie, ou recharge la page.", 6000); } catch(e){} });
 function toast(msg, ms = 3500){ const t = document.createElement("div"); t.className = "toast"; t.textContent = msg; document.body.append(t); setTimeout(() => t.remove(), ms); }
 
 const MATIERES = ["Mathématiques","Français","Histoire-Géographie","SVT","Physique-Chimie","Anglais","Espagnol","Allemand","Philosophie","SES","Technologie","NSI","Arts plastiques","Éducation musicale"];
@@ -178,7 +178,7 @@ const NOTATION_DEF = () => { const b = BAREMES.includes(S.me?.bareme) ? S.me.bar
 const notation = () => { const n = prefs().notation; return n?.type ? {...NOTATION_DEF(), ...n} : NOTATION_DEF(); };
 const bareme = () => { const n = notation(); return n.type === "lettres" ? "AF" : n.type === "pct" ? "100" : String(n.sur); };
 const PCT = () => document.documentElement.lang === "en" ? "%" : " %";
-const fmtPas = (x, pas) => { const r = Math.round(x / pas) * pas, d = pas >= 1 ? 0 : pas >= 0.1 ? 1 : 2; return String(+r.toFixed(d)).replace(".", document.documentElement.lang === "en" ? "." : ","); };
+const fmtPas = (x, pas) => { const r = Math.round(x / pas + 1e-9) * pas, d = pas >= 1 ? 0 : (pas === 0.5 || pas === 0.1) ? 1 : 2; return String(+r.toFixed(d)).replace(".", document.documentElement.lang === "en" ? "." : ","); };
 const letterOf = (p, N = notation()) => { const L = [...(N.lettres?.length ? N.lettres : lettresOf("us"))].sort((a, b) => b.min - a.min); return (L.find(x => p >= x.min) || L[L.length - 1]).l; };
 const nvN = (n, N) => n == null || isNaN(n) ? "—" : N.type === "lettres" ? letterOf(n * 5, N) : N.type === "pct" ? fmtPas(n * 5, N.pas || 1) : fmtPas(n / 20 * (N.sur || 20), N.pas || 0.1);
 const sfxOf = N => N.type === "lettres" ? "" : N.type === "pct" ? PCT() : "/" + (N.sur || 20);
@@ -196,10 +196,13 @@ function write(path, data, mode = "set"){
   const run = () => mode === "update" ? DB.doc(path).update(data) : mode === "delete" ? DB.doc(path).delete() : DB.doc(path).set(data);
   const retry = (n) => run().catch(e => { if (n > 0 && e?.code !== "no_access" && e?.code !== "quota_exceeded" && !/403/.test(e?.message || "")) return new Promise(r => setTimeout(r, n === 2 ? 1500 : 4000)).then(() => retry(n - 1)); throw e; });
   SAVE.n++; saveState();
-  wq = wq.then(() => retry(2)).then(() => { SAVE.err = false; SAVE.at = Date.now(); })
-    .catch(e => { SAVE.err = true; console.error(e); toast(e?.code === "no_access" ? aiErr("no_access") : e?.code === "quota_exceeded" ? "Base pleine : supprime d'anciens contrôles." : "⚠ Pas enregistré : la connexion au serveur a échoué. Vérifie le réseau puis refais la dernière modification.", 9000); })
+  const p = wq.then(() => retry(2)).then(() => { SAVE.err = false; SAVE.at = Date.now(); })
+    .catch(e => { SAVE.err = true; console.error(e); toast(e?.code === "no_access" ? aiErr("no_access") : e?.code === "quota_exceeded" ? "Base pleine : supprime d'anciens contrôles." : "⚠ Pas enregistré : la connexion au serveur a échoué. Vérifie le réseau puis refais la dernière modification.", 9000);
+      /* L'échec remonte à l'appelant : la suite (« Corrigée », « Validée »…) ne s'affiche pas alors que rien n'est enregistré */
+      throw Object.assign(new Error("write_failed"), {shown:true, code:e?.code}); })
     .finally(() => { SAVE.n--; saveState(); });
-  return wq;
+  wq = p.catch(() => {});
+  return p;
 }
 /* État de l'enregistrement, affiché dans l'éditeur : Enregistrement… / Enregistré / Échec */
 const SAVE = {n:0, err:false, at:0, dirty:false};
@@ -813,7 +816,7 @@ async function printSheets(c, list){
         pdf.addImage(cv.toDataURL("image/jpeg", 0.9), "JPEG", 0, 0, 595.28, 841.89);
       }
       const old = f.copies?.[e.id] || {};
-      copies[e.id] = {version, pages:layout, scans:old.scans || {}, answers:old.answers || {}, validee:!!old.validee};
+      copies[e.id] = {...old, version:Object.keys(old.answers || {}).length && old.version ? old.version : version, pages:layout, scans:old.scans || {}, answers:old.answers || {}, validee:!!old.validee};
     }
     stage.innerHTML = "";
     const blob = pdf.output("blob");
@@ -885,7 +888,7 @@ function qItem(it){
 }
 async function fileToCanvases(file){
   if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)){
-    const pdf = await pdfjsLib.getDocument({data: await file.arrayBuffer()}).promise; const out = [];
+    const pdf = await pdfjsLib.getDocument({isEvalSupported:false, data: await file.arrayBuffer()}).promise; const out = [];
     for (let i = 1; i <= pdf.numPages; i++){ const pg = await pdf.getPage(i); const vp = pg.getViewport({scale: 2000 / Math.max(pg.view[2], pg.view[3])});
       const cv = document.createElement("canvas"); cv.width = vp.width; cv.height = vp.height; await pg.render({canvasContext:cv.getContext("2d"), viewport:vp}).promise; out.push(cv); }
     return out;
@@ -989,7 +992,7 @@ function markersOk(found){
 }
 const levD = (a, b) => { const d = Array.from({length:a.length + 1}, (_, i) => [i]); for (let j = 1; j <= b.length; j++) d[0][j] = j;
   for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); return d[a.length][b.length]; };
-function closest(id, list){ let best = null, bd = 99; for (const x of list){ const v = levD(id, x); if (v < bd){ bd = v; best = x; } } return bd <= 2 ? best : null; }
+function closest(id, list){ let best = null, bd = 99, tie = false; for (const x of list){ const v = levD(id, x); if (v < bd){ bd = v; best = x; tie = false; } else if (v === bd && x !== best) tie = true; } return bd <= 2 && !tie ? best : null; }
 const FOOTER_PROMPT = `Image : bas d'une feuille imprimée. Recopie exactement la ligne qui commence par « Mastery » (deux codes de lettres minuscules et chiffres séparés par un point) et le numéro de page « page X / Y ». Attention aux confusions l/1, o/0, q/g. Dans "page", mets seulement le nombre X (un entier). Réponds uniquement en JSON : {"ligne":"…","page":1}`;
 async function footerId(cv){
   if (!AI) return null;
@@ -1074,7 +1077,7 @@ function inkRatio(cv, H, b){ /* part de pixels foncés dans le cadre (lignes gri
   return n ? dark / n : 1;
 }
 /* Garde-fou : une réponse sans contenu vaut 0, quoi qu'en dise l'IA */
-const NO_ANSWER = /^\s*(je\s*(ne)?\s*sais\s*pas|j'?\s*sais\s*pas|jsp|aucune\s*id[ée]e|pas\s*d'?\s*id[ée]e|je\s*n'?\s*ai\s*pas\s*compris|rien|néant|\?+|-+|\.+|x)\s*[.!?]*\s*$/i;
+const NO_ANSWER = /^\s*(je\s*(ne)?\s*sais\s*pas|j'?\s*sais\s*pas|jsp|aucune\s*id[ée]e|pas\s*d'?\s*id[ée]e|je\s*n'?\s*ai\s*pas\s*compris|néant|\?+|-+|\.+)\s*[.!?]*\s*$/i;
 const isNoAnswer = t => !String(t || "").replace(/\[illisible\]/g, "").replace(/\$/g, "").trim() || NO_ANSWER.test(String(t).replace(/\$/g, ""));
 function markFautes(t, fautes){ let out = t; for (const f of (Array.isArray(fautes) ? fautes : []).map(String).filter(x => x.trim()).slice(0, 8)){ const i = out.indexOf(f); if (i >= 0 && !out.slice(0, i).endsWith("⟦")) out = out.slice(0, i) + "⟦" + f + "⟧" + out.slice(i + f.length); } return out; }
 function pix(cv){ if (!cv._d) cv._d = cv.getContext("2d").getImageData(0, 0, cv.width, cv.height).data; return cv._d; }
@@ -1103,7 +1106,7 @@ async function pdfPage(pdf, i, side){ const pg = await pdf.getPage(i); const vp 
   const cv = document.createElement("canvas"); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height); await pg.render({canvasContext:cv.getContext("2d"), viewport:vp}).promise; pg.cleanup(); return cv; }
 async function lazyPages(file){
   if (file.type === "application/pdf" || /\.pdf$/i.test(file.name)){
-    const pdf = await pdfjsLib.getDocument({data: await file.arrayBuffer()}).promise, out = [], src = {qrBad:0};
+    const pdf = await pdfjsLib.getDocument({isEvalSupported:false, data: await file.arrayBuffer()}).promise, out = [], src = {qrBad:0};
     for (let i = 1; i <= pdf.numPages; i++){ let thumb = ""; try { thumb = (await pdfPage(pdf, i, 120)).toDataURL("image/jpeg", .6); } catch(e){}
       out.push({n:pdf.numPages, i, thumb, src, load:() => pdfPage(pdf, i, 2000)}); }
     return out;
@@ -1291,7 +1294,7 @@ function vCorrect(){
   const f = feuille(c.id) || {copies:{}}, studs = studentsOf(c), max = maxOf(c);
   if (!S.corrEleve || !studs.find(e => e.id === S.corrEleve)) S.corrEleve = (studs.find(e => { const cp = f.copies[e.id]; return cp && !cp.validee && Object.keys(cp.answers || {}).length; }) || studs[0])?.id;
   const e = studs.find(x => x.id === S.corrEleve), cp = f.copies?.[S.corrEleve];
-  const nAlert = studs.filter(x => { const k = f.copies[x.id]; return k && !k.validee && copyDone(c, k) && !Object.values(k.answers || {}).some(a => !a.lisible); }).length;
+  const nAlert = studs.filter(x => { const k = f.copies[x.id]; return k && !k.validee && copyDone(c, k) && !Object.values(k.answers || {}).some(a => a.lisible === false); }).length;
   return `
   <div class="head"><div><h2>Correction</h2><p>L'IA propose ; tu valides. Les passages soulignés en rouge sont ceux que l'IA juge erronés.</p></div>
     <select id="corrSel" style="max-width:440px" aria-label="Contrôle">${selOpts(list, c.id, x => (x.type === "rattrapage" ? "Rattrapage · " : x.type === "exercices" ? "Exercices · " : "") + x.titre + " · " + (classe(x.classeId)?.nom || ""), x => x.id)}</select></div>
@@ -1300,7 +1303,7 @@ function vCorrect(){
     <aside class="panel" style="padding:8px">
       <div class="row between" style="padding:4px 8px 8px"><span class="label">Copies</span>
         ${nAlert ? `<button class="btn sm" id="valAll">Valider les ${nAlert} sans alerte</button>` : ""}</div>
-      ${studs.map(x => { const k = f.copies[x.id]; const n = k ? Object.keys(k.answers || {}).length : 0; const done = copyDone(c, k); const warn = k && Object.values(k.answers || {}).some(a => !a.lisible);
+      ${studs.map(x => { const k = f.copies[x.id]; const n = k ? Object.keys(k.answers || {}).length : 0; const done = copyDone(c, k); const warn = k && Object.values(k.answers || {}).some(a => a.lisible === false);
         return `<button class="stu" data-cel="${x.id}" aria-current="${x.id === S.corrEleve}"><span>${esc(x.prenom)} ${esc(x.nom)}</span><span class="row" style="gap:6px">
         ${isAbs(c, x) ? `<span class="chip">absent</span>` : !n ? `<span class="chip">non scannée</span>` : done ? `<span class="num">${noteS(final20(c, k))}</span>${k.validee ? `<span class="chip ok">✓</span>` : `<span class="chip ${warn ? "bad" : "warn"}">${warn ? "à vérifier" : "à valider"}</span>`}` : `<span class="chip warn">${n}/${c.questions.length} q.</span>`}</span></button>`; }).join("")}
       <div style="padding:10px 8px 4px;border-top:1px solid var(--line);margin-top:6px" class="row"><button class="btn sm" id="csv">Exporter les notes (CSV)</button><button class="btn sm" id="renduAll">Copies rendues de la classe (PDF)</button></div>
@@ -1312,7 +1315,7 @@ function vCorrect(){
 function scoreCtl(q, a, eid, k){
   const n = noteOf(a), P = +q.points, opts = [...new Set([0, half(P / 2), P])];
   return `<div class="score">${opts.map(v => `<button class="qs${n === v ? " on" : ""}" data-qset="${v}" data-q="${q.id}" data-eid="${eid}" aria-label="${fmt(v)} point(s)">${fmt(v)}</button>`).join("")}
-    <input type="number" inputmode="decimal" min="0" max="${q.points}" step="0.5" data-score="${q.id}" data-eid="${eid}" value="${n ?? ""}" aria-label="Note question ${k + 1}"><span class="den">/${fmt(P)}</span></div>`;
+    <input type="number" inputmode="decimal" min="0" max="${q.points}" step="0.5" id="sc-${esc(q.id)}-${esc(eid)}" data-live data-score="${esc(q.id)}" data-eid="${esc(eid)}" value="${esc(n ?? "")}" aria-label="Note question ${k + 1}"><span class="den">/${fmt(P)}</span></div>`;
 }
 /* Correction question par question, pour toute la classe */
 function vByQuestion(c, f, studs){
@@ -1338,7 +1341,7 @@ function vByQuestion(c, f, studs){
         ${scoreCtl(q, a, e.id, qi)}</div>
       ${a ? `${a.crop ? `<img class="crop" alt="Cadre scanné" src="${esc(blobSrc(a.crop))}" data-zoom="${esc(blobSrc(a.crop))}">` : ""}
         <div class="answer" dir="auto">${renderAnnot(a.annot || a.transcription, q.id, e.id) || '<span class="muted">(cadre vide)</span>'}</div>
-        ${!a.lisible ? `<div class="small" style="color:var(--warn)">⚠ Lecture incertaine : compare avec la photo.</div>` : ""}
+        ${a.lisible === false ? `<div class="small" style="color:var(--warn)">⚠ Lecture incertaine : compare avec la photo.</div>` : ""}
         ${a.commentaire ? `<div class="small note" dir="auto">${esc(a.commentaire)}</div>` : ""}
         ${(a.erreurs || []).length ? `<div class="tags">${a.erreurs.map((t, j) => `<span class="chip bad">${esc(t)} <button class="btn sm ghost" style="padding:0 4px;min-height:0" data-unerr="${q.id}|${j}" data-eid="${e.id}" aria-label="Retirer cette erreur">×</button></span>`).join("")}</div>` : ""}`
         : `<div class="small muted">Pas encore de réponse lue pour cette question.</div>`}
@@ -1477,7 +1480,7 @@ function copyView(c, e, cp, studs){
       ${a ? `${edT ? `<textarea id="tr-${q.id}" data-live dir="auto">${esc(a.transcription)}</textarea><div class="row"><button class="btn sm primary" data-retr="${q.id}">Recorriger avec ce texte (IA)</button><button class="btn sm ghost" data-trx="${q.id}">Annuler</button><span class="status" id="rs-${q.id}"></span></div>`
         : `<div class="answer" dir="auto">${renderAnnot(a.annot || a.transcription, q.id) || '<span class="muted">(cadre vide)</span>'}</div>`}
       ${a.crop ? `<img class="crop" alt="Cadre scanné" src="${esc(blobSrc(a.crop))}" data-zoom="${esc(blobSrc(a.crop))}">` : ""}
-      ${!a.lisible ? `<div class="small" style="color:var(--warn)">⚠ Lecture incertaine : compare avec la photo${a.crop ? ` ou <button class="btn sm" data-precise="${q.id}">Relire en mode précis (IA)</button>` : "."}</div><span class="status" id="pr-${q.id}"></span>` : ""}
+      ${a.lisible === false ? `<div class="small" style="color:var(--warn)">⚠ Lecture incertaine : compare avec la photo${a.crop ? ` ou <button class="btn sm" data-precise="${q.id}">Relire en mode précis (IA)</button>` : "."}</div><span class="status" id="pr-${q.id}"></span>` : ""}
       <div class="comment">${edC ? `<textarea id="cm-${q.id}" data-live>${esc(a.commentaire)}</textarea><div class="row"><button class="btn sm primary" data-savecm="${q.id}">Enregistrer</button><button class="btn sm ghost" data-cmx="${q.id}">Annuler</button></div>`
         : `<div class="note" dir="auto">${esc(a.commentaire)}</div>`}
         <div class="tags">${(a.acquis || []).map(t => `<span class="chip ok">${esc(t)}</span>`).join("")}${(a.erreurs || []).map((t, j) => `<span class="chip bad">${esc(t)} <button class="btn sm ghost" style="padding:0 4px;min-height:0" data-unerr="${q.id}|${j}" aria-label="Retirer cette erreur" title="Retirer">×</button></span>`).join("")}</div>
@@ -1648,7 +1651,7 @@ async function importCourseFiles(files, o = {}){
   for (const f of files){
     if (f.type === "application/pdf" || /\.pdf$/i.test(f.name)){
       st.innerHTML = `<span class="thinking">Lecture du PDF « ${esc(f.name)} »…</span>`;
-      const pdf = await pdfjsLib.getDocument({data: await f.arrayBuffer()}).promise; let txt = "";
+      const pdf = await pdfjsLib.getDocument({isEvalSupported:false, data: await f.arrayBuffer()}).promise; let txt = "";
       for (let i = 1; i <= pdf.numPages; i++){ const tc = await (await pdf.getPage(i)).getTextContent(); txt += tc.items.map(x => x.str + (x.hasEOL ? "\n" : " ")).join("") + "\n\n"; }
       if (hebRatio(txt) > .05){ txt = fixHebrewText(txt); S.hebPdf = [...(S.hebPdf || []), f]; }
       if (txt.replace(/\s/g, "").length > 150 * pdf.numPages) parts.push(txt.trim());
@@ -1766,7 +1769,7 @@ function noteRetenue(c, e){
   const rs = store.controles.filter(x => x.type === "rattrapage" && x.parentId === c.id && x.eleves?.includes(e.id)).sort((a, b) => (a.createdAt || "").localeCompare(b.createdAt || ""));
   const r = [...rs].reverse().find(x => copyDone(x, feuille(x.id)?.copies?.[e.id])) || null, R = rattRule(r || rs[rs.length - 1]);
   if (!r) return {base, ratt:null, retenue:base, R, r:rs[rs.length - 1] || null};
-  const n = final20(r, feuille(r.id).copies[e.id]), cap = v => Math.min(v, R.plafond);
+  const n = final20(r, feuille(r.id).copies[e.id]), cap = v => Math.min(v, Math.max(R.plafond, base));
   const v = R.regle === "bonus" ? Math.max(base, cap(base + R.bonus * n / 20)) : R.regle === "moyenne" ? (base + n) / 2 : R.regle === "remplace" ? cap(n) : R.regle === "formatif" ? base : Math.max(base, cap(n));
   return {base, ratt:n, retenue:Math.round(v * 100) / 100, R, r};
 }
@@ -1892,7 +1895,7 @@ document.addEventListener("click", async ev => {
   if (t.id === "c-heb-ai"){ const st = $("#c-st"), files = S.hebPdf || []; if (!files.length) return;
     if (!confirm("Remplacer le texte extrait du PDF par une lecture IA des pages ? (plus fiable pour l'hébreu, un peu plus coûteux)")) return;
     try { const cvs = [];
-      for (const f of files){ const pdf = await pdfjsLib.getDocument({data: await f.arrayBuffer()}).promise;
+      for (const f of files){ const pdf = await pdfjsLib.getDocument({isEvalSupported:false, data: await f.arrayBuffer()}).promise;
         for (let i = 1; i <= Math.min(pdf.numPages, 40); i++){ const pg = await pdf.getPage(i); const vp = pg.getViewport({scale: 2000 / Math.max(pg.view[2], pg.view[3])}); const cv = document.createElement("canvas"); cv.width = vp.width; cv.height = vp.height; await pg.render({canvasContext:cv.getContext("2d"), viewport:vp}).promise; cvs.push(cv); } }
       const per = Math.max(1, LIM?.images?.maxCount || 1), out = [];
       for (let i = 0; i < cvs.length; i += per){ st.innerHTML = `<span class="thinking">Lecture IA des pages ${i + 1} à ${Math.min(i + per, cvs.length)} sur ${cvs.length}…</span>`;
@@ -2079,15 +2082,15 @@ document.addEventListener("click", async ev => {
       await write("feuilles/" + C.id, {copies:{[S.corrEleve]:{validee:true, answers}}}, "update");
       bankPush(C.questions.filter(q => q.type !== "qcm").map(q => cp?.answers?.[q.id]).filter(a => a?.crop && a.transcription && a.lisible !== false && !a.auto).map(a => ({asset:a.crop, texteIA:a.transcriptionIA ?? a.transcription, texte:a.transcription, source:"validation", ...bankMeta(C)})));
       const f = feuille(C.id), studs = studentsOf(C); const next = studs.find(e => e.id !== S.corrEleve && f.copies[e.id] && !f.copies[e.id].validee && copyDone(C, f.copies[e.id]));
-      if (studs.every(e => e.id === S.corrEleve || f.copies[e.id]?.validee) && C.statut !== "corrige"){ C.statut = "corrige"; await saveCtrl(C); toast("Toutes les copies sont validées."); }
+      if (studs.every(e => e.id === S.corrEleve || isAbs(C, e) || f.copies[e.id]?.validee) && C.statut !== "corrige"){ C.statut = "corrige"; await write("controles/" + C.id, {statut:"corrige"}, "update"); toast("Toutes les copies sont validées."); }
       if (next){ S.corrEleve = next.id; S.editTr = {}; S.editCom = {}; } return render(); }
     if (t.id === "valAll"){ const f = feuille(C.id); const upd = {copies:{}};
-      studentsOf(C).forEach(e => { const k = f.copies[e.id]; if (k && !k.validee && copyDone(C, k) && !Object.values(k.answers || {}).some(a => !a.lisible)) upd.copies[e.id] = {validee:true, answers:Object.fromEntries(C.questions.map(q => [q.id, {valide:true}]))}; });
+      studentsOf(C).forEach(e => { const k = f.copies[e.id]; if (k && !k.validee && copyDone(C, k) && !Object.values(k.answers || {}).some(a => a.lisible === false)) upd.copies[e.id] = {validee:true, answers:Object.fromEntries(C.questions.map(q => [q.id, {valide:true}]))}; });
       await write("feuilles/" + C.id, upd, "update"); toast(Object.keys(upd.copies).length + " copie(s) validée(s)."); return; }
     if (t.id === "csv"){ const f = feuille(C.id) || {copies:{}}, max = maxOf(C);
       const rows = [["Élève", ...C.questions.map((q, k) => `Q${k + 1} (/${q.points})`), "Total", "Sur 20 (brute)", "Note finale /20", "Rattrapage /20", "Note retenue /20", "Validée", "Note retenue (mon barème)"]];
       studentsOf(C).forEach(e => { const k = f.copies[e.id]; if (isAbs(C, e)) return rows.push([e.prenom + " " + e.nom, ...C.questions.map(() => ""), "ABS", "ABS", "ABS", "", "", "", "ABS"]); rows.push([e.prenom + " " + e.nom, ...C.questions.map(q => fmt(noteOf(k?.answers?.[q.id]))), copyDone(C, k) ? fmt(copyTotal(C, k)) : "", copyDone(C, k) ? fmt(on20(copyTotal(C, k), max)) : "", copyDone(C, k) ? fmt(final20(C, k)) : "", ...(N => [N?.ratt != null ? fmt(N.ratt) : "", N ? fmt(N.retenue) : ""])(isCtrl(C) ? noteRetenue(C, e) : null), k?.validee ? "oui" : "non", copyDone(C, k) ? noteS(isCtrl(C) ? noteRetenue(C, e)?.retenue ?? final20(C, k) : final20(C, k)) : ""]); });
-      const csv = "﻿" + rows.map(r => r.map(x => `"${String(x).replace(/"/g, '""')}"`).join(";")).join("\n");
+      const csv = "﻿" + rows.map(r => r.map(x => { x = String(x); if (/^[=+\-@\t\r]/.test(x) && !/^-?[\d.,]+$/.test(x)) x = "'" + x; return `"${x.replace(/"/g, '""')}"`; }).join(";")).join("\n");
       if (!DL) return toast("Téléchargement indisponible dans cette vue.");
       try { await DL.save({filename:`Notes - ${C.titre}.csv`.replace(/[\\/:*?"<>|]/g, "-"), data:csv}); } catch(e){ if (e?.code !== "declined") toast("Téléchargement impossible."); } return; }
     if (t.id === "mkRatt"){ const e = eleveOf(C, S.corrEleve); rattTask(C, e, "#mkRatt"); return; }

@@ -741,7 +741,6 @@
  "+ Nouveau quiz": "+ Novo quiz",
  "Exercices en ligne": "Exercícios on-line",
  "Des quiz tirés de tes cours. Chaque élève s'entraîne avec son code personnel, autant qu'il veut : les questions changent à chaque tentative et la correction est immédiate.": "Quizzes gerados a partir das suas aulas. Cada aluno treina com seu código pessoal, quantas vezes quiser: as questões mudam a cada tentativa e a correção é imediata.",
- "Réservé au forfait Pro": "Exclusivo do plano Pro",
  "Une banque de 20 à 50 questions générée à partir de ton cours": "Um banco de 20 a 50 questões gerado a partir da sua aula",
  "Chaque élève refait le quiz autant qu'il veut, avec des questions différentes": "Cada aluno refaz o quiz quantas vezes quiser, com questões diferentes",
  "Correction instantanée, explication après chaque réponse": "Correção instantânea, explicação após cada resposta",
@@ -937,7 +936,6 @@
  "Exercices d'entraînement": "Exercícios de treino",
  "Des feuilles d'exercices tirées du cours, régénérables à volonté, imprimables et corrigées au scan.": "Listas de exercícios tiradas da aula, que podem ser geradas de novo à vontade, para imprimir e corrigidas pela digitalização.",
  "Votre espace privé": "Seu espaço privado",
- "Vos classes, vos élèves et vos copies ne sont visibles que par vous.": "Suas turmas, seus alunos e suas provas só são visíveis para você.",
  "Le professeur décide": "O professor decide",
  "L'IA propose, vous validez": "A IA sugere, você valida",
  "Chaque question est modifiable": "Cada questão é editável",
@@ -1187,7 +1185,6 @@
  "Résultats, rattrapages et élèves en difficulté par matière": "Resultados, recuperações e alunos com dificuldade por disciplina",
  "Tout le forfait Pro est ouvert pendant l'essai, sans carte bancaire. Ensuite, vous choisissez votre forfait, résiliable à tout moment.": "Todo o plano Pro fica liberado durante o teste, sem cartão de crédito. Depois, você escolhe seu plano, que pode ser cancelado a qualquer momento.",
  "Un mois gratuit, puis un abonnement simple": "Um mês grátis, depois uma assinatura simples",
- "Vous choisissez Essentiel ou Pro, au mois ou à l'année, avec un paiement sécurisé par Stripe. Sans abonnement, vos données restent consultables mais vous ne pouvez plus créer ni corriger. Rien n'est prélevé sans votre accord.": "Você escolhe Essencial ou Pro, mensal ou anual, com pagamento seguro pelo Stripe. Sem assinatura, seus dados continuam disponíveis para consulta, mas você não pode mais criar nem corrigir. Nada é cobrado sem o seu consentimento.",
  "Vue direction sur toutes les classes": "Visão da direção sobre todas as turmas",
  "· inscription validée par l'équipe Mastery": "· cadastro aprovado pela equipe Mastery",
  "Établissement": "Escola",
@@ -2156,5 +2153,12 @@
  "\\nLE COURS RÉUNIT PLUSIEURS SUJETS. Le contrôle doit porter sur TOUS ces sujets, répartis équitablement (au moins une question par sujet), et non seulement sur le premier :\\n": "\\nA AULA REÚNE VÁRIOS TEMAS. A avaliação deve cobrir TODOS, de forma equilibrada (pelo menos uma questão por tema), e não só o primeiro:\\n",
  "\\nPour chaque question, indique \"sujet\" (le titre du sujet concerné, tel qu'écrit ci-dessus).\\n": "\\nPara cada questão, indique \"sujet\" (o título do tema, exatamente como escrito acima).\\n",
  "\\nSi le cours contient plusieurs sujets, chapitres ou textes distincts, répartis les questions sur chacun d'eux : ne te limite pas au premier.\\n": "\\nSe a aula contém vários temas, capítulos ou textos distintos, distribua as questões entre todos: não se limite ao primeiro.\\n",
- "sujet(s)": "tema(s)"
+ "sujet(s)": "tema(s)",
+ "Pas de connexion : vérifie le réseau.": "Sem conexão: verifique a rede.",
+ "Reconnecte-toi avec ton code.": "Entre de novo com seu código.",
+ "Réessayer": "Tentar de novo",
+ "page illisible": "página ilegível",
+ "À partir du forfait Essentiel": "A partir do plano Essencial",
+ "Vos classes, vos élèves et vos copies ne sont pas visibles par les autres professeurs inscrits.": "Suas turmas, seus alunos e suas provas não ficam visíveis para os outros professores cadastrados.",
+ "Vous choisissez Découverte, Essentiel ou Complet, au mois ou à l'année, avec un paiement sécurisé par Stripe. Sans abonnement, vos données restent consultables mais vous ne pouvez plus créer ni corriger. Rien n'est prélevé sans votre accord.": "Você escolhe Descoberta, Essencial ou Completo, mensal ou anual, com pagamento seguro pelo Stripe. Sem assinatura, seus dados continuam disponíveis para consulta, mas você não pode mais criar nem corrigir. Nada é cobrado sem o seu consentimento."
 }

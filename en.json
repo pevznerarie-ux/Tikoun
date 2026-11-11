@@ -741,7 +741,6 @@
  "+ Nouveau quiz": "+ New quiz",
  "Exercices en ligne": "Online practice",
  "Des quiz tirés de tes cours. Chaque élève s'entraîne avec son code personnel, autant qu'il veut : les questions changent à chaque tentative et la correction est immédiate.": "Quizzes built from your lessons. Each student practices with their personal code, as much as they want: the questions change with every attempt and grading is instant.",
- "Réservé au forfait Pro": "Pro plan only",
  "Une banque de 20 à 50 questions générée à partir de ton cours": "A bank of 20 to 50 questions generated from your lesson",
  "Chaque élève refait le quiz autant qu'il veut, avec des questions différentes": "Each student retakes the quiz as many times as they want, with different questions",
  "Correction instantanée, explication après chaque réponse": "Instant grading, with an explanation after each answer",
@@ -937,7 +936,6 @@
  "Exercices d'entraînement": "Practice sheets",
  "Des feuilles d'exercices tirées du cours, régénérables à volonté, imprimables et corrigées au scan.": "Practice sheets drawn from the lesson, regenerable at will, printable and graded by scan.",
  "Votre espace privé": "Your private space",
- "Vos classes, vos élèves et vos copies ne sont visibles que par vous.": "Your classes, students, and papers are visible only to you.",
  "Le professeur décide": "The teacher decides",
  "L'IA propose, vous validez": "AI suggests, you approve",
  "Chaque question est modifiable": "Every question is editable",
@@ -1187,7 +1185,6 @@
  "Résultats, rattrapages et élèves en difficulté par matière": "Results, retakes and struggling students by subject",
  "Tout le forfait Pro est ouvert pendant l'essai, sans carte bancaire. Ensuite, vous choisissez votre forfait, résiliable à tout moment.": "The full Pro plan is open during the trial, no credit card needed. Then you pick your plan, cancel anytime.",
  "Un mois gratuit, puis un abonnement simple": "One month free, then a simple plan",
- "Vous choisissez Essentiel ou Pro, au mois ou à l'année, avec un paiement sécurisé par Stripe. Sans abonnement, vos données restent consultables mais vous ne pouvez plus créer ni corriger. Rien n'est prélevé sans votre accord.": "You choose Essential or Pro, monthly or yearly, with secure payment by Stripe. Without a plan, your data stays viewable but you can no longer create or grade. Nothing is charged without your consent.",
  "Vue direction sur toutes les classes": "Leadership view of every class",
  "· inscription validée par l'équipe Mastery": "· sign-up reviewed by the Mastery team",
  "Établissement": "School",
@@ -2154,5 +2151,12 @@
  "\\nLE COURS RÉUNIT PLUSIEURS SUJETS. Le contrôle doit porter sur TOUS ces sujets, répartis équitablement (au moins une question par sujet), et non seulement sur le premier :\\n": "\\nTHE LESSON COVERS SEVERAL TOPICS. The test must cover ALL of them, evenly (at least one question per topic), not only the first one:\\n",
  "\\nPour chaque question, indique \"sujet\" (le titre du sujet concerné, tel qu'écrit ci-dessus).\\n": "\\nFor each question, give \"sujet\" (the title of the topic concerned, exactly as written above).\\n",
  "\\nSi le cours contient plusieurs sujets, chapitres ou textes distincts, répartis les questions sur chacun d'eux : ne te limite pas au premier.\\n": "\\nIf the lesson contains several distinct topics, chapters or texts, spread the questions across all of them: don't stop at the first one.\\n",
- "sujet(s)": "topic(s)"
+ "sujet(s)": "topic(s)",
+ "Pas de connexion : vérifie le réseau.": "No connection: check your network.",
+ "Reconnecte-toi avec ton code.": "Sign in again with your code.",
+ "Réessayer": "Try again",
+ "page illisible": "unreadable page",
+ "À partir du forfait Essentiel": "Available from the Essential plan",
+ "Vos classes, vos élèves et vos copies ne sont pas visibles par les autres professeurs inscrits.": "Your classes, students, and papers are not visible to other teachers on Mastery.",
+ "Vous choisissez Découverte, Essentiel ou Complet, au mois ou à l'année, avec un paiement sécurisé par Stripe. Sans abonnement, vos données restent consultables mais vous ne pouvez plus créer ni corriger. Rien n'est prélevé sans votre accord.": "You choose Starter, Essential or Complete, monthly or yearly, with secure payment by Stripe. Without a plan, your data stays viewable but you can no longer create or grade. Nothing is charged without your consent."
 }

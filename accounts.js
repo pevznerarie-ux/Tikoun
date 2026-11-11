@@ -97,6 +97,9 @@ async function afterLogin(user, mustChange){
   if (!S.auth){ await loadUsers(); if (!SERVERSTORE) await startServer(); else { applyScope(); render(); } } else render();
 }
 async function bootAccounts(){
+  /* Lien « mot de passe oublié » : il passe avant une session restée ouverte sur l'appareil (poste partagé) */
+  const rst = /^#\/reset\/([a-f0-9]{48})$/.exec(location.hash);
+  if (rst){ try { await api("/api/logout", {method:"POST"}); } catch(e){} S.me = null; S.resetTok = rst[1]; S.auth = "reset"; refreshCaps(); return render(); }
   try { const j = await api("/api/me"); await afterLogin(j.user, !!j.user?.mustChange); }
   catch(e){ S.auth = e.status === 401 && e.setup ? "setup" : /^#\/reset\/[a-f0-9]{48}$/.test(location.hash) ? "reset" : /^#\/inscription/.test(location.hash) && window.TIKOUN_CONFIG?.signup ? "register" : "login";
     if (S.auth === "reset") S.resetTok = location.hash.split("/")[2]; if (S.auth === "register"){ const pl = location.hash.split("/")[2]; if (["decouverte", "essentiel", "complet"].includes(pl)) S.regPlan = pl; else if (pl === "pro") S.regPlan = "complet"; S.ecFor = "reg"; S.ec = {q:"", cp:"", res:null, sel:null, manual:false, busy:false, err:""}; } refreshCaps(); render(); }

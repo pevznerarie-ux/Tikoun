@@ -76,7 +76,7 @@ Réponds uniquement en JSON : {"cadre_vide":false,"lignes":[{"texte":"...","barr
     try{
       if(f.type==='application/pdf'||/\.pdf$/i.test(f.name)){
         if(!window.pdfjsLib)throw Error('La bibliothèque PDF n’a pas chargé. Recharge la page.');
-        const pdf=await pdfjsLib.getDocument({data:await f.arrayBuffer()}).promise;
+        const pdf=await pdfjsLib.getDocument({isEvalSupported:false, data:await f.arrayBuffer()}).promise;
         for(let i=1;i<=pdf.numPages;i++){const p=await pdf.getPage(i);const v=p.getViewport({scale:3200/Math.max(p.view[2],p.view[3])});const c=document.createElement('canvas');c.width=Math.ceil(v.width);c.height=Math.ceil(v.height);await p.render({canvasContext:c.getContext('2d'),viewport:v}).promise;pages.push(c)}
       }else if(f.type.startsWith('image/')){
         const bmp=await createImageBitmap(f);const c=document.createElement('canvas');c.width=bmp.width;c.height=bmp.height;c.getContext('2d').drawImage(bmp,0,0);pages.push(c);bmp.close();

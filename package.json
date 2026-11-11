@@ -7,9 +7,9 @@
     "start": "node server.js"
   },
   "dependencies": {
-    "@napi-rs/canvas": "^0.1.100",
+    "@napi-rs/canvas": "^1.1.0",
     "jsqr": "1.4.0",
-    "pdfjs-dist": "5.7.284"
+    "pdfjs-dist": "6.5.438"
   },
   "engines": {
     "node": ">=22"
