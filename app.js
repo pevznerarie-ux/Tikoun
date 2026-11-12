@@ -151,9 +151,20 @@ const copyTotal = (c, cp) => (c.questions || []).reduce((s, q) => s + (+noteOf(c
 const copyDone = (c, cp) => !!cp && (c.questions || []).every(q => noteOf(cp.answers?.[q.id]) != null);
 document.addEventListener("click", async ev => { const t = ev.target.closest("[data-abse]"); if (!t) return; ev.stopPropagation(); const c = ctrl(t.dataset.absc); if (!c) return;
   const st = new Set(c.absents || []), id = t.dataset.abse; st.has(id) ? st.delete(id) : st.add(id); c.absents = [...st];
-  await write("controles/" + c.id, {absents:c.absents}, "update"); toast(st.has(id) ? "Marqué absent : ce contrôle ne compte pas dans ses moyennes." : "Absence retirée."); render(); }, true);
+  await write("controles/" + c.id, {absents:c.absents}, "update"); toast(st.has(id) ? "Marqué absent : ce contrôle ne compte pas dans ses moyennes." : "Absence retirée."); await syncStatut(c); render(); }, true);
 /* Élève absent à un contrôle : sa copie (même scannée vide) ne compte ni dans ses moyennes ni dans celles de la classe */
 const isAbs = (c, e) => !!c && (c.absents || []).includes(typeof e === "string" ? e : e?.id);
+/* Fin de correction : chaque élève présent a sa copie validée ; les absents ne sont jamais attendus */
+const presentsOf = c => studentsOf(c).filter(e => !isAbs(c, e));
+const corrFini = c => { const f = feuille(c.id), ps = presentsOf(c); return ps.length > 0 && ps.every(e => f?.copies?.[e.id]?.validee); };
+/* Met le statut à jour : « Corrigé » dès que c'est fini, de nouveau « En correction » si une copie redevient à valider (absence retirée, note modifiée) */
+async function syncStatut(c, quiet){
+  if (!c || !["correction", "corrige", "imprime"].includes(c.statut)) return;
+  const fini = corrFini(c), want = fini ? "corrige" : c.statut === "corrige" ? "correction" : c.statut;
+  if (want === c.statut) return;
+  c.statut = want; await write("controles/" + c.id, {statut:want}, "update");
+  if (!quiet && fini) toast("Toutes les copies des élèves présents sont validées : contrôle corrigé.");
+}
 const absBtn = (c, e, lab) => `<button class="btn sm${isAbs(c, e) ? "" : " ghost"}" data-absc="${c.id}" data-abse="${e.id}">${isAbs(c, e) ? "Absent ✓ · annuler" : lab || "Marquer absent"}</button>`;
 const on20 = (t, m) => m ? t / m * 20 : null;
 const bonusMax = c => (+c.bonus?.proprete || 0) + (+c.bonus?.orthographe || 0);
@@ -430,7 +441,7 @@ function vHome(){
   </section>`;
   const cs = [...store.controles].sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
   const items = groupRatt(cs), todo = items.filter(x => !rattDone(x)), done = items.filter(rattDone);   // les rattrapages d'un même contrôle tiennent sur une ligne
-  let aValider = 0; cs.forEach(c => { const f = feuille(c.id); if (f) Object.values(f.copies || {}).forEach(cp => { if (!cp.validee && Object.keys(cp.answers || {}).length) aValider++; }); });
+  let aValider = 0; cs.forEach(c => { const f = feuille(c.id); if (f) Object.entries(f.copies || {}).forEach(([eid, cp]) => { if (!isAbs(c, eid) && !cp.validee && Object.keys(cp.answers || {}).length) aValider++; }); });
   const line = c => c.rs ? rattGroupRow(c) : ctrlRow(c, `${esc(c.matiere)} · ${esc(classe(c.classeId)?.nom || "?")}${c.type === "rattrapage" ? " · " + esc(studentsOf(c).map(e => e.prenom + " " + e.nom).join(", ")) : ""}${c.date ? " · " + esc(frDate(c.date)) : ""}`);
   const nEx = cs.filter(c => c.type === "exercices").length, nCtrl = cs.filter(c => !c.type || c.type === "controle").length;
   const hour = new Date().getHours(), hello = hour < 18 ? "Bonjour" : "Bonsoir";
@@ -1292,9 +1303,9 @@ function vCorrect(){
   if (!list.length) return `<div class="head"><h2>Correction</h2></div><div class="panel empty">Aucun contrôle imprimé pour l'instant.</div>`;
   const c = ctrl(S.corrCtrl) || list[0]; S.corrCtrl = c.id;
   const f = feuille(c.id) || {copies:{}}, studs = studentsOf(c), max = maxOf(c);
-  if (!S.corrEleve || !studs.find(e => e.id === S.corrEleve)) S.corrEleve = (studs.find(e => { const cp = f.copies[e.id]; return cp && !cp.validee && Object.keys(cp.answers || {}).length; }) || studs[0])?.id;
+  if (!S.corrEleve || !studs.find(e => e.id === S.corrEleve)) S.corrEleve = (studs.find(e => { const cp = f.copies[e.id]; return !isAbs(c, e) && cp && !cp.validee && Object.keys(cp.answers || {}).length; }) || studs[0])?.id;
   const e = studs.find(x => x.id === S.corrEleve), cp = f.copies?.[S.corrEleve];
-  const nAlert = studs.filter(x => { const k = f.copies[x.id]; return k && !k.validee && copyDone(c, k) && !Object.values(k.answers || {}).some(a => a.lisible === false); }).length;
+  const nAlert = studs.filter(x => { const k = f.copies[x.id]; return !isAbs(c, x) && k && !k.validee && copyDone(c, k) && !Object.values(k.answers || {}).some(a => a.lisible === false); }).length;
   return `
   <div class="head"><div><h2>Correction</h2><p>L'IA propose ; tu valides. Les passages soulignés en rouge sont ceux que l'IA juge erronés.</p></div>
     <select id="corrSel" style="max-width:440px" aria-label="Contrôle">${selOpts(list, c.id, x => (x.type === "rattrapage" ? "Rattrapage · " : x.type === "exercices" ? "Exercices · " : "") + x.titre + " · " + (classe(x.classeId)?.nom || ""), x => x.id)}</select></div>
@@ -1508,7 +1519,7 @@ function vAnalyse(){
   const ratts = store.controles.filter(x => x.type === "rattrapage" && x.parentId === c.id);
   const unval = rows.filter(r => !r.cp.validee).length;
   return `
-  <div class="head"><div><h2>Classe & rattrapage</h2><p>${rows.length} copie(s) corrigée(s) sur ${studs.length}${unval ? ` · <span style="color:var(--warn)">${unval} pas encore validée(s)</span>` : ""}</p></div>
+  <div class="head"><div><h2>Classe & rattrapage</h2><p>${rows.length} copie(s) corrigée(s) sur ${studs.filter(e => !isAbs(c, e)).length}${studs.some(e => isAbs(c, e)) ? ` · ${studs.filter(e => isAbs(c, e)).length} absent(s)` : ""}${unval ? ` · <span style="color:var(--warn)">${unval} pas encore validée(s)</span>` : ""}</p></div>
     <select id="anSel" style="max-width:440px" aria-label="Contrôle">${selOpts(list, c.id, x => (x.type === "rattrapage" ? "Rattrapage · " : x.type === "exercices" ? "Exercices · " : "") + x.titre + " · " + (classe(x.classeId)?.nom || ""), x => x.id)}</select></div>
   ${pubPanel(c)}
   <div class="grid g3">
@@ -1760,7 +1771,7 @@ function pubPanel(c){
   return `<section class="panel pubp"><div class="row between" style="gap:12px;flex-wrap:wrap"><div><h3 style="margin:0">Espace élève</h3>
     <p class="small muted" style="margin:4px 0 0">${pub ? `Résultats publiés le ${esc(frDate(pub.at.slice(0, 10)))} · ${Object.keys(pub.res).length} élève(s)${diff ? ` · <b style="color:var(--warn)">des notes ont changé depuis</b>` : ""}` : `Les élèves ne voient pas encore leurs résultats. Une fois publiés, chacun voit sa note, sa copie corrigée et les commentaires en se connectant avec son code et son nom de famille.`}</p></div>
     <div class="row">${pub ? `${diff ? `<button class="btn sm primary" id="pub-go">Mettre à jour la publication</button>` : `<span class="chip ok">Publié</span>`}<button class="btn sm ghost" id="pub-off">Retirer</button>` : `<button class="btn sm primary" id="pub-go"${n ? "" : " disabled"}>Publier les résultats aux élèves</button>`}</div></div>
-    ${!pub && n < studentsOf(c).length ? `<p class="small muted" style="margin:6px 0 0">${n} copie(s) validée(s) sur ${studentsOf(c).length} : seules les copies validées sont publiées.</p>` : ""}</section>`;
+    ${!pub && n < presentsOf(c).length ? `<p class="small muted" style="margin:6px 0 0">${n} copie(s) validée(s) sur ${presentsOf(c).length} : seules les copies validées sont publiées.</p>` : ""}</section>`;
 }
 /* Note retenue d'un élève : contrôle d'origine + dernier rattrapage corrigé, selon la règle */
 function noteRetenue(c, e){
@@ -2035,7 +2046,7 @@ document.addEventListener("click", async ev => {
     if (d.opencopy){ S.corrMode = "copie"; S.corrEleve = d.opencopy; S.editTr = {}; S.editCom = {}; render(); scrollTo({top:0}); return; }
     if (d.eid) S.corrEleve = d.eid;
     if (d.qset != null && d.q){ const q = C.questions.find(x => x.id === d.q); if (!q) return; const v = clamp(half(+d.qset), 0, +q.points);
-      await write("feuilles/" + C.id, {copies:{[d.eid]:{validee:false, answers:{[d.q]:{note:v, valide:false}}}}}, "update");
+      await write("feuilles/" + C.id, {copies:{[d.eid]:{validee:false, answers:{[d.q]:{note:v, valide:false}}}}}, "update"); await syncStatut(C, true);
       if (S.corrMode === "question"){ const cur = document.getElementById("qc-" + d.eid), nx = cur?.nextElementSibling; if (nx?.classList.contains("qcard")) nx.scrollIntoView({behavior:"smooth", block:"start"}); }
       return; }
     if (d.cel){ S.corrEleve = d.cel; S.editTr = {}; S.editCom = {}; render(); if (innerWidth < 760) document.querySelector(".copy")?.scrollIntoView({block:"start"}); return; }
@@ -2081,12 +2092,12 @@ document.addEventListener("click", async ev => {
       const answers = {}; C.questions.forEach(q => { answers[q.id] = noteOf(cp?.answers?.[q.id]) == null ? {valide:true, note:0, transcription:"", annot:"", commentaire:"Question non scannée ou sans réponse.", lisible:true} : {valide:true}; });
       await write("feuilles/" + C.id, {copies:{[S.corrEleve]:{validee:true, answers}}}, "update");
       bankPush(C.questions.filter(q => q.type !== "qcm").map(q => cp?.answers?.[q.id]).filter(a => a?.crop && a.transcription && a.lisible !== false && !a.auto).map(a => ({asset:a.crop, texteIA:a.transcriptionIA ?? a.transcription, texte:a.transcription, source:"validation", ...bankMeta(C)})));
-      const f = feuille(C.id), studs = studentsOf(C); const next = studs.find(e => e.id !== S.corrEleve && f.copies[e.id] && !f.copies[e.id].validee && copyDone(C, f.copies[e.id]));
-      if (studs.every(e => e.id === S.corrEleve || isAbs(C, e) || f.copies[e.id]?.validee) && C.statut !== "corrige"){ C.statut = "corrige"; await write("controles/" + C.id, {statut:"corrige"}, "update"); toast("Toutes les copies sont validées."); }
+      const f = feuille(C.id), studs = studentsOf(C); const next = studs.find(e => e.id !== S.corrEleve && !isAbs(C, e) && f.copies[e.id] && !f.copies[e.id].validee && copyDone(C, f.copies[e.id]));
+      await syncStatut(C);
       if (next){ S.corrEleve = next.id; S.editTr = {}; S.editCom = {}; } return render(); }
     if (t.id === "valAll"){ const f = feuille(C.id); const upd = {copies:{}};
-      studentsOf(C).forEach(e => { const k = f.copies[e.id]; if (k && !k.validee && copyDone(C, k) && !Object.values(k.answers || {}).some(a => a.lisible === false)) upd.copies[e.id] = {validee:true, answers:Object.fromEntries(C.questions.map(q => [q.id, {valide:true}]))}; });
-      await write("feuilles/" + C.id, upd, "update"); toast(Object.keys(upd.copies).length + " copie(s) validée(s)."); return; }
+      presentsOf(C).forEach(e => { const k = f.copies[e.id]; if (k && !k.validee && copyDone(C, k) && !Object.values(k.answers || {}).some(a => a.lisible === false)) upd.copies[e.id] = {validee:true, answers:Object.fromEntries(C.questions.map(q => [q.id, {valide:true}]))}; });
+      await write("feuilles/" + C.id, upd, "update"); toast(Object.keys(upd.copies).length + " copie(s) validée(s)."); await syncStatut(C, true); if (C.statut === "corrige") toast("Toutes les copies des élèves présents sont validées : contrôle corrigé."); return; }
     if (t.id === "csv"){ const f = feuille(C.id) || {copies:{}}, max = maxOf(C);
       const rows = [["Élève", ...C.questions.map((q, k) => `Q${k + 1} (/${q.points})`), "Total", "Sur 20 (brute)", "Note finale /20", "Rattrapage /20", "Note retenue /20", "Validée", "Note retenue (mon barème)"]];
       studentsOf(C).forEach(e => { const k = f.copies[e.id]; if (isAbs(C, e)) return rows.push([e.prenom + " " + e.nom, ...C.questions.map(() => ""), "ABS", "ABS", "ABS", "", "", "", "ABS"]); rows.push([e.prenom + " " + e.nom, ...C.questions.map(q => fmt(noteOf(k?.answers?.[q.id]))), copyDone(C, k) ? fmt(copyTotal(C, k)) : "", copyDone(C, k) ? fmt(on20(copyTotal(C, k), max)) : "", copyDone(C, k) ? fmt(final20(C, k)) : "", ...(N => [N?.ratt != null ? fmt(N.ratt) : "", N ? fmt(N.retenue) : ""])(isCtrl(C) ? noteRetenue(C, e) : null), k?.validee ? "oui" : "non", copyDone(C, k) ? noteS(isCtrl(C) ? noteRetenue(C, e)?.retenue ?? final20(C, k) : final20(C, k)) : ""]); });
@@ -2183,7 +2194,7 @@ document.addEventListener("change", async ev => {
     await write("feuilles/" + C.id, {copies:{[S.corrEleve]:{validee:false, bonusProf:{[d.bonus]:v}}}}, "update"); return; }
   if (el.id === "qbqSel"){ S.corrQ = el.value; return render(); }
   if (d.score){ const C = ctrl(S.corrCtrl), q = C.questions.find(x => x.id === d.score); const v = el.value === "" ? null : clamp(half(+el.value), 0, +q.points);
-    await write("feuilles/" + C.id, {copies:{[d.eid || S.corrEleve]:{validee:false, answers:{[d.score]:{note:v, valide:false}}}}}, "update"); return; }
+    await write("feuilles/" + C.id, {copies:{[d.eid || S.corrEleve]:{validee:false, answers:{[d.score]:{note:v, valide:false}}}}}, "update"); await syncStatut(C, true); return; }
   /* editor fields */
   if (d.sujets === "e"){ const ce = S.view === "edit" ? ctrl(S.editId) : null; if (!ce) return; ce.gen = {...(ce.gen || {}), sujets:el.value.split("\n").map(x => x.trim()).filter(Boolean)}; await saveCtrl(ce); return; }
   if (el.id === "prevEl"){ S.previewEleve = el.value; return drawPreview(); }

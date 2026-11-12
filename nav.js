@@ -46,9 +46,10 @@ function navKey(){ if (S.inCtrl || S.view === "edit" || S.view === "new") return
 
 /* Cadre commun d'un contrôle : en-tête, étapes, Précédent / Suivant */
 function ctrlProgress(c){
-  const f = feuille(c.id), studs = studentsOf(c), n = studs.length;
+  /* Les absents ne sont ni attendus au scan ni à la validation */
+  const f = feuille(c.id), all = studentsOf(c), studs = all.filter(e => !isAbs(c, e)), n = studs.length, abs = all.length - n;
   const sc = studs.filter(e => Object.keys(f?.copies?.[e.id]?.answers || {}).length).length, va = studs.filter(e => f?.copies?.[e.id]?.validee).length;
-  return {n, sc, va, printed:!!f && Object.keys(f.copies || {}).length > 0};
+  return {n, sc, va, abs, printed:!!f && Object.keys(f.copies || {}).length > 0};
 }
 function ctrlFrame(c, inner){
   const i = stepIdx(S.step), pr = ctrlProgress(c), cl = classe(c.classeId);
@@ -56,7 +57,7 @@ function ctrlFrame(c, inner){
   const prev = STEPS[i - 1], next = STEPS[i + 1];
   return `<div class="crumbs small row between"><a href="#/controles">← Tous les contrôles</a><button class="btn sm ghost danger" id="delCtrlTop">Supprimer le contrôle</button></div>
   <div class="head"><div><div class="label">${c.type === "rattrapage" ? "Rattrapage" : c.type === "exercices" ? "Exercices" : "Contrôle"} · ${esc(c.matiere)} · ${esc(cl?.nom || "?")}${c.date ? " · " + esc(frDate(c.date)) : ""}</div><h2>${esc(c.titre)}</h2></div>
-    <div class="row">${chipStatut(c)}${pr.printed ? `<span class="chip">${pr.sc}/${pr.n} scannées · ${pr.va}/${pr.n} validées</span>` : ""}</div></div>
+    <div class="row">${chipStatut(c)}${pr.printed ? `<span class="chip">${pr.sc}/${pr.n} scannées · ${pr.va}/${pr.n} validées${pr.abs ? ` · ${pr.abs} absent${pr.abs > 1 ? "s" : ""}` : ""}</span>` : ""}</div></div>
   <nav class="stepper" aria-label="Étapes">${STEPS.map(([k, l], j) => `<a href="#/controle/${c.id}/${k}" class="st ${j === i ? "on" : j <= doneUpTo ? "done" : ""}" ${j === i ? 'aria-current="step"' : ""}><b>${j + 1}</b><span>${l}</span></a>`).join("")}</nav>
   <p class="small muted" style="margin:0">${i <= 2 && c.statut === "brouillon" ? "Brouillon · " : ""}<span id="savest" class="savest"></span></p>
   ${inner}
@@ -116,7 +117,7 @@ function vControles(){
   const mats = [...new Set(all.map(c => c.matiere))];
   const of = cl => list.filter(c => cl.id === "__none" ? !classe(c.classeId) : c.classeId === cl.id);
   const line = c => { const pr = ctrlProgress(c);
-    return ctrlRow(c, `${esc(c.matiere)}${c.date ? " · " + esc(frDate(c.date)) : ""}${c.type === "rattrapage" ? " · " + esc(studentsOf(c).map(e => e.prenom + " " + e.nom).join(", ")) : ""}${S.scope === "ecole" && c.owner ? " · " + esc(userName(c.owner) || "?") : ""}${pr.printed ? ` · ${pr.sc}/${pr.n} scannées` : ""}`); };
+    return ctrlRow(c, `${esc(c.matiere)}${c.date ? " · " + esc(frDate(c.date)) : ""}${c.type === "rattrapage" ? " · " + esc(studentsOf(c).map(e => e.prenom + " " + e.nom).join(", ")) : ""}${S.scope === "ecole" && c.owner ? " · " + esc(userName(c.owner) || "?") : ""}${pr.printed ? ` · ${pr.sc}/${pr.n} scannées${pr.abs ? ` · ${pr.abs} absent${pr.abs > 1 ? "s" : ""}` : ""}` : ""}`); };
   const sum = cl => { const cs = of(cl), todo = cs.filter(c => c.statut === "correction").length; return `${cs.length} contrôle(s)${todo ? ` · <b style="color:var(--warn)">${todo} en correction</b>` : ""}${cl.eleves ? " · " + cl.eleves.length + " élèves" : ""}`; };
   return `<div class="head"><div><h2>${S.me && S.scope !== "ecole" ? "Mes contrôles" : "Contrôles"}</h2><p>Classe par classe : ouvre une classe pour voir ses contrôles, réduis-la quand tu as fini.</p></div>
     <div class="row">${isBoss() ? `<select id="scope-sel" style="width:auto" aria-label="Portée">${selOpts(["moi","ecole"], S.scope, x => x === "moi" ? "Mes contrôles" : "Toute l'école")}</select>` : ""}<a class="btn primary" href="#/nouveau">+ Nouveau contrôle</a></div></div>

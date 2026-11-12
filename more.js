@@ -299,7 +299,7 @@ function vDirection_0(){
   const weak = []; cls.forEach(cl => mats.forEach(mat => { const st = notionStats(cl, mat); st.notions.forEach(k => { const v = Object.values(st.per).map(p => p[k]).filter(Boolean); if (v.length >= 3){ const r = v.reduce((a, o) => a + o.s / o.n, 0) / v.length; if (r < .5) weak.push({cl, mat, label:st.labels[k], r, n:v.length}); } }); }));
   weak.sort((a, b) => a.r - b.r);
   const since = Date.now() - 30 * 864e5, recent = store.controles.filter(c => Date.parse(c.createdAt || 0) > since);
-  let pending = 0; store.controles.forEach(c => { const f = feuille(c.id); if (f) Object.values(f.copies || {}).forEach(cp => { if (!cp.validee && Object.keys(cp.answers || {}).length) pending++; }); });
+  let pending = 0; store.controles.forEach(c => { const f = feuille(c.id); if (f) Object.entries(f.copies || {}).forEach(([eid, cp]) => { if (!isAbs(c, eid) && !cp.validee && Object.keys(cp.answers || {}).length) pending++; }); });
   return `<div class="head"><div><h2>Vue direction</h2><p>Toutes les classes et matières d'un coup d'œil. Moyennes sur les 3 derniers contrôles validés.</p></div></div>
   <div class="grid g3">
     <div class="panel"><div class="label">Contrôles créés · 30 jours</div><div class="total num" style="color:var(--ink)">${recent.filter(isCtrl).length}</div></div>

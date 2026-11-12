@@ -2158,5 +2158,6 @@
  "page illisible": "unreadable page",
  "À partir du forfait Essentiel": "Available from the Essential plan",
  "Vos classes, vos élèves et vos copies ne sont pas visibles par les autres professeurs inscrits.": "Your classes, students, and papers are not visible to other teachers on Mastery.",
- "Vous choisissez Découverte, Essentiel ou Complet, au mois ou à l'année, avec un paiement sécurisé par Stripe. Sans abonnement, vos données restent consultables mais vous ne pouvez plus créer ni corriger. Rien n'est prélevé sans votre accord.": "You choose Starter, Essential or Complete, monthly or yearly, with secure payment by Stripe. Without a plan, your data stays viewable but you can no longer create or grade. Nothing is charged without your consent."
+ "Vous choisissez Découverte, Essentiel ou Complet, au mois ou à l'année, avec un paiement sécurisé par Stripe. Sans abonnement, vos données restent consultables mais vous ne pouvez plus créer ni corriger. Rien n'est prélevé sans votre accord.": "You choose Starter, Essential or Complete, monthly or yearly, with secure payment by Stripe. Without a plan, your data stays viewable but you can no longer create or grade. Nothing is charged without your consent.",
+ "Toutes les copies des élèves présents sont validées : contrôle corrigé.": "All papers from students who were present are validated: test marked as graded."
 }
