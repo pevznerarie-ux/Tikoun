@@ -118,6 +118,7 @@ Variables à ajouter (Railway → service → Variables) :
 | `LEGAL_SIREN` | `RCS Nanterre 123 456 789` | Immatriculation (mentions légales) |
 | `LEGAL_DIRECTOR` | ton nom | Directeur de la publication |
 | `LEGAL_PHONE` | *(facultatif)* | Téléphone affiché dans les mentions légales |
+| `SMTP_USER` + `SMTP_PASS` | adresse Gmail + mot de passe d'application (16 lettres) | Facultatif : envoie les e-mails (mot de passe oublié, comptes élèves) depuis une boîte Gmail. `SMTP_HOST` (défaut `smtp.gmail.com`) et `SMTP_PORT` (défaut 465) pour un autre fournisseur. **Railway ferme les ports SMTP hors forfait Pro** : dans ce cas, utiliser Resend ci-dessous. Vérifier avec « Envoyer un e-mail d'essai » dans Comptes |
 | `RESEND_API_KEY` | `re_…` (compte gratuit sur resend.com) | Facultatif : envoie le lien « mot de passe oublié » par e-mail. Sans cette variable, la demande apparaît dans Comptes |
 | `MAIL_FROM` | `Mastery <noreply@ton-domaine.fr>` | Expéditeur des e-mails (domaine vérifié dans Resend) |
 | `APP_URL` | `https://ton-domaine.fr` | Facultatif : adresse du site utilisée dans les liens envoyés par e-mail |

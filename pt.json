@@ -2355,5 +2355,11 @@
  "© 2026 Mastery · Made by Les Institutions Sinaï": "© 2026 Mastery · Made by Les Institutions Sinaï",
  "Les élèves de cette classe peuvent créer un compte (e-mail et mot de passe)": "Os alunos desta turma podem criar uma conta (e-mail e senha)",
  "Comptes élèves autorisés pour cette classe.": "Contas de alunos permitidas para esta turma.",
- "Comptes élèves désactivés pour cette classe.": "Contas de alunos desativadas para esta turma."
+ "Comptes élèves désactivés pour cette classe.": "Contas de alunos desativadas para esta turma.",
+ "Mot de passe oublié et comptes élèves : les liens partent par e-mail.": "Senha esquecida e contas de alunos: os links são enviados por e-mail.",
+ "Aucun service d'e-mail n'est configuré : les demandes de mot de passe oublié arrivent ici, sans e-mail.": "Nenhum serviço de e-mail está configurado: os pedidos de senha esquecida chegam aqui, sem e-mail.",
+ "Envoyer un e-mail d'essai": "Enviar um e-mail de teste",
+ "E-mails": "E-mails",
+ "E-mail d'essai envoyé à": "E-mail de teste enviado para",
+ ". Regarde ta boîte (et les indésirables).": ". Confira sua caixa de entrada (e o spam)."
 }

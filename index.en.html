@@ -3876,6 +3876,8 @@ function vComptes(){
       <div class="row"><button class="btn sm primary" data-uval="${u.id}">Submit</button><button class="btn sm ghost" data-uref="${u.id}">Decline</button></div></div>`).join("")}</div></section>` : "";
   return `<div class="head"><div><h2>Teacher accounts</h2><p>Teachers who register themselves have a private space. Those you create here share your classes.</p></div></div>
   ${pendHtml}
+  <section class="panel"><div class="row between"><div><h3>Emails</h3><p class="small muted" style="margin:0">${CFG().mail ? "Forgot password and student accounts: links are sent by email." : "No email service is set up: forgot-password requests arrive here, without email."}</p></div>
+    ${CFG().mail ? `<button class="btn sm" id="mail-test">Send a test email</button>` : ""}</div><div class="status" id="mail-st"></div></section>
   <section class="panel"><div class="tbl-wrap"><table><thead><tr><th>Name</th><th>Email</th><th>School</th><th>Role</th><th>Access</th><th>Plan</th><th>Practice add-on</th><th class="c">Tests</th><th></th></tr></thead><tbody>
   ${ok.map(u => `<tr><td><b>${esc(u.nom)}</b>${u.statut === "refuse" ? ' <span class="chip bad">declined</span>' : u.actif ? "" : ' <span class="chip bad">disabled</span>'}${u.resetDemande ? ' <span class="chip warn">Forgot password</span>' : ""}</td><td>${esc(u.email)}</td>
     <td>${u.ecole ? `<div class="small"><b>${esc(u.ecole.nom)}</b> ${ecBadge(u.ecole)}<div class="muted">${esc([u.ecole.cp, u.ecole.ville].filter(Boolean).join(" "))}${u.ecole.uai ? " · school ID " + esc(u.ecole.uai) : ""}</div></div>` : `<span class="muted small">—</span>`}</td>
@@ -3939,6 +3941,8 @@ document.addEventListener("click", async ev => {
     if (t.id === "mc-go"){ await api("/api/me/password", {method:"POST", body:JSON.stringify({old:$("#mc-old").value, password:$("#mc-new").value})}); $("#mc-st").textContent = "Password changed."; return; }
     if (t.id === "nu-go"){ const j = await api("/api/users", {method:"POST", body:JSON.stringify({nom:$("#nu-nom").value, email:$("#nu-mail").value, password:$("#nu-pw").value, role:$("#nu-role").value, plan:$("#nu-plan").value, exercices:$("#nu-ex").checked})});
       await loadUsers(); render(); $("#nu-st").textContent = `Account created: ${j.user.email} · temporary password to share.`; return; }
+    if (t.id === "mail-test"){ const st = $("#mail-st"); t.disabled = true; st.innerHTML = `<span class="thinking">Uploading…</span>`;
+      try { const j = await api("/api/mail/test", {method:"POST"}); st.textContent = `Test email sent to ${j.to}. Check your inbox (and spam).`; } catch(e){ st.textContent = e.message; } t.disabled = false; return; }
     if (d.ureset){ if (!confirm(`Create a new temporary password? The old one will stop working.\n\n${S.users.find(u => u.id === d.ureset)?.email || ""}`)) return; const pw = genPw(); await api("/api/users/" + d.ureset, {method:"PATCH", body:JSON.stringify({password:pw})}); $("#us-st").innerHTML = `New temporary password for ${esc(S.users.find(u => u.id === d.ureset)?.email)} : <b class="num">${pw}</b>`; return; }
     if (d.uact){ await api("/api/users/" + d.uact, {method:"PATCH", body:JSON.stringify({actif:d.v === "1"})}); await loadUsers(); return render(); }
     if (d.udel){ const x = (S.users || []).find(u => u.id === d.udel); if (!x) return;

@@ -198,6 +198,8 @@ function vComptes(){
       <div class="row"><button class="btn sm primary" data-uval="${u.id}">Valider</button><button class="btn sm ghost" data-uref="${u.id}">Refuser</button></div></div>`).join("")}</div></section>` : "";
   return `<div class="head"><div><h2>Comptes des professeurs</h2><p>Les professeurs inscrits seuls ont un espace privé. Ceux que tu crées ici partagent tes classes.</p></div></div>
   ${pendHtml}
+  <section class="panel"><div class="row between"><div><h3>E-mails</h3><p class="small muted" style="margin:0">${CFG().mail ? "Mot de passe oublié et comptes élèves : les liens partent par e-mail." : "Aucun service d'e-mail n'est configuré : les demandes de mot de passe oublié arrivent ici, sans e-mail."}</p></div>
+    ${CFG().mail ? `<button class="btn sm" id="mail-test">Envoyer un e-mail d'essai</button>` : ""}</div><div class="status" id="mail-st"></div></section>
   <section class="panel"><div class="tbl-wrap"><table><thead><tr><th>Nom</th><th>E-mail</th><th>École</th><th>Rôle</th><th>Accès</th><th>Abonnement</th><th>Option Exercices</th><th class="c">Contrôles</th><th></th></tr></thead><tbody>
   ${ok.map(u => `<tr><td><b>${esc(u.nom)}</b>${u.statut === "refuse" ? ' <span class="chip bad">refusé</span>' : u.actif ? "" : ' <span class="chip bad">désactivé</span>'}${u.resetDemande ? ' <span class="chip warn">Mot de passe oublié</span>' : ""}</td><td>${esc(u.email)}</td>
     <td>${u.ecole ? `<div class="small"><b>${esc(u.ecole.nom)}</b> ${ecBadge(u.ecole)}<div class="muted">${esc([u.ecole.cp, u.ecole.ville].filter(Boolean).join(" "))}${u.ecole.uai ? " · UAI " + esc(u.ecole.uai) : ""}</div></div>` : `<span class="muted small">—</span>`}</td>
@@ -261,6 +263,8 @@ document.addEventListener("click", async ev => {
     if (t.id === "mc-go"){ await api("/api/me/password", {method:"POST", body:JSON.stringify({old:$("#mc-old").value, password:$("#mc-new").value})}); $("#mc-st").textContent = "Mot de passe modifié."; return; }
     if (t.id === "nu-go"){ const j = await api("/api/users", {method:"POST", body:JSON.stringify({nom:$("#nu-nom").value, email:$("#nu-mail").value, password:$("#nu-pw").value, role:$("#nu-role").value, plan:$("#nu-plan").value, exercices:$("#nu-ex").checked})});
       await loadUsers(); render(); $("#nu-st").textContent = `Compte créé : ${j.user.email} · mot de passe provisoire à transmettre.`; return; }
+    if (t.id === "mail-test"){ const st = $("#mail-st"); t.disabled = true; st.innerHTML = `<span class="thinking">Envoi…</span>`;
+      try { const j = await api("/api/mail/test", {method:"POST"}); st.textContent = `E-mail d'essai envoyé à ${j.to}. Regarde ta boîte (et les indésirables).`; } catch(e){ st.textContent = e.message; } t.disabled = false; return; }
     if (d.ureset){ if (!confirm(`Créer un nouveau mot de passe provisoire ? L'ancien ne fonctionnera plus.\n\n${S.users.find(u => u.id === d.ureset)?.email || ""}`)) return; const pw = genPw(); await api("/api/users/" + d.ureset, {method:"PATCH", body:JSON.stringify({password:pw})}); $("#us-st").innerHTML = `Nouveau mot de passe provisoire pour ${esc(S.users.find(u => u.id === d.ureset)?.email)} : <b class="num">${pw}</b>`; return; }
     if (d.uact){ await api("/api/users/" + d.uact, {method:"PATCH", body:JSON.stringify({actif:d.v === "1"})}); await loadUsers(); return render(); }
     if (d.udel){ const x = (S.users || []).find(u => u.id === d.udel); if (!x) return;

@@ -2353,5 +2353,11 @@
  "© 2026 Mastery · Made by Les Institutions Sinaï": "© 2026 Mastery · Made by Les Institutions Sinaï",
  "Les élèves de cette classe peuvent créer un compte (e-mail et mot de passe)": "Students in this class can create an account (email and password)",
  "Comptes élèves autorisés pour cette classe.": "Student accounts allowed for this class.",
- "Comptes élèves désactivés pour cette classe.": "Student accounts turned off for this class."
+ "Comptes élèves désactivés pour cette classe.": "Student accounts turned off for this class.",
+ "Mot de passe oublié et comptes élèves : les liens partent par e-mail.": "Forgot password and student accounts: links are sent by email.",
+ "Aucun service d'e-mail n'est configuré : les demandes de mot de passe oublié arrivent ici, sans e-mail.": "No email service is set up: forgot-password requests arrive here, without email.",
+ "Envoyer un e-mail d'essai": "Send a test email",
+ "E-mails": "Emails",
+ "E-mail d'essai envoyé à": "Test email sent to",
+ ". Regarde ta boîte (et les indésirables).": ". Check your inbox (and spam)."
 }
