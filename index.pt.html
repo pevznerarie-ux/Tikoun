@@ -657,13 +657,17 @@ function ouvert(a){
   if (isObj(a.doute)) return +a.doute.n || 0;
   return a.lisible === false ? 2 : 0;                          // réponses corrigées avant cette version
 }
-/* Seconde lecture d'une réponse douteuse : la relecture (un seul cadre, lu seul) devient la réponse proposée.
-   Mêmes texte et note : le doute retombe à « à regarder ». Sinon les deux lectures sont gardées pour le professeur. */
+/* Seconde lecture d'une réponse douteuse : elle ne remplace jamais la réponse proposée, elle sert seulement à signaler.
+   Mêmes texte et note : le doute de lecture retombe à « à regarder ». Sinon la réponse reste « à vérifier d'abord » et la seconde
+   lecture est gardée à côté, pour le professeur. (Essai sur de vraies copies, novembre 2026 : quand les deux lectures différaient,
+   la relecture était plus loin de la note du professeur que la première lecture 5 fois sur 9.) */
+const DOUTES_LECTURE = ["lecture", "illisible", "confiance", "relu", "lectures"];
 function fusion(premiere, seconde){
   const s = proche(premiere.transcription, seconde.transcription), memeNote = Math.abs((+premiere.noteIA || 0) - (+seconde.noteIA || 0)) < 0.5;
-  const d2 = isObj(seconde.doute) ? seconde.doute : {n:0, r:[]}, out = {...seconde};
-  if (s >= 0.9 && memeNote){ out.doute = {n:d2.n === 2 ? 2 : 1, r:["relu", ...d2.r]}; out.alt = null; }
-  else { out.doute = {n:2, r:["lectures", ...d2.r]}; out.alt = {transcription:str(premiere.transcription), noteIA:+premiere.noteIA || 0, commentaire:str(premiere.commentaire).slice(0, 400)}; }
+  const d1 = isObj(premiere.doute) ? premiere.doute : {n:0, r:[]}, d2 = isObj(seconde.doute) ? seconde.doute : {n:0, r:[]}, out = {...premiere};
+  if (s >= 0.9 && memeNote){ const reste = d1.r.filter(k => !DOUTES_LECTURE.includes(k));          // ce qui ne tient pas à la lecture reste signalé
+    out.doute = {n:d2.n === 2 || reste.includes("detail") ? 2 : 1, r:["relu", ...reste]}; out.alt = null; }
+  else { out.doute = {n:2, r:["lectures", ...d1.r.filter(k => k !== "lectures" && k !== "relu")]}; out.alt = {transcription:str(seconde.transcription), noteIA:+seconde.noteIA || 0, commentaire:str(seconde.commentaire).slice(0, 400)}; }
   return out;
 }
 /* Gabarit de consigne : remplace {{CLE}} par sa valeur, sans interpréter le texte inséré */

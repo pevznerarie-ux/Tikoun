@@ -56,15 +56,17 @@ test("proche : insensible aux accents, à la casse, à la ponctuation, au nikoud
   assert.ok(F.proche("la capitale de la France est Paris", "la capitale de la France est Lyon") < 0.9);
   assert.equal(F.proche("", ""), 1);
 });
-test("fusion : deux lectures concordantes lèvent le doute, deux lectures différentes sont gardées", () => {
-  const p = rep({doute:{n:2, r:["lecture"]}, lisible:false});
+test("fusion : la relecture ne remplace jamais la réponse proposée ; elle lève le doute ou garde les deux lectures", () => {
+  const p = rep({doute:{n:2, r:["lecture", "hesite"]}, lisible:false, noteIA:2});
   const ok = F.fusion(p, rep({doute:{n:0, r:[]}}));
-  assert.deepEqual(ok.doute, {n:1, r:["relu"]}); assert.equal(ok.alt, null);
-  const ko = F.fusion(p, rep({transcription:"La somme des angles vaut 360 degrés.", noteIA:0, doute:{n:0, r:[]}}));
-  assert.equal(ko.doute.n, 2); assert.equal(ko.doute.r[0], "lectures");
-  assert.equal(ko.alt.transcription, p.transcription); assert.equal(ko.alt.noteIA, 2); assert.equal(ko.noteIA, 0);
-  const note = F.fusion(p, rep({noteIA:1, doute:{n:0, r:[]}}));
-  assert.equal(note.doute.n, 2, "même texte mais note différente");
+  assert.deepEqual(ok.doute, {n:1, r:["relu", "hesite"]}, "le doute de lecture tombe, l'hésitation sur la note reste"); assert.equal(ok.alt, null); assert.equal(ok.lisible, false);
+  const ko = F.fusion(p, rep({transcription:"La somme des angles vaut 360 degrés.", noteIA:0, commentaire:"Faux.", doute:{n:0, r:[]}}));
+  assert.deepEqual(ko.doute, {n:2, r:["lectures", "lecture", "hesite"]});
+  assert.equal(ko.transcription, p.transcription); assert.equal(ko.noteIA, 2, "la note proposée reste celle de la première lecture");
+  assert.deepEqual(ko.alt, {transcription:"La somme des angles vaut 360 degrés.", noteIA:0, commentaire:"Faux."});
+  assert.equal(F.fusion(p, rep({noteIA:1, doute:{n:0, r:[]}})).doute.n, 2, "même texte mais note différente");
+  assert.equal(F.fusion(p, rep({doute:{n:2, r:["illisible"]}})).doute.n, 2, "les deux lectures butent : le doute reste entier");
+  assert.equal(F.fusion(rep({doute:{n:2, r:["detail"]}}), rep({doute:{n:0, r:[]}})).doute.n, 2, "un détail des points incohérent n'est pas levé par une relecture");
 });
 test("remplir : remplace les repères sans interpréter le texte inséré", () => {
   assert.equal(F.remplir("Q{{N}} : {{ENONCE}} {{INCONNU}}", {N:3, ENONCE:"prix $& de {{N}}"}), "Q3 : prix $& de {{N}} {{INCONNU}}");

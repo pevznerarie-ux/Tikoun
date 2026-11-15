@@ -53,8 +53,8 @@ test("serveur : correction, relecture des réponses douteuses, journal, généra
   await t.test("réponses douteuses relues, réponses nettes laissées", async () => {
     const a = (await call("GET", "/api/db")).docs["feuilles/" + cid].copies.e1.answers;
     assert.deepEqual(a.q1.doute, {n:1, r:["relu"]}); assert.equal(a.q1.alt, null);                                   // lecture devinée, deux lectures concordantes
-    assert.equal(a.q2.doute.n, 2); assert.equal(a.q2.doute.r[0], "lectures"); assert.equal(a.q2.noteIA, 2);       // deux lectures différentes : les deux sont gardées
-    assert.equal(a.q2.alt.transcription, "x = 3 donc y = [illisible] et z = [illisible]"); assert.equal(a.q2.alt.noteIA, 1);
+    assert.equal(a.q2.doute.n, 2); assert.equal(a.q2.doute.r[0], "lectures"); assert.equal(a.q2.noteIA, 1);       // deux lectures différentes : la première reste proposée
+    assert.equal(a.q2.transcription, "x = 3 donc y = [illisible] et z = [illisible]"); assert.deepEqual([a.q2.alt.transcription, a.q2.alt.noteIA], ["x = 5 donc y = 7", 2]);
     assert.deepEqual(a.q3.doute, {n:0, r:[]}); assert.deepEqual(a.q3.detail, [{c:"réponse", p:2}]);
     const relues = calls.filter(c => c.kind === "relecture");
     assert.equal(relues.length, 4); assert.ok(relues.every(c => c.imgs === 1), "une relecture = le seul cadre de la question");
@@ -66,7 +66,7 @@ test("serveur : correction, relecture des réponses douteuses, journal, généra
     await doc("feuilles/" + cid, {copies:{e1:{validee:true, answers:{q2:{valide:true}}}, e2:{validee:true, answers:{q1:{valide:true}, q2:{valide:true}, q3:{valide:true}}}}}, "PATCH");
     const ev = (await call("GET", "/api/journal?ctrl=" + cid)).events;
     assert.deepEqual(ev.map(e => e.act), ["garde", "valide", "valide", "valide", "note", "valide", "valide", "valide", "valide"]);
-    assert.deepEqual({...ev[4], at:0, par:0}, {at:0, par:0, e:"e1", q:"q2", act:"note", ia:2, avant:2, note:1.5, rouvre:true, nom:"Prof Test"});
+    assert.deepEqual({...ev[4], at:0, par:0}, {at:0, par:0, e:"e1", q:"q2", act:"note", ia:1, avant:1, note:1.5, rouvre:true, nom:"Prof Test"});
     assert.ok(ev.slice(5).every(e => e.lot === 2), "validation groupée repérée");
     assert.equal((await call("GET", "/api/journal?ctrl=inconnu")).status, 404);
     await call("DELETE", "/api/db/doc?path=feuilles/" + cid);
