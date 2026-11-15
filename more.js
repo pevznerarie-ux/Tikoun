@@ -412,8 +412,11 @@ async function sampleImages(eid, mat, max = 3){
   const u = usageOf(mat), sel = (w.samples || []).filter(s => s.asset && s.usage === u).slice(0, max);
   const blobs = []; for (const s of sel){ try { blobs.push(await getBlob(s.asset)); } catch(x){} }
   const ok = sel.slice(0, blobs.length);
-  return {blobs, txt: ok.length ? `\nLes images 2 à ${ok.length + 1} sont des échantillons de l'écriture de CET élève, avec le texte exact qu'il a recopié : ${ok.map((s, k) => `image ${k + 2} = « ${s.texte} »`).join(" ; ")}. Sers-t'en pour reconnaître sa façon de former les lettres et les chiffres.` : ""};
+  return {blobs, txt: ok.length ? echTxt(ok.length + 1, ok.map((s, k) => echItem(k + 2, s.texte)).join(" ; ")) : ""};
 }
+/* Phrase qui présente à l'IA les échantillons d'écriture d'un élève (fiche d'écriture) ; le serveur s'en sert aussi, avec des repères {{…}} */
+const echTxt = (derniere, liste) => `\nLes images 2 à ${derniere} sont des échantillons de l'écriture de CET élève, avec le texte exact qu'il a recopié : ${liste}. Sers-t'en pour reconnaître sa façon de former les lettres et les chiffres.`;
+const echItem = (n, texte) => `image ${n} = « ${texte} »`;
 
 /* ================= Events for the modules above ================= */
 document.addEventListener("click", async ev => {

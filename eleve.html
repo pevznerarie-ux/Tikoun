@@ -6,79 +6,143 @@
 <title>Mastery · Espace élève</title>
 <link rel="icon" type="image/png" href="/favicon-64.png">
 <link rel="apple-touch-icon" href="/icon-180.png">
-<meta name="theme-color" content="#FFFFFF">
+<meta name="theme-color" content="#15233F">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+Hebrew:wght@400;500;600;700&family=Frank+Ruhl+Libre:wght@500&family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Inter:wght@400;500;600;700&family=Noto+Sans+Hebrew:wght@400;500;600;700&display=swap">
 <style>
-:root{--paper:#FAF8F3;--surface:#fff;--surface-2:#F3EFE6;--ink:#15233F;--muted:#6B6758;--line:#E7E1D4;--gold:#B7862B;--gold-soft:#F7EDD8;--ok:#1E7A4C;--ok-soft:#E3F3EA;--bad:#B42318;--bad-soft:#FCE8E6;--display:"Cormorant Garamond","Frank Ruhl Libre",Georgia,serif;--body:"Inter","Noto Sans Hebrew",system-ui,-apple-system,"Segoe UI",sans-serif}
-@media (prefers-color-scheme:dark){:root{--paper:#10141D;--surface:#171C27;--surface-2:#1F2532;--ink:#EFEADF;--muted:#A7A192;--line:#2C3342;--gold:#D9AE58;--gold-soft:#3A3120;--ok:#4FC98D;--ok-soft:#15301F;--bad:#FF7A6E;--bad-soft:#3A1C1A}.wm{filter:brightness(0) invert(.92)}}
+:root{--bg:#F2F4F8;--surface:#fff;--surface-2:#E9EDF4;--ink:#15233F;--muted:#5E6B85;--line:#DCE1EC;--accent:#C8643B;--accent-soft:#FBEDE6;--ok:#14804A;--ok-soft:#E1F4E9;--bad:#C5321F;--bad-soft:#FCE9E6;--navy:#15233F;--on-navy:#F2F4F8;
+  --display:"Bricolage Grotesque","Noto Sans Hebrew",system-ui,sans-serif;--body:"Inter","Noto Sans Hebrew",system-ui,-apple-system,"Segoe UI",sans-serif}
+@media (prefers-color-scheme:dark){:root{--bg:#0D1322;--surface:#151C2E;--surface-2:#1E2740;--ink:#EAEEF8;--muted:#9AA6BF;--line:#27314A;--accent:#E58B63;--accent-soft:#3A2219;--ok:#47CD89;--ok-soft:#10301F;--bad:#FF7A70;--bad-soft:#3A1C1A;--navy:#0A0F1C}}
 *{box-sizing:border-box}html,body{margin:0}
-body{background:var(--paper);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased;padding-bottom:env(safe-area-inset-bottom)}
-h1,h2,h3{font-family:var(--display);font-weight:500;margin:0;letter-spacing:-.015em;line-height:1.15}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased;min-height:100dvh;display:flex;flex-direction:column}
+h1,h2,h3{font-family:var(--display);font-weight:700;margin:0;letter-spacing:-.02em;line-height:1.1}
+h1{font-size:clamp(30px,7vw,40px)}h2{font-size:20px}
 p{margin:0}
-.top{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--line);background:var(--surface)}
-.brand{display:flex;align-items:center;gap:8px}.brand .mk{height:30px}.brand .wm{height:19px}
-.wrap{max-width:720px;margin:0 auto;padding:24px 16px 48px;display:grid;gap:18px}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:20px;box-shadow:0 1px 2px rgba(21,35,63,.04),0 10px 30px -18px rgba(21,35,63,.2)}
+p,h1,h2,.enonce,.opt,input,textarea{unicode-bidi:plaintext}
+.num{font-family:var(--display);font-variant-numeric:lining-nums tabular-nums;font-weight:700;letter-spacing:-.02em}
+.muted{color:var(--muted)}.small{font-size:14px}
+a{color:inherit}
+
+/* Barre du haut */
+.top{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 16px;background:var(--surface);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:8px;text-decoration:none}.brand .mk{height:30px}.brand .wm{height:18px}
+@media (prefers-color-scheme:dark){.brand .wm{filter:brightness(0) invert(.92)}}
+.top-r{display:flex;align-items:center;gap:10px}
+.langs{font-size:13px;color:var(--muted)}.langs a{text-decoration:none;padding:4px 2px}
+.me{display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:999px;padding:4px 12px 4px 4px;font:inherit;font-size:14px;font-weight:600;cursor:pointer;min-height:40px}
+.me i{font-style:normal;display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--navy);color:var(--on-navy);font-family:var(--display);font-weight:700}
+.wrap{flex:1;width:100%;max-width:720px;margin:0 auto;padding:24px 16px 40px;display:grid;gap:26px;align-content:start}
+
+/* Boutons et champs */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:12px 18px;border-radius:12px;font:inherit;font-weight:600;cursor:pointer;text-decoration:none;min-height:48px}
-.btn.primary{background:var(--ink);border-color:var(--ink);color:var(--paper)}
-.btn.gold{background:var(--gold);border-color:var(--gold);color:#fff}
-.btn.ghost{background:none;border-color:transparent;color:var(--muted);min-height:auto;padding:6px 8px}
+.btn.primary{background:var(--navy);border-color:var(--navy);color:var(--on-navy)}
+@media (prefers-color-scheme:dark){.btn.primary{background:var(--ink);border-color:var(--ink);color:#0D1322}}
+.btn.go{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.ghost{background:none;border-color:transparent;color:var(--muted);min-height:44px;padding:8px 10px}
+.btn.sm{min-height:40px;padding:8px 14px;font-size:14px}
+.btn.danger{color:var(--bad)}
 .btn[disabled]{opacity:.5;cursor:not-allowed}
 .opt[disabled]{opacity:1;cursor:default}
-.btn:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
-input,textarea{font:inherit;color:inherit;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px;width:100%}
+:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+label{display:grid;gap:6px;font-size:14px;font-weight:600}
+input,textarea{font:inherit;color:inherit;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:13px 14px;width:100%;text-align:start}
+input:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
 textarea{min-height:160px;resize:vertical}
-.code{font-size:28px;letter-spacing:.2em;text-transform:uppercase;text-align:center;font-weight:700;font-family:ui-monospace,Menlo,monospace}
-.muted{color:var(--muted)}.small{font-size:14px}
-.label{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--gold);font-weight:600}
-.q{display:grid;gap:14px}
+.code{font-size:26px;letter-spacing:.18em;text-transform:uppercase;text-align:center;font-weight:700;font-family:var(--display)}
+.err{color:var(--bad);font-size:14px;min-height:1.3em}
+.okmsg{color:var(--ok);font-size:14px}
+.form{display:grid;gap:14px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.between{justify-content:space-between}
+.pw{position:relative}.pw input{padding-inline-end:92px}.pw button{position:absolute;inset-inline-end:6px;top:50%;transform:translateY(-50%);min-height:36px;padding:4px 10px;font-size:13px}
+
+/* Connexion : un bandeau marine avec la règle graduée, puis le formulaire */
+body.auth .top{display:none}
+.auth-page{flex:1;display:grid;grid-template-columns:minmax(0,1fr);align-content:start}
+.auth-band{background:var(--navy);color:var(--on-navy);padding:28px 20px 30px;display:grid;gap:18px}
+.auth-band .brand .wm{filter:brightness(0) invert(.95)}
+.auth-band h1{font-size:clamp(32px,8vw,52px);max-width:12ch}
+.auth-band p{color:color-mix(in srgb,var(--on-navy) 72%,transparent);max-width:34ch}
+.auth-band .regle{--track:color-mix(in srgb,var(--on-navy) 16%,transparent);--tick:var(--navy);max-width:340px}
+.auth-main{padding:24px 20px 28px;display:grid;gap:22px;align-content:start;width:100%;max-width:460px;margin:0 auto}
+.tabs{display:grid;grid-template-columns:1fr 1fr;background:var(--surface-2);border-radius:12px;padding:4px;gap:4px}
+.tabs button{border:0;background:none;font:inherit;font-weight:600;color:var(--muted);padding:10px 8px;border-radius:9px;cursor:pointer;min-height:44px}
+.tabs button[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(21,35,63,.12)}
+.auth-foot{display:grid;gap:14px;justify-items:center;margin-top:8px}
+.madeby{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--muted)}
+.madeby img{height:34px;display:block}
+@media (prefers-color-scheme:dark){.madeby img{background:#F2F4F8;border-radius:8px;padding:5px 8px;height:44px}}
+.legal{font-size:12px;color:var(--muted);text-align:center}
+@media (min-width:900px){
+  .auth-page{grid-template-columns:minmax(0,5fr) minmax(0,6fr);align-content:stretch}
+  .auth-band{padding:56px 48px;align-content:center;gap:26px}
+  .auth-main{align-content:center;padding:48px 32px}
+}
+
+/* La règle graduée sur 20 : la note se lit d'un coup d'œil */
+.regle{--track:var(--surface-2);--tick:var(--surface);position:relative;height:10px;border-radius:3px;background:var(--track);overflow:hidden}
+.regle i{position:absolute;inset:0 auto 0 0;width:calc(var(--v,0) * 100%);background:var(--accent);border-radius:3px 0 0 3px}
+.regle::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent 0 calc(5% - 1.5px),var(--tick) calc(5% - 1.5px) 5%)}
+[dir="rtl"] .regle{transform:scaleX(-1)}
+
+/* Tableau de bord */
+.hello{display:grid;gap:6px}
+.sec{display:grid;gap:12px}
+.sec>h2{display:flex;align-items:baseline;gap:8px}.sec>h2 span{font-family:var(--body);font-size:14px;font-weight:500;color:var(--muted);letter-spacing:0}
+.todo{background:var(--navy);color:var(--on-navy);border-radius:18px;padding:18px;display:grid;gap:4px}
+.todo h2{margin-bottom:8px}
+.todo .it{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 0;border-top:1px solid color-mix(in srgb,var(--on-navy) 16%,transparent)}
+.todo .it .k{font-size:13px;color:color-mix(in srgb,var(--on-navy) 68%,transparent)}
+.todo .it b{display:block;font-size:17px;line-height:1.25}
+.todo .btn{flex:none}
+.none{color:var(--muted);font-size:15px;padding:14px 16px;border:1px dashed var(--line);border-radius:14px}
+.list{display:grid;gap:10px}
+.res{all:unset;box-sizing:border-box;cursor:pointer;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 14px;align-items:center;width:100%;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 16px;color:var(--ink)}
+.res:hover{border-color:var(--ink)}.res:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.res .k{font-size:13px;color:var(--muted)}.res .t{font-weight:600;font-size:17px;line-height:1.25}
+.res .n{font-size:26px;text-align:end;white-space:nowrap}
+.res .regle{grid-column:1 / -1}
+.res .after{grid-column:1 / -1;font-size:13px;color:var(--muted)}
+.tag{display:inline-block;font-size:12px;font-weight:700;padding:3px 9px;border-radius:999px;background:var(--accent-soft);color:var(--accent)}
+.tag.ok{background:var(--ok-soft);color:var(--ok)}.tag.off{background:var(--surface-2);color:var(--muted)}
+.exo{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px 16px;display:grid;gap:10px}
+.exo .t{font-weight:600;font-size:17px;line-height:1.25}
+.pips{display:flex;gap:4px}.pips i{flex:1;height:8px;border-radius:2px;background:var(--surface-2);max-width:44px}.pips i.on{background:var(--ok)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:18px;display:grid;gap:12px}
+.card.invite{border-color:var(--accent);background:var(--accent-soft)}
+.card.invite input{background:var(--surface)}
+
+/* Copie corrigée */
+.notes{display:flex;flex-wrap:wrap;gap:10px}.nb{display:grid;gap:2px;padding:10px 14px;border-radius:12px;background:var(--surface-2);min-width:110px}.nb span{font-size:12px;color:var(--muted)}.nb b{font-size:20px}.nb.main{background:var(--navy);color:var(--on-navy)}.nb.main span{color:color-mix(in srgb,var(--on-navy) 70%,transparent)}.nb.main b{font-size:30px}
+.cq{display:grid;gap:10px}
 .qhead{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:14px;color:var(--muted)}
-.bar{height:6px;background:var(--surface-2);border-radius:99px;overflow:hidden}.bar>i{display:block;height:100%;background:var(--gold);border-radius:99px;transition:width .3s}
-.enonce{font-size:19px;line-height:1.45;white-space:pre-wrap}
+.qhead .pts{color:var(--ink);white-space:nowrap}
+.enonce{font-size:18px;line-height:1.45;white-space:pre-wrap}
+.blk{border-top:1px solid var(--line);padding-top:10px;display:grid;gap:4px}.blk>span,.blk summary{font-size:13px;font-weight:600;color:var(--muted)}
+.blk.com{background:var(--accent-soft);border:0;border-radius:10px;padding:10px 12px}.blk summary{cursor:pointer}
+
+/* Exercice en cours */
+.q{display:grid;gap:14px}
+.bar{height:8px;background:var(--surface-2);border-radius:3px;overflow:hidden}.bar>i{display:block;height:100%;background:var(--accent);transition:width .3s}
 .opts{display:grid;gap:10px}
-.opt{text-align:left;justify-content:flex-start;font-weight:500;padding:14px 16px}
+.opt{text-align:start;justify-content:flex-start;font-weight:500;padding:14px 16px}
 .opt.sel{border-color:var(--ink);box-shadow:0 0 0 2px var(--ink) inset}
 .opt.good{border-color:var(--ok);background:var(--ok-soft)}.opt.badc{border-color:var(--bad);background:var(--bad-soft)}
 .fb{border-radius:14px;padding:14px 16px;display:grid;gap:6px}
-.fb.ok{background:var(--ok-soft);color:var(--ok)}.fb.ko{background:var(--bad-soft);color:var(--bad)}.fb.neutral{background:var(--gold-soft);color:var(--ink)}
+.fb.ok{background:var(--ok-soft);color:var(--ok)}.fb.ko{background:var(--bad-soft);color:var(--bad)}.fb.neutral{background:var(--accent-soft);color:var(--ink)}
 .fb p{color:var(--ink)}
-.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-.list{display:grid;gap:12px}
-.qz{display:grid;gap:10px}
-.chip{display:inline-block;font-size:12px;font-weight:600;padding:3px 9px;border-radius:6px;background:var(--surface-2);color:var(--muted)}
-.chip.ok{background:var(--ok-soft);color:var(--ok)}
-.big{font-family:var(--display);font-size:44px;font-weight:500}
-.err{color:var(--bad);font-size:14px;min-height:1.2em}
-.hello{display:grid;gap:4px}
-h1{font-size:1.15em}.big{font-size:54px}h2{font-size:26px!important}
-h1,h2,h3,.big,.price{font-variant-numeric:lining-nums;font-feature-settings:"lnum" 1}
-p,h1,h2,.enonce,.opt,input,textarea,.fb b{unicode-bidi:plaintext}
-input,textarea{text-align:start}
-/* Design « moderne lumineux » */
-:root{--paper:#F6F7FB;--surface:#fff;--surface-2:#F1F3F9;--ink:#101828;--muted:#667085;--line:#E4E7EE;--gold:#C8643B;--gold-soft:#FAEEE8;--ok:#067647;--ok-soft:#E3F6EC;--bad:#D92D20;--bad-soft:#FEECEB;--display:"Inter","Noto Sans Hebrew",system-ui,-apple-system,"Segoe UI",sans-serif}
-@media (prefers-color-scheme:dark){:root{--paper:#0B1020;--surface:#121829;--surface-2:#1A2236;--ink:#E9EDF7;--muted:#98A2B8;--line:#262F47;--gold:#E08A63;--gold-soft:#3A2219;--ok:#47CD89;--ok-soft:#10301F;--bad:#FF7A70;--bad-soft:#3A1C1A}}
-body{letter-spacing:-.006em}
-h1,h2,h3,.big{font-family:var(--display);font-weight:700;letter-spacing:-.025em}
-.card{border-radius:18px;box-shadow:0 1px 2px rgba(16,24,40,.04),0 6px 20px -10px rgba(16,24,40,.12)}
-.btn{border-radius:12px}
-.btn.primary,.btn.gold{background:var(--gold);border-color:var(--gold);color:#fff;box-shadow:0 4px 14px -6px color-mix(in srgb,var(--gold) 60%,transparent)}
-.label{letter-spacing:.09em;font-weight:650}
-.chip{border-radius:999px}
-.opt.sel{border-color:var(--gold);box-shadow:0 0 0 2px var(--gold) inset;background:var(--gold-soft)}
-input:focus,textarea:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 4px var(--gold-soft)}
-h2.sec{font-family:var(--body)!important;font-size:13px!important;font-weight:700!important;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:22px 0 8px}
-.card.res{all:unset;color:var(--ink);box-sizing:border-box;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px 16px}
-.card.res:hover{border-color:var(--gold)}.res .rt{font-weight:700;font-size:16px}.res .rn{display:grid;justify-items:end;gap:2px;flex:none}.res .rn b{font-size:22px}
-.tag{font-size:12px;font-weight:700;padding:4px 10px;border-radius:999px;background:var(--gold-soft);color:var(--gold)}
-.notes{display:flex;flex-wrap:wrap;gap:10px}.nb{display:grid;gap:2px;padding:10px 14px;border-radius:12px;background:var(--surface-2);min-width:110px}.nb span{font-size:12px;color:var(--muted)}.nb b{font-size:20px}.nb.main{background:var(--gold-soft)}.nb.main b{color:var(--gold);font-size:26px}
-.cq{display:grid;gap:10px}.blk{border-top:1px solid var(--line);padding-top:8px;display:grid;gap:4px}.blk.com{background:var(--surface-2);border:0;border-radius:10px;padding:10px 12px}.blk summary{cursor:pointer}
+.big{font-size:64px;line-height:1}
+.foot{padding:8px 16px 24px;display:grid;gap:10px;justify-items:center}
+body.auth .foot{display:none}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
 <body>
-<header class="top"><div class="brand"><img class="mk" src="/logo-mark.png" alt=""><img class="wm" src="/logo-word.png" alt="Mastery"></div><div class="row"><div id="who" class="small muted"></div><span class="small muted"><a style="color:inherit;text-decoration:none" href="?lang=fr">FR</a> · <a style="color:inherit;text-decoration:none" href="?lang=en">EN</a> · <a style="color:inherit;text-decoration:none" href="?lang=pt">PT</a></span></div></header>
-<main class="wrap" id="app" aria-live="polite"></main>
+<header class="top"><a class="brand" href="/eleve" aria-label="Mastery"><img class="mk" src="/logo-mark.png" alt=""><img class="wm" src="/logo-word.png" alt="Mastery"></a><div class="top-r"><span id="who"></span></div></header>
+<main id="app" aria-live="polite"></main>
+<footer class="foot"><div class="madeby"><span>Made by</span><img src="/logo-sinai.png" alt="Les Institutions Sinaï"></div><p class="legal"><a href="/confidentialite">Confidentialité</a></p></footer>
 <script>
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -91,58 +155,161 @@ async function api(p, body){
   if (!r.ok) throw {status:r.status, message:j?.error?.message || "Erreur " + r.status};
   return j;
 }
-function vLogin(prefill, err){
-  $("#who").textContent = "";
-  app.innerHTML = `<section class="card" style="display:grid;gap:14px;max-width:440px;margin:6vh auto 0;width:100%">
-    <div class="hello"><div class="label">Espace élève</div><h1 style="font-size:30px">Bienvenue</h1><p class="muted">Entre le code personnel écrit sur ta carte et ton nom de famille.</p></div>
-    <input id="code" class="code" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false" value="${esc(prefill || "")}" aria-label="Ton code" placeholder="CODE">
-    <input id="nom" autocomplete="family-name" spellcheck="false" placeholder="Ton nom de famille" aria-label="Ton nom de famille" dir="auto">
-    <button class="btn primary" id="go">Entrer</button><div class="err" id="err">${esc(err || "")}</div></section>`;
-  (prefill ? $("#nom") : $("#code")).focus();
-  const go = async () => { if (!$("#code").value.trim() || !$("#nom").value.trim()){ $("#err").textContent = "Entre ton code et ton nom de famille."; return; }
-    $("#go").disabled = true; try { await api("/api/eleve/login", {code:$("#code").value, nom:$("#nom").value}); history.replaceState(null, "", "/eleve"); home(); } catch(e){ $("#err").textContent = e.message; $("#go").disabled = false; } };
-  $("#go").onclick = go; $("#code").onkeydown = $("#nom").onkeydown = e => { if (e.key === "Enter") go(); };
+const LANGS = `<span class="langs"><a href="?lang=fr">FR</a> · <a href="?lang=en">EN</a> · <a href="?lang=pt">PT</a></span>`;
+const MADEBY = `<div class="madeby"><span>Made by</span><img src="/logo-sinai.png" alt="Les Institutions Sinaï"></div>`;
+const jour = (d, o) => new Date(d + "T12:00").toLocaleDateString("fr-FR", o || {day:"numeric", month:"long"});
+const pwField = (id, label, auto) => `<label>${label}<span class="pw"><input id="${id}" type="password" autocomplete="${auto}" minlength="8"><button type="button" class="btn ghost" data-voir="${id}">Afficher</button></span></label>`;
+function lierVoir(){ app.querySelectorAll("[data-voir]").forEach(b => b.onclick = () => { const i = $("#" + b.dataset.voir), on = i.type === "password"; i.type = on ? "text" : "password"; b.textContent = on ? "Masquer" : "Afficher"; }); }
+function page(html, auth){ document.body.classList.toggle("auth", !!auth); app.className = auth ? "auth-page" : "wrap"; app.innerHTML = html; lierVoir(); scrollTo(0, 0); }
+
+/* ---------- Connexion : compte (e-mail) ou code de la carte ; création du compte avec le code ; mot de passe oublié ---------- */
+function vAuth(mode, o){
+  o = o || {}; $("#who").innerHTML = "";
+  const tabs = mode === "compte" || mode === "code" ? `<div class="tabs" role="tablist"><button role="tab" aria-selected="${mode === "compte"}" data-mode="compte">J'ai un compte</button><button role="tab" aria-selected="${mode === "code"}" data-mode="code">J'ai un code</button></div>` : "";
+  const F = {
+    compte:`<div class="form"><label>E-mail<input id="email" type="email" autocomplete="username" inputmode="email" autocapitalize="off" spellcheck="false"></label>
+      ${pwField("pw", "Mot de passe", "current-password")}
+      <button class="btn primary" id="go">Me connecter</button><div class="err" id="err" role="alert">${esc(o.err || "")}</div>
+      <div class="row between"><button class="btn ghost sm" data-mode="oubli">Mot de passe oublié ?</button><button class="btn ghost sm" data-mode="creer">Créer mon compte</button></div></div>`,
+    code:`<div class="form"><p class="muted">Ton code est écrit sur la carte donnée par ton professeur.</p>
+      <label>Ton code<input id="code" class="code" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false" value="${esc(o.code || "")}"></label>
+      <label>Ton nom de famille<input id="nom" autocomplete="family-name" spellcheck="false" dir="auto"></label>
+      <button class="btn primary" id="go">Entrer</button><div class="err" id="err" role="alert">${esc(o.err || "")}</div>
+      <p class="small muted">Avec ton code, tu peux aussi <button class="btn ghost sm" data-mode="creer" style="display:inline;padding:0;min-height:0;text-decoration:underline;color:inherit">créer ton compte</button> pour te connecter ensuite avec ton e-mail.</p></div>`,
+    creer:`<div class="form"><h2>Créer mon compte</h2><p class="muted">Il te faut ta carte une seule fois. Ensuite, tu te connectes avec ton e-mail et ton mot de passe.</p>
+      <label>Ton code<input id="code" class="code" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false" value="${esc(o.code || "")}"></label>
+      <label>Ton nom de famille<input id="nom" autocomplete="family-name" spellcheck="false" dir="auto"></label>
+      <label>Ton e-mail<input id="email" type="email" autocomplete="email" inputmode="email" autocapitalize="off" spellcheck="false"></label>
+      ${pwField("pw", "Choisis un mot de passe (8 caractères ou plus)", "new-password")}
+      <button class="btn primary" id="go">Créer mon compte</button><div class="err" id="err" role="alert"></div>
+      <button class="btn ghost sm" data-mode="compte">J'ai déjà un compte</button></div>`,
+    oubli:`<div class="form"><h2>Mot de passe oublié</h2><p class="muted">Écris l'e-mail de ton compte : tu recevras un lien pour choisir un nouveau mot de passe.</p>
+      <label>E-mail<input id="email" type="email" autocomplete="username" inputmode="email" autocapitalize="off" spellcheck="false"></label>
+      <button class="btn primary" id="go">Recevoir le lien</button><div class="err" id="err" role="alert"></div>
+      <button class="btn ghost sm" data-mode="compte">Revenir à la connexion</button></div>`,
+    reset:`<div class="form"><h2>Nouveau mot de passe</h2>
+      ${pwField("pw", "Choisis un mot de passe (8 caractères ou plus)", "new-password")}
+      <button class="btn primary" id="go">Enregistrer et me connecter</button><div class="err" id="err" role="alert"></div></div>`};
+  page(`<section class="auth-band"><a class="brand" href="/eleve" aria-label="Mastery"><img class="mk" src="/logo-mark.png" alt="" style="height:34px"><img class="wm" src="/logo-word.png" alt="Mastery" style="height:20px"></a>
+      <h1>Ton espace élève</h1><p>Tes copies corrigées, tes rattrapages et tes exercices, au même endroit.</p><div class="regle" style="--v:.8" aria-hidden="true"><i></i></div></section>
+    <section class="auth-main">${tabs}${F[mode]}<div class="auth-foot">${MADEBY}<p class="legal">${LANGS} · <a href="/confidentialite">Confidentialité</a></p></div></section>`, true);
+  app.querySelectorAll("[data-mode]").forEach(b => b.onclick = () => vAuth(b.dataset.mode, {code:$("#code")?.value || o.code}));
+  const err = t => { $("#err").textContent = t; }, v = id => ($("#" + id)?.value || "").trim();
+  const first = mode === "code" || mode === "creer" ? (o.code ? "#nom" : "#code") : mode === "reset" ? "#pw" : "#email"; if (ORDI || o.code) $(first)?.focus();
+  const go = async () => {
+    const need = (ids, msg) => ids.every(v) || (err(msg), false);
+    if (mode === "compte" && !need(["email", "pw"], "Écris ton e-mail et ton mot de passe.")) return;
+    if (mode === "code" && !need(["code", "nom"], "Écris ton code et ton nom de famille.")) return;
+    if (mode === "creer" && !need(["code", "nom", "email", "pw"], "Remplis les quatre cases.")) return;
+    if (mode === "oubli" && !need(["email"], "Écris ton e-mail.")) return;
+    if ((mode === "creer" || mode === "reset") && v("pw").length < 8) return err("Mot de passe : 8 caractères ou plus.");
+    $("#go").disabled = true;
+    try {
+      if (mode === "compte") await api("/api/eleve/login", {email:v("email"), password:$("#pw").value});
+      if (mode === "code") await api("/api/eleve/login", {code:v("code"), nom:v("nom")});
+      if (mode === "creer") await api("/api/eleve/compte", {code:v("code"), nom:v("nom"), email:v("email"), password:$("#pw").value});
+      if (mode === "reset") await api("/api/eleve/reset", {token:o.token, password:$("#pw").value});
+      if (mode === "oubli"){ const r = await api("/api/eleve/oubli", {email:v("email")});
+        page(`<section class="auth-band"><h1>Regarde tes e-mails</h1></section><section class="auth-main"><p>${r.mail ? "Si un compte existe avec cet e-mail, un lien vient de partir. Il est valable une heure. Pense à regarder dans les courriers indésirables." : "L'envoi d'e-mails n'est pas encore activé ici. Demande à ton professeur de remettre ton compte à zéro : tu pourras le recréer avec ton code."}</p><button class="btn" id="back">Revenir à la connexion</button><div class="auth-foot">${MADEBY}</div></section>`, true); $("#back").onclick = () => vAuth("compte"); return; }
+      try { localStorage.setItem("mastery.eleve.mode", mode === "code" ? "code" : "compte"); } catch(e){}
+      history.replaceState(null, "", "/eleve"); home();
+    } catch(e){ err(e.message); $("#go").disabled = false; }
+  };
+  $("#go").onclick = go; app.querySelectorAll("input").forEach(i => i.onkeydown = e => { if (e.key === "Enter") go(); });
 }
+
+/* Onglet ouvert par défaut : celui qui a servi la dernière fois sur cet appareil (le code, la première fois) */
+const retenirCompte = () => { try { localStorage.setItem("mastery.eleve.mode", "compte"); } catch(e){} };
+function modeDef(){ try { return localStorage.getItem("mastery.eleve.mode") === "compte" ? "compte" : "code"; } catch(e){ return "code"; } }
+
+/* ---------- Tableau de bord ---------- */
+const regle = v => v == null ? "" : `<div class="regle" style="--v:${Math.max(0, Math.min(1, v / 20)).toFixed(3)}" aria-hidden="true"><i></i></div>`;
 async function home(){
-  try { ME = await api("/api/eleve/me"); } catch(e){ return vLogin("", e.status === 401 ? "" : e.message); }
-  $("#who").innerHTML = `${esc(ME.eleve.prenom)} · ${esc(ME.eleve.classe)} · <button class="btn ghost small" id="out">Sortir</button>`;
-  $("#out").onclick = async () => { try { await api("/api/eleve/logout", {}); } catch(e){} vLogin(); };
-  const q = ME.quizzes;
-  const C = ME.controles || [], Rt = ME.rattrapages || [];
-  app.innerHTML = `<div class="hello"><div class="label">${esc(new Date().toLocaleDateString("fr-FR", {weekday:"long", day:"numeric", month:"long"}))}</div><h1 style="font-size:32px">Bonjour ${esc(ME.eleve.prenom)}</h1><p class="muted">Tes contrôles corrigés, tes rattrapages et tes exercices.</p></div>
-  ${Rt.length ? `<h2 class="sec">Mes rattrapages</h2><div class="list">${Rt.map(x => `<button class="card res" data-ctrl="${esc(x.id)}"><div><div class="small muted">${esc(x.matiere)}${x.parent ? " · " + esc(x.parent) : ""}</div><div class="rt">${esc(x.titre)}</div></div>
-      <div class="rn">${x.corrige ? `<b>${esc(x.note)}</b>` : `<span class="tag">À faire</span>`}</div></button>`).join("")}</div>` : ""}
-  <h2 class="sec">Mes contrôles</h2>
-  <div class="list">${C.length ? C.map(x => `<button class="card res" data-ctrl="${esc(x.id)}"><div><div class="small muted">${esc(x.matiere)}${x.date ? " · " + esc(new Date(x.date + "T12:00").toLocaleDateString("fr-FR", {day:"numeric", month:"long"})) : ""}</div><div class="rt">${esc(x.titre)}</div>
-      ${x.rattrape ? `<div class="small muted">Contrôle ${esc(x.base)} · rattrapage ${esc(x.ratt)}</div>` : ""}</div><div class="rn"><b>${esc(x.note)}</b>${x.rattrape ? `<span class="small muted">après rattrapage</span>` : ""}</div></button>`).join("") : `<section class="card"><p class="muted small">Tes résultats apparaîtront ici quand ton professeur les publiera.</p></section>`}</div>
-  <h2 class="sec">Mes exercices</h2>
-  <div class="list">${q.length ? q.map(x => `<section class="card qz"><div class="row" style="justify-content:space-between"><div><div class="small muted">${esc(x.matiere)}${x.fermeture ? " · jusqu'au " + esc(new Date(x.fermeture + "T12:00").toLocaleDateString("fr-FR", {day:"numeric", month:"long"})) : ""}</div><h2 style="font-size:22px">${esc(x.titre)}</h2></div>${x.nbNotions && x.acquises === x.nbNotions ? '<span class="chip ok">Tout acquis ✓</span>' : ""}</div>
-      <div class="bar" aria-label="Notions acquises"><i style="width:${x.nbNotions ? Math.round(x.acquises / x.nbNotions * 100) : 0}%"></i></div>
-      <div class="row" style="justify-content:space-between"><span class="small muted">${x.acquises}/${x.nbNotions} notions acquises · ${x.tentatives} tentative(s)</span>${x.ouvert ? `<button class="btn ${x.tentatives ? "" : "gold"}" data-play="${esc(x.id)}">${x.tentatives ? "Recommencer" : "Commencer"}</button>` : `<span class="chip">Fermé</span>`}</div></section>`).join("") : `<section class="card"><p class="muted">Aucun exercice pour l'instant. Ton professeur t'en proposera bientôt.</p></section>`}</div>`;
+  try { ME = await api("/api/eleve/me"); } catch(e){ return vAuth(modeDef(), {err:e.status === 401 ? "" : e.message}); }
+  const E = ME.eleve, C = ME.controles || [], Rt = ME.rattrapages || [], Q = ME.quizzes || [];
+  $("#who").innerHTML = `<button class="me" id="moi" aria-label="Mon compte"><i>${esc((E.prenom || "?").slice(0, 1).toUpperCase())}</i>${esc(E.prenom)}</button>`;
+  $("#moi").onclick = vCompte;
+  const cl = x => x.classe ? " · " + esc(x.classe) : "";
+  const aFaire = [...Rt.filter(x => !x.corrige).map(x => ({k:"Rattrapage · " + esc(x.matiere) + cl(x), t:x.titre, btn:`<button class="btn go sm" data-ctrl="${esc(x.id)}">Voir la feuille</button>`})),
+    ...Q.filter(x => x.ouvert && !(x.nbNotions && x.acquises === x.nbNotions)).map(x => ({k:"Exercices · " + esc(x.matiere) + cl(x) + (x.fermeture ? " · jusqu'au " + esc(jour(x.fermeture)) : ""), t:x.titre, btn:`<button class="btn go sm" data-play="${esc(x.id)}">${x.tentatives ? "Continuer" : "Commencer"}</button>`}))];
+  const res = [...C.map(x => ({...x, _d:x.date || (x.publieLe || "").slice(0, 10)})), ...Rt.filter(x => x.corrige).map(x => ({...x, _r:true, _d:x.date || ""}))].sort((a, b) => b._d.localeCompare(a._d));
+  let invite = ""; try { if (ME.peutCompte && !ME.dejaCompte && sessionStorage.getItem("mastery.pasCompte") !== "1") invite = `<section class="card invite" id="invite"><h2>Crée ton compte</h2><p>La prochaine fois, connecte-toi avec ton e-mail et ton mot de passe, sans ta carte.</p>
+    <label>Ton e-mail<input id="c-email" type="email" autocomplete="email" inputmode="email" autocapitalize="off" spellcheck="false"></label>${pwField("c-pw", "Choisis un mot de passe (8 caractères ou plus)", "new-password")}
+    <div class="row"><button class="btn primary" id="c-go">Créer mon compte</button><button class="btn ghost" id="c-non">Plus tard</button></div><div class="err" id="c-err" role="alert"></div></section>`; } catch(e){}
+  page(`<div class="hello"><p class="muted">${esc(new Date().toLocaleDateString("fr-FR", {weekday:"long", day:"numeric", month:"long"}))}${E.classe ? " · " + esc(E.classe) : ""}</p><h1>Bonjour ${esc(E.prenom)}</h1></div>
+  ${ME.compte && !C.length && !Rt.length && !Q.length && !(ME.compte.classes || []).length ? `<section class="card"><h2>Ajoute ton code</h2><p class="muted">Ton compte n'est relié à aucune classe pour l'instant. Ajoute le code de ta carte dans Mon compte.</p><div><button class="btn primary" id="vers-compte">Ouvrir Mon compte</button></div></section>` : ""}
+  ${aFaire.length ? `<section class="todo"><h2>À faire</h2>${aFaire.map(x => `<div class="it"><div><span class="k">${x.k}</span><b dir="auto">${esc(x.t)}</b></div>${x.btn}</div>`).join("")}</section>` : ""}
+  ${invite}
+  <section class="sec"><h2>Mes résultats</h2>${res.length ? `<div class="list">${res.map(x => `<button class="res" data-ctrl="${esc(x.id)}"><div><div class="k">${x._r ? "Rattrapage · " : ""}${esc(x.matiere)}${x._d ? " · " + esc(jour(x._d)) : ""}${cl(x)}</div><div class="t" dir="auto">${esc(x.titre)}</div></div><div class="n num">${esc(x.note)}</div>${regle(x.sur20)}
+      ${x.rattrape ? `<div class="after">Contrôle ${esc(x.base)}, rattrapage ${esc(x.ratt)} : note retenue après rattrapage.</div>` : ""}</button>`).join("")}</div>` : `<p class="none">Tes notes arrivent ici dès que ton professeur publie les résultats.</p>`}</section>
+  <section class="sec"><h2>Mes exercices</h2>${Q.length ? `<div class="list">${Q.map(x => { const fini = x.nbNotions && x.acquises === x.nbNotions;
+      return `<div class="exo"><div class="row between" style="flex-wrap:nowrap;align-items:flex-start"><div><div class="small muted">${esc(x.matiere)}${x.fermeture ? " · jusqu'au " + esc(jour(x.fermeture)) : ""}${cl(x)}</div><div class="t" dir="auto">${esc(x.titre)}</div></div>${fini ? `<span class="tag ok">Tout acquis</span>` : x.ouvert ? "" : `<span class="tag off">Fermé</span>`}</div>
+        ${x.nbNotions ? `<div class="pips" role="img" aria-label="${x.acquises} notions acquises sur ${x.nbNotions}">${Array.from({length:Math.min(x.nbNotions, 16)}, (_, k) => `<i class="${k < Math.round(x.acquises / x.nbNotions * Math.min(x.nbNotions, 16)) ? "on" : ""}"></i>`).join("")}</div>` : ""}
+        <div class="row between"><span class="small muted">${x.acquises} notion(s) acquise(s) sur ${x.nbNotions} · ${x.tentatives} tentative(s)</span>${x.ouvert ? `<button class="btn sm" data-play="${esc(x.id)}">${x.tentatives ? "Recommencer" : "Commencer"}</button>` : ""}</div></div>`; }).join("")}</div>` : `<p class="none">Pas d'exercice pour l'instant. Ton professeur t'en proposera ici.</p>`}</section>`);
   app.querySelectorAll("[data-play]").forEach(b => b.onclick = () => play(b.dataset.play));
   app.querySelectorAll("[data-ctrl]").forEach(b => b.onclick = () => copie(b.dataset.ctrl));
+  if ($("#vers-compte")) $("#vers-compte").onclick = vCompte;
+  if ($("#c-non")) $("#c-non").onclick = () => { try { sessionStorage.setItem("mastery.pasCompte", "1"); } catch(e){} $("#invite").remove(); };
+  if ($("#c-go")) $("#c-go").onclick = async () => { const em = $("#c-email").value.trim(), pw = $("#c-pw").value;
+    if (!em || pw.length < 8){ $("#c-err").textContent = "Écris ton e-mail et un mot de passe de 8 caractères ou plus."; return; }
+    $("#c-go").disabled = true; try { await api("/api/eleve/compte", {email:em, password:pw}); retenirCompte(); home(); } catch(e){ $("#c-err").textContent = e.message; $("#c-go").disabled = false; } };
 }
-/* Copie corrigée (ou feuille de rattrapage à faire) */
+
+/* ---------- Mon compte ---------- */
+function vCompte(){
+  const K = ME.compte, E = ME.eleve;
+  page(`<button class="btn ghost" id="back" style="justify-self:start">← Retour</button><div class="hello"><h1>Mon compte</h1><p class="muted">${esc(E.prenom)} ${esc(E.nom)}${E.classe ? " · " + esc(E.classe) : ""}</p></div>
+  ${K ? `<section class="card"><h2>Connexion</h2><p>Tu te connectes avec <b>${esc(K.email)}</b>.</p>
+      <details><summary class="btn sm" style="display:inline-flex">Changer de mot de passe</summary><div class="form" style="margin-top:12px">${pwField("m-old", "Mot de passe actuel", "current-password")}${pwField("m-new", "Nouveau mot de passe (8 caractères ou plus)", "new-password")}
+        <div><button class="btn primary" id="m-go">Enregistrer</button></div><div class="err" id="m-err" role="alert"></div></div></details></section>
+    <section class="card"><h2>Mes classes</h2>${(K.classes || []).length ? `<p>${K.classes.map(c => esc(c.nom)).join(" · ")}</p>` : `<p class="muted">Aucune classe reliée pour l'instant.</p>`}
+      <p class="muted small">Un autre professeur t'a donné une carte ? Ajoute son code : tout sera réuni dans ce compte.</p>
+      <div class="form"><label>Code<input id="l-code" class="code" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false"></label><label>Ton nom de famille<input id="l-nom" autocomplete="family-name" spellcheck="false" dir="auto"></label>
+        <div><button class="btn" id="l-go">Ajouter ce code</button></div><div class="err" id="l-err" role="alert"></div></div></section>`
+    : !ME.peutCompte && !ME.dejaCompte ? "" : `<section class="card${ME.dejaCompte ? "" : " invite"}">${ME.dejaCompte ? `<h2>Tu as déjà un compte</h2><p>Déconnecte-toi, puis connecte-toi avec ton e-mail. Mot de passe perdu ? Utilise « Mot de passe oublié » sur la page de connexion.</p>`
+      : `<h2>Crée ton compte</h2><p>La prochaine fois, connecte-toi avec ton e-mail et ton mot de passe, sans ta carte.</p>
+      <label>Ton e-mail<input id="c-email" type="email" autocomplete="email" inputmode="email" autocapitalize="off" spellcheck="false"></label>${pwField("c-pw", "Choisis un mot de passe (8 caractères ou plus)", "new-password")}
+      <div><button class="btn primary" id="c-go">Créer mon compte</button></div><div class="err" id="c-err" role="alert"></div>`}</section>`}
+  <section class="card"><div class="row between"><button class="btn" id="out">Me déconnecter</button>${K ? `<button class="btn ghost danger" id="del">Supprimer mon compte</button>` : ""}</div>
+    ${K ? `<div class="form" id="del-box" hidden><p>Ton e-mail et ton mot de passe seront effacés. Tes notes restent chez ton professeur, et ta carte continue de marcher.</p>${pwField("d-pw", "Ton mot de passe, pour confirmer", "current-password")}<div><button class="btn danger" id="d-go">Supprimer définitivement</button></div><div class="err" id="d-err" role="alert"></div></div>` : ""}</section>`);
+  $("#back").onclick = home;
+  $("#out").onclick = async () => { try { await api("/api/eleve/logout", {}); } catch(e){} ME = null; vAuth(modeDef()); };
+  const run = async (btn, errId, fn) => { $(btn).disabled = true; try { await fn(); } catch(e){ $(errId).textContent = e.message; $(btn).disabled = false; } };
+  if ($("#c-go")) $("#c-go").onclick = () => { const em = $("#c-email").value.trim(), pw = $("#c-pw").value;
+    if (!em || pw.length < 8){ $("#c-err").textContent = "Écris ton e-mail et un mot de passe de 8 caractères ou plus."; return; }
+    run("#c-go", "#c-err", async () => { await api("/api/eleve/compte", {email:em, password:pw}); retenirCompte(); ME = await api("/api/eleve/me"); vCompte(); }); };
+  if ($("#m-go")) $("#m-go").onclick = () => { if ($("#m-new").value.length < 8){ $("#m-err").textContent = "Mot de passe : 8 caractères ou plus."; return; }
+    run("#m-go", "#m-err", async () => { await api("/api/eleve/compte/motdepasse", {actuel:$("#m-old").value, nouveau:$("#m-new").value}); $("#m-err").className = "okmsg"; $("#m-err").textContent = "Mot de passe enregistré."; $("#m-old").value = $("#m-new").value = ""; $("#m-go").disabled = false; }); };
+  if ($("#l-go")) $("#l-go").onclick = () => { if (!$("#l-code").value.trim() || !$("#l-nom").value.trim()){ $("#l-err").textContent = "Écris le code et ton nom de famille."; return; }
+    run("#l-go", "#l-err", async () => { await api("/api/eleve/lier", {code:$("#l-code").value, nom:$("#l-nom").value}); ME = await api("/api/eleve/me"); vCompte(); }); };
+  if ($("#del")) $("#del").onclick = () => { $("#del-box").hidden = false; $("#d-pw").focus(); };
+  if ($("#d-go")) $("#d-go").onclick = () => run("#d-go", "#d-err", async () => { await api("/api/eleve/compte/supprimer", {password:$("#d-pw").value}); ME = null; vAuth("code"); });
+}
+
+/* ---------- Copie corrigée (ou feuille de rattrapage à faire) ---------- */
 async function copie(id){
-  let d; try { d = await api(`/api/eleve/controle/${id}`); } catch(e){ app.innerHTML = `<section class="card"><p>${esc(e.message)}</p><button class="btn" id="back">Retour</button></section>`; $("#back").onclick = home; return; }
+  let d; try { d = await api(`/api/eleve/controle/${id}`); } catch(e){ page(`<section class="card"><p>${esc(e.message)}</p><div><button class="btn" id="back">Retour</button></div></section>`); $("#back").onclick = home; return; }
   const N = d.notes, fmtN = v => v == null ? "—" : String(Math.round(v * 100) / 100).replace(".", ",");
-  app.innerHTML = `<button class="btn ghost" id="back">← Retour</button>
-  <section class="card" style="display:grid;gap:10px"><div class="small muted">${esc(d.matiere)}${d.rattrapage && d.parent ? " · rattrapage de « " + esc(d.parent) + " »" : ""}</div><h1 style="font-size:26px;margin:0">${esc(d.titre)}</h1>
-    ${d.corrige && N ? `<div class="notes"><div class="nb main"><span>${d.rattrapage ? "Rattrapage" : "Note retenue"}</span><b>${esc(d.rattrapage ? N.ratt : N.retenue)}</b></div>
-      ${!d.rattrapage && N.rattrape ? `<div class="nb"><span>Contrôle</span><b>${esc(N.base)}</b></div><div class="nb"><span>Rattrapage</span><b>${esc(N.ratt)}</b></div>` : ""}
-      ${d.rattrapage && N.retenue ? `<div class="nb"><span>Note retenue</span><b>${esc(N.retenue)}</b></div>` : ""}</div>${N.regle ? `<p class="small muted" style="margin:0">Règle appliquée : ${esc(N.regle)}.</p>` : ""}`
-      : `<p class="muted" style="margin:0">${d.rattrapage ? "Ton rattrapage à faire. Prends ton temps et relis le coup de pouce." : ""}</p>${d.consignes ? `<p class="small muted" style="margin:0">${esc(d.consignes)}</p>` : ""}`}</section>
-  ${d.questions.map(q => `<section class="card cq"><div class="qhead"><span>Question ${q.n}${q.notion ? " · " + esc(q.notion) : ""}</span><span>${d.corrige ? `<b>${fmtN(q.note)}</b> / ${fmtN(q.points)}` : fmtN(q.points) + " pts"}</span></div>
+  page(`<button class="btn ghost" id="back" style="justify-self:start">← Retour</button>
+  <section class="card"><p class="small muted">${esc(d.matiere)}${d.rattrapage && d.parent ? " · rattrapage de « " + esc(d.parent) + " »" : ""}</p><h1 dir="auto" style="font-size:28px">${esc(d.titre)}</h1>
+    ${d.corrige && N ? `<div class="notes"><div class="nb main"><span>${d.rattrapage ? "Rattrapage" : "Note retenue"}</span><b class="num">${esc(d.rattrapage ? N.ratt : N.retenue)}</b></div>
+      ${!d.rattrapage && N.rattrape ? `<div class="nb"><span>Contrôle</span><b class="num">${esc(N.base)}</b></div><div class="nb"><span>Rattrapage</span><b class="num">${esc(N.ratt)}</b></div>` : ""}
+      ${d.rattrapage && N.retenue ? `<div class="nb"><span>Note retenue</span><b class="num">${esc(N.retenue)}</b></div>` : ""}</div>${N.regle ? `<p class="small muted">Règle appliquée : ${esc(N.regle)}.</p>` : ""}`
+      : `${d.rattrapage ? `<p class="muted">Ton rattrapage à faire. Prends ton temps et relis le coup de pouce.</p>` : ""}${d.consignes ? `<p class="small muted">${esc(d.consignes)}</p>` : ""}`}</section>
+  ${d.questions.map(q => `<section class="card cq"><div class="qhead"><span>Question ${q.n}${q.notion ? " · " + esc(q.notion) : ""}</span><span class="pts num">${d.corrige ? `${fmtN(q.note)} / ${fmtN(q.points)}` : fmtN(q.points) + " pts"}</span></div>
+    ${d.corrige && q.note != null && q.points ? `<div class="bar" aria-hidden="true"><i style="width:${Math.round(Math.max(0, Math.min(1, q.note / q.points)) * 100)}%"></i></div>` : ""}
     <div class="enonce" dir="auto">${esc(q.enonce)}</div>${q.choix ? `<ol type="A" class="small">${q.choix.map(c => `<li dir="auto">${esc(c)}</li>`).join("")}</ol>` : ""}
-    ${d.corrige ? `<div class="blk"><div class="label">Ta réponse</div><div dir="auto">${esc(q.reponse || "(pas de réponse)")}</div></div>
-      ${q.commentaire ? `<div class="blk com"><div class="label">Commentaire</div><div dir="auto">${esc(q.commentaire)}</div></div>` : ""}
-      ${q.corrige ? `<details class="blk"><summary class="label">Voir la correction</summary><div dir="auto">${esc(q.corrige)}</div></details>` : ""}` : ""}</section>`).join("")}`;
-  $("#back").onclick = home; scrollTo(0, 0);
+    ${d.corrige ? `<div class="blk"><span>Ta réponse</span><div dir="auto">${esc(q.reponse || "(pas de réponse)")}</div></div>
+      ${q.commentaire ? `<div class="blk com"><span>Commentaire</span><div dir="auto">${esc(q.commentaire)}</div></div>` : ""}
+      ${q.corrige ? `<details class="blk"><summary>Voir la correction</summary><div dir="auto">${esc(q.corrige)}</div></details>` : ""}` : ""}</section>`).join("")}`);
+  $("#back").onclick = home;
 }
+
+/* ---------- Exercices en ligne ---------- */
 async function play(id){
-  app.innerHTML = `<section class="card"><p class="muted">Préparation de tes questions…</p></section>`;
+  page(`<section class="card"><p class="muted">Préparation de tes questions…</p></section>`);
   try { const t = await api(`/api/eleve/quiz/${id}/tirage`, {ordinateur:ORDI}); RUN = {id, tirage:t.tirage, titre:t.titre, qs:t.questions, i:0, ok:0, auto:0, answered:false, t0:Date.now()}; show(); }
-  catch(e){ app.innerHTML = `<section class="card"><p>${esc(e.message)}</p><button class="btn" id="back">Retour</button></section>`; $("#back").onclick = home; }
+  catch(e){ page(`<section class="card"><p>${esc(e.message)}</p><div><button class="btn" id="back">Retour</button></div></section>`); $("#back").onclick = home; }
 }
 function show(){
   const R = RUN, q = R.qs[R.i]; R.answered = false; R.sel = new Set(); R.t0 = Date.now();
@@ -153,9 +320,9 @@ function show(){
   if (q.type === "num") input = `<div class="row" style="flex-wrap:nowrap"><input id="rep" inputmode="text" autocomplete="off" autocapitalize="off" autocorrect="off" placeholder="Ta réponse">${q.unite ? `<span class="muted">${esc(q.unite)}</span>` : ""}</div><button class="btn primary" id="val">Valider</button>`;
   if (q.type === "trou") input = `<input id="rep" dir="auto" autocomplete="off" autocapitalize="off" placeholder="Le mot manquant"><button class="btn primary" id="val">Valider</button>`;
   if (q.type === "redige") input = `<textarea id="rep" dir="auto" placeholder="Rédige ta réponse"></textarea><button class="btn primary" id="val">Envoyer</button>`;
-  app.innerHTML = `<section class="card q"><div class="qhead"><span>Question ${R.i + 1} / ${R.qs.length}</span><span>${esc(q.notion || "")} · ${"★".repeat(q.niveau || 1)}</span></div><div class="bar"><i style="width:${pct}%"></i></div>
+  page(`<section class="card q"><div class="qhead"><span>Question ${R.i + 1} / ${R.qs.length}</span><span>${esc(q.notion || "")} · ${"★".repeat(q.niveau || 1)}</span></div><div class="bar"><i style="width:${pct}%"></i></div>
     <div class="enonce" dir="auto">${esc(q.enonce)}</div>${input}<div id="fb"></div></section>
-    <button class="btn ghost" id="quit">← Arrêter et revenir à mes exercices</button>`;
+    <button class="btn ghost" id="quit" style="justify-self:start">← Arrêter et revenir à mes exercices</button>`);
   $("#quit").onclick = () => { if (confirm("Arrêter cette tentative ?")) finish(); };
   const send = rep => answer(q, rep);
   app.querySelectorAll("[data-k]").forEach(b => b.onclick = () => { if (R.answered) return; const k = +b.dataset.k; if (q.multi){ R.sel.has(k) ? R.sel.delete(k) : R.sel.add(k); b.classList.toggle("sel"); } else { b.classList.add("sel"); send([k]); } });
@@ -166,10 +333,10 @@ function show(){
 async function answer(q, rep){
   const R = RUN; R.answered = true; app.querySelectorAll(".opt,#val,#rep").forEach(x => x.disabled = true);
   let r; try { r = await api(`/api/eleve/quiz/${R.id}/reponse`, {tirage:R.tirage, qid:q.id, rep, ms:Date.now() - R.t0}); } catch(e){
-    if (e.status === 401) return vLogin("", "Reconnecte-toi avec ton code.");
+    if (e.status === 401) return vAuth("compte", {err:"Reconnecte-toi pour continuer."});
     if (e.status === 410) return play(R.id);
     R.answered = false; app.querySelectorAll(".opt,#val,#rep").forEach(x => x.disabled = false); app.querySelectorAll(".opt.sel").forEach(x => x.classList.remove("sel")); R.sel?.clear?.();
-    $("#fb").innerHTML = `<p class="err">${esc(e.status ? e.message : "Pas de connexion : vérifie le réseau.")} <button class="btn" id="retry">Réessayer</button></p>`;
+    $("#fb").innerHTML = `<p class="err">${esc(e.status ? e.message : "Pas de connexion : vérifie le réseau.")} <button class="btn sm" id="retry">Réessayer</button></p>`;
     $("#retry").onclick = () => { $("#fb").innerHTML = ""; answer(q, rep); }; return; }
   if (r.ok !== null){ R.auto++; if (r.ok) R.ok++; }
   if (q.type === "qcm") app.querySelectorAll("[data-k]").forEach(b => { const k = +b.dataset.k; if ((r.bonne || []).includes(k)) b.classList.add("good"); else if (b.classList.contains("sel")) b.classList.add("badc"); });
@@ -185,17 +352,19 @@ async function answer(q, rep){
 async function finish(){
   const R = RUN; let r = {ok:R.ok, total:R.auto};
   try { r = await api(`/api/eleve/quiz/${R.id}/fin`, {tirage:R.tirage}); } catch(e){}
-  app.innerHTML = `<section class="card" style="display:grid;gap:14px;text-align:center"><div class="label">${esc(R.titre)}</div><div class="big">${r.ok} / ${r.total}</div>
+  page(`<section class="card" style="text-align:center;justify-items:center"><p class="muted" dir="auto">${esc(R.titre)}</p><div class="big num">${r.ok} / ${r.total}</div>
     <p class="muted">bonnes réponses${r.redigees ? ` · ${r.redigees} réponse(s) rédigée(s) envoyée(s) à ton professeur` : ""}</p>
-    ${r.nbNotions ? `<div class="bar"><i style="width:${Math.round(r.acquises / r.nbNotions * 100)}%"></i></div><p class="small muted">${r.acquises}/${r.nbNotions} notions acquises</p>` : ""}
-    <div class="row" style="justify-content:center"><button class="btn gold" id="again">Recommencer avec d'autres questions</button><button class="btn" id="home">Mes exercices</button></div></section>`;
+    ${r.nbNotions ? `<div class="pips" style="width:100%;justify-content:center">${Array.from({length:Math.min(r.nbNotions, 16)}, (_, k) => `<i class="${k < Math.round(r.acquises / r.nbNotions * Math.min(r.nbNotions, 16)) ? "on" : ""}"></i>`).join("")}</div><p class="small muted">${r.acquises}/${r.nbNotions} notions acquises</p>` : ""}
+    <div class="row" style="justify-content:center"><button class="btn go" id="again">Recommencer avec d'autres questions</button><button class="btn" id="home">Mes exercices</button></div></section>`);
   $("#again").onclick = () => play(R.id); $("#home").onclick = home;
 }
-const pre = new URLSearchParams(location.search).get("c");
-/* Carte scannée : on repart toujours de la connexion, même si un autre élève était resté connecté sur cet appareil */
-if (pre){ history.replaceState(null, "", "/eleve"); (async () => { try { await api("/api/eleve/logout", {}); } catch(e){} vLogin(pre); })(); }
+
+/* ---------- Départ ---------- */
+const pre = new URLSearchParams(location.search).get("c"), rst = /^#reset\/([a-f0-9]{48})$/.exec(location.hash);
+/* Carte scannée ou lien de mot de passe oublié : on repart toujours de la connexion, même si un autre élève était resté connecté sur cet appareil */
+if (rst){ history.replaceState(null, "", "/eleve"); (async () => { try { await api("/api/eleve/logout", {}); } catch(e){} vAuth("reset", {token:rst[1]}); })(); }
+else if (pre){ history.replaceState(null, "", "/eleve"); (async () => { try { await api("/api/eleve/logout", {}); } catch(e){} vAuth("code", {code:pre}); })(); }
 else home();
 </script>
-<p style="text-align:center;font-size:12px;opacity:.6;margin:28px 0 20px"><a href="/confidentialite" style="color:inherit">Confidentialité</a></p>
 </body>
 </html>

@@ -262,6 +262,7 @@ em,.hero h1 em,.manifest p em,.decide h2 em,.final h2 em,.marquee .track{font-st
 .hero,.final{background:radial-gradient(1200px 600px at 85% -10%,#E3A07F 0%,transparent 60%),linear-gradient(135deg,#A94F2A 0%,#C8643B 55%,#D27A55 100%)}
 .decide,.marquee{background:linear-gradient(135deg,#A94F2A,#C8643B)}
 footer{background:#101828}
+.madeby{display:flex;align-items:center;gap:12px;margin-top:26px;font-size:13px;color:#667085;opacity:0;animation:rise 1.2s .95s var(--ease) forwards}.madeby img{height:42px;width:auto;display:block}
 .plan.pro{background:linear-gradient(160deg,#A94F2A,#C8643B);border-color:#C8643B}
 .hero .btn.gold,.final .btn.gold,.plan.pro .btn,.decide .btn.gold{background:#fff;color:#A94F2A}
 .hero .btn.gold:hover,.final .btn.gold:hover,.plan.pro .btn:hover{background:#FAEEE8}
@@ -314,6 +315,7 @@ footer{background:#101828}
         <a class="btn line" href="#fonctionnement">Voir comment ça marche</a>
       </div>
       <p class="note"><span data-off>Gratuit pendant la bêta</span><span data-on>1 mois d'essai gratuit, sans carte bancaire</span> · inscription validée par l'équipe Mastery</p>
+      <div class="madeby"><span>Made by</span><img src="/logo-sinai.png" alt="Les Institutions Sinaï" width="146" height="42"></div>
     </div>
 
     <div class="stage" aria-hidden="true">
@@ -402,7 +404,7 @@ footer{background:#101828}
 
 <section id="forfaits">
   <div class="wrap">
-    <div class="sec-h"><div class="kicker rv">Forfaits</div><h2 class="rv" data-off style="--d:.1s">Gratuit pendant la bêta</h2><p class="rv" data-off style="--d:.2s">Pendant la bêta, tout est gratuit et sans limite de classes ni de contrôles. Les limites indiquées s'appliqueront à l'ouverture des abonnements : vous serez prévenu avant.</p><h2 class="rv" data-on style="--d:.1s">Un mois gratuit, puis le forfait qui vous va</h2><p class="rv" data-on style="--d:.2s">Le forfait Complet est ouvert pendant l'essai, sans carte bancaire. Un contrôle compte quand ses feuilles sont imprimées ; réimpressions et rattrapages ne comptent pas. Résiliable à tout moment.</p></div>
+    <div class="sec-h"><div class="kicker rv">Forfaits</div><h2 class="rv" data-off style="--d:.1s">Gratuit pendant la bêta</h2><p class="rv" data-off style="--d:.2s">Pendant la bêta, tout est gratuit et sans limite de classes ni de contrôles. Les limites indiquées s'appliqueront à l'ouverture des abonnements : vous serez prévenu avant.</p><h2 class="rv" data-on style="--d:.1s">Un mois gratuit, puis le forfait qui vous va</h2><p class="rv" data-on style="--d:.2s">Pendant le mois d'essai, toutes les fonctions sont ouvertes, sans carte bancaire, avec un contrôle inclus. Un contrôle compte quand ses feuilles sont imprimées, jusqu'à 35 élèves ; réimpressions et rattrapages ne comptent pas. Résiliable à tout moment.</p></div>
     <div class="plans">
       <div class="plan rv">
         <h3>Découverte</h3>
@@ -490,7 +492,7 @@ footer{background:#101828}
 </main>
 
 <footer>
-  <div class="wrap"><span>© 2026 Mastery</span><span><a href="/cgu">Conditions d’utilisation</a> · <a href="/confidentialite">Confidentialité</a> · <a href="/mentions-legales">Mentions légales</a> · <a href="/app#/connexion">Se connecter</a> · <a href="?lang=fr" hreflang="fr">FR</a> <a href="?lang=en" hreflang="en">EN</a> <a href="?lang=pt" hreflang="pt-BR">PT</a></span></div>
+  <div class="wrap"><span>© 2026 Mastery · Made by Les Institutions Sinaï</span><span><a href="/cgu">Conditions d’utilisation</a> · <a href="/confidentialite">Confidentialité</a> · <a href="/mentions-legales">Mentions légales</a> · <a href="/app#/connexion">Se connecter</a> · <a href="?lang=fr" hreflang="fr">FR</a> <a href="?lang=en" hreflang="en">EN</a> <a href="?lang=pt" hreflang="pt-BR">PT</a></span></div>
 </footer>
 <script src="/config.js"></script>
 <script>(function(){ var c = window.TIKOUN_CONFIG || {}; if (!c.billing) return; document.documentElement.classList.add("bill");

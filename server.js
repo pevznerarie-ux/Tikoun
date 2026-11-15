@@ -7,6 +7,7 @@
 //   MASTERY_CODE      : code de l'établissement, demandé UNE fois pour créer le premier compte administrateur
 //                       (l'ancienne variable TIKOUN_CODE reste acceptée)
 //   AI_BUDGET_PER_CTRL : filet de sécurité IA par mois, en dollars par contrôle du forfait (défaut 3) ; AI_BUDGET_USER_MONTH pour les comptes sans forfait (défaut 60, ×5 administrateur)
+//   TRIAL_CTRL        : contrôles par mois pendant l'essai gratuit et les mois offerts (défaut 1) ; COPIES_PAR_CONTROLE : élèves couverts par un contrôle du forfait (défaut 35)
 //   AI_BUDGET_DAY      : budget IA total par jour, en dollars (défaut 150)
 //   AI_MAX_PER_USER_DAY, AI_MAX_PER_DAY : plafonds d'appels (garde-fou supplémentaire)
 //   FILE_RETENTION_DAYS : durée de conservation des images de copies (défaut 395 jours, soit 13 mois)
@@ -16,7 +17,11 @@
 //   ADMIN_RESET_PASSWORD : mot de passe oublié, réinitialise le compte ADMIN_EMAIL (une fois par valeur)
 //   SIGNUP            : "off" pour fermer l'inscription libre des professeurs (ouverte par défaut)
 //   MODEL_QUICK, MODEL_DEFAULT, MODEL_COMPLEX : modèles (défaut économique)
+//   MODEL_GRADE       : modèle de la première correction des copies (défaut : MODEL_COMPLEX). S'il est différent, plus économique,
+//                       les réponses douteuses ou contenant de l'hébreu manuscrit sont relues en renfort par MODEL_COMPLEX.
+//   AI_REREAD         : "0" pour ne pas relire automatiquement les réponses douteuses ; AI_REREAD_MAX : relectures par page (défaut 3)
 const http = require("http"), fs = require("fs"), path = require("path"), crypto = require("crypto"), zlib = require("zlib");
+const FIAB = require("./fiabilite.js");   // doutes sur une correction, journal de validation, vérification des contrôles générés (testé : npm test)
 const ROOT = __dirname, PORT = process.env.PORT || 3000;
 const TYPES = {".html":"text/html; charset=utf-8", ".js":"text/javascript; charset=utf-8", ".css":"text/css; charset=utf-8", ".json":"application/json",
   ".md":"text/markdown; charset=utf-8", ".png":"image/png", ".jpg":"image/jpeg", ".svg":"image/svg+xml", ".ico":"image/x-icon", ".webmanifest":"application/manifest+json", ".txt":"text/plain; charset=utf-8"};
@@ -24,8 +29,9 @@ const env = k => (process.env[k] || "").trim();
 /* Lecture des copies manuscrites : modèle le plus précis par défaut (GRADE_TIER=default pour revenir au modèle rapide) */
 /* Rédaction des contrôles, rattrapages et variantes : modèle puissant par défaut (GEN_TIER=default pour le modèle rapide) */
 const GEN_TIER = () => ["quick","default","complex"].includes(env("GEN_TIER")) ? env("GEN_TIER") : "complex";
-const GRADE_TIER = () => ["quick","default","complex"].includes(env("GRADE_TIER")) ? env("GRADE_TIER") : "complex";
-const MODELS = () => ({quick:env("MODEL_QUICK") || "claude-haiku-4-5-20251001", default:env("MODEL_DEFAULT") || "claude-haiku-4-5-20251001", complex:env("MODEL_COMPLEX") || "claude-sonnet-5"});
+const GRADE_TIER = () => ["quick","default","complex","grade"].includes(env("GRADE_TIER")) ? env("GRADE_TIER") : "grade";
+const MODELS = () => { const complex = env("MODEL_COMPLEX") || "claude-sonnet-5";
+  return {quick:env("MODEL_QUICK") || "claude-haiku-4-5-20251001", default:env("MODEL_DEFAULT") || "claude-haiku-4-5-20251001", complex, grade:env("MODEL_GRADE") || complex}; };
 
 const SEC_HEADERS = {"X-Content-Type-Options":"nosniff", "Referrer-Policy":"same-origin", "X-Frame-Options":"DENY", "Strict-Transport-Security":"max-age=31536000",
   "Content-Security-Policy":"frame-ancestors 'none'; object-src 'none'; base-uri 'self'", "Permissions-Policy":"geolocation=(), microphone=(self)"};
@@ -51,7 +57,11 @@ function staticZ(file, etag, enc){
   return e.p;
 }
 /* Langue : cookie « lang » (fr / en), sinon en-tête du navigateur. Messages d'erreur traduits pour l'anglais. */
-const EN_MSG = {"Tu as utilisé tous les contrôles de ton forfait ce mois-ci : ajoute un contrôle ou passe au forfait supérieur dans Mon compte.":"You have used all the tests in your plan this month: add a test or upgrade your plan in My account.", "Ton forfait ne permet pas plus de classes : passe au forfait supérieur dans Mon compte.":"Your plan doesn't allow more classes: upgrade your plan in My account.", "Plafond mensuel de l'IA atteint pour ton compte : écris à l'équipe Mastery si tu en as besoin.":"Monthly AI limit reached for your account: contact the Mastery team if you need more.", "Contrôle introuvable":"Test not found", "Indique le nom de l'école et sa ville":"Enter the school's name and city", "8 caractères minimum":"8 characters minimum","ANTHROPIC_API_KEY manquante sur le serveur":"ANTHROPIC_API_KEY is missing on the server",
+const EN_MSG = {"Aucun service d'e-mail n'est configuré sur le serveur.":"No email service is set up on the server.",
+ "Ton professeur n'a pas activé les comptes pour cette classe : connecte-toi avec ton code.":"Your teacher hasn't turned on accounts for this class: sign in with your code.",
+ "Accès refusé":"Access denied", "Classe introuvable":"Class not found", "Méthode non autorisée":"Method not allowed", "Crée d'abord ton compte":"Create your account first", "Ce code est déjà relié à un autre compte.":"This code is already linked to another account.", "Trop de codes sur ce compte":"Too many codes on this account", "Un compte existe déjà avec cet e-mail : connecte-toi, puis ajoute ton code.":"An account already exists with this email: sign in, then add your code.", "Un compte existe déjà pour cet élève : connecte-toi avec ton e-mail, ou demande à ton professeur de le remettre à zéro.":"An account already exists for this student: sign in with your email, or ask your teacher to reset it.",
+ "Tu as utilisé tous les contrôles de ton forfait ce mois-ci : ajoute un contrôle ou passe au forfait supérieur dans Mon compte.":"You have used all the tests in your plan this month: add a test or upgrade your plan in My account.",
+ "Cette classe dépasse la taille d'un contrôle : celui-ci compte pour plusieurs, et il ne t'en reste pas assez ce mois-ci. Ajoute un contrôle ou passe au forfait supérieur dans Mon compte.":"This class is larger than one test covers: this test counts as several, and you don't have enough left this month. Add a test or upgrade your plan in My account.", "Ton forfait ne permet pas plus de classes : passe au forfait supérieur dans Mon compte.":"Your plan doesn't allow more classes: upgrade your plan in My account.", "Plafond mensuel de l'IA atteint pour ton compte : écris à l'équipe Mastery si tu en as besoin.":"Monthly AI limit reached for your account: contact the Mastery team if you need more.", "Contrôle introuvable":"Test not found", "Indique le nom de l'école et sa ville":"Enter the school's name and city", "8 caractères minimum":"8 characters minimum","ANTHROPIC_API_KEY manquante sur le serveur":"ANTHROPIC_API_KEY is missing on the server",
  "Annuaire officiel injoignable pour le moment : tu peux enregistrer ton école manuellement.":"School directory unavailable right now: you can enter your school manually.",
  "Ce compte existe déjà":"This account already exists","Ce document appartient à un autre professeur":"This document belongs to another teacher","Ce quiz est fermé":"This quiz is closed",
  "Chemin invalide":"Invalid path","Code de l'établissement incorrect":"Incorrect setup code","Code inconnu : vérifie ta carte":"Unknown code: check your card","Compte désactivé":"Account disabled",
@@ -70,7 +80,7 @@ const EN_MSG = {"Tu as utilisé tous les contrôles de ton forfait ce mois-ci : 
  "Indique le nom de l'école, son code postal (5 chiffres) et sa ville":"Enter the school's name, ZIP code (5 digits) and city",
  "Nom de base invalide (format : auteur/nom)":"Invalid dataset name (format: author/name)","Hugging Face injoignable pour le moment":"Hugging Face is unreachable right now","Cette base n'a pas de colonne image + texte":"This dataset has no image + text columns","Appareil inconnu":"Unknown device","Trop de pages d'un coup : attends une minute":"Too many pages at once: wait a minute","Format accepté : JPEG, PNG ou PDF":"Accepted formats: JPEG, PNG or PDF","Fichier vide":"Empty file","Plafond quotidien d'appels IA atteint.":"Daily AI limit reached.","Code ou nom de famille incorrect : vérifie ta carte":"Incorrect code or last name: check your card","Lien expiré ou déjà utilisé : refais une demande de mot de passe oublié.":"This link has expired or was already used: request a new password reset.","Plafond quotidien d'appels IA atteint pour ton compte : réessaie demain.":"Your daily AI limit is reached: try again tomorrow.",
  "Trop d'appels IA depuis cet appareil : réessaie dans une heure.":"Too many AI requests from this device: try again in an hour."};
-const PT_MSG = {"Code ou nom de famille incorrect : vérifie ta carte": "Código ou sobrenome incorreto: confira seu cartão", "Lien expiré ou déjà utilisé : refais une demande de mot de passe oublié.": "Link expirado ou já usado: faça um novo pedido de senha esquecida.", "Tu as utilisé tous les contrôles de ton forfait ce mois-ci : ajoute un contrôle ou passe au forfait supérieur dans Mon compte.": "Você usou todas as provas do seu plano neste mês: adicione uma prova ou mude para o plano superior em Minha conta.", "Ton forfait ne permet pas plus de classes : passe au forfait supérieur dans Mon compte.": "Seu plano não permite mais turmas: mude para o plano superior em Minha conta.", "Plafond mensuel de l'IA atteint pour ton compte : écris à l'équipe Mastery si tu en as besoin.": "Limite mensal de IA atingido para sua conta: escreva para a equipe Mastery se precisar.", "Contrôle introuvable": "Prova não encontrada", "Indique le nom de l'école et sa ville": "Informe o nome da escola e a cidade", "Appareil inconnu": "Aparelho desconhecido", "Trop de pages d'un coup : attends une minute": "Páginas demais de uma vez: espere um minuto", "Format accepté : JPEG, PNG ou PDF": "Formatos aceitos: JPEG, PNG ou PDF", "Fichier vide": "Arquivo vazio", "Nom de base invalide (format : auteur/nom)": "Nome de base inválido (formato: autor/nome)", "Hugging Face injoignable pour le moment": "Hugging Face indisponível no momento", "Cette base n'a pas de colonne image + texte": "Esta base não tem colunas de imagem + texto", "8 caractères minimum": "Mínimo de 8 caracteres", "ANTHROPIC_API_KEY manquante sur le serveur": "ANTHROPIC_API_KEY ausente no servidor", "Annuaire officiel injoignable pour le moment : tu peux enregistrer ton école manuellement.": "Diretório oficial de escolas indisponível no momento: você pode cadastrar sua escola manualmente.", "Ce compte existe déjà": "Esta conta já existe", "Ce document appartient à un autre professeur": "Este documento pertence a outro professor", "Ce quiz est fermé": "Este quiz está encerrado", "Chemin invalide": "Caminho inválido", "Code de l'établissement incorrect": "Código da escola incorreto", "Code inconnu : vérifie ta carte": "Código desconhecido: confira o seu cartão", "Compte désactivé": "Conta desativada", "Compte introuvable": "Conta não encontrada", "Connexion requise": "É necessário entrar na sua conta", "Document introuvable": "Documento não encontrado", "Définis la variable MASTERY_CODE sur le serveur": "Defina a variável MASTERY_CODE no servidor", "E-mail invalide": "E-mail inválido", "E-mail ou mot de passe incorrect": "E-mail ou senha incorretos", "E-mail valide et mot de passe de 8 caractères minimum": "Informe um e-mail válido e uma senha com no mínimo 8 caracteres", "Exercices en ligne : à partir du forfait Essentiel": "Exercícios on-line: a partir do plano Essencial", "IA injoignable": "Serviço de IA indisponível", "Impossible sur ton propre compte": "Não é possível na sua própria conta", "Indique ton nom": "Informe o seu nome", "Le compte administrateur existe déjà": "A conta de administrador já existe", "Les inscriptions sont fermées": "As inscrições estão encerradas", "Mot de passe : 8 caractères minimum": "Senha: mínimo de 8 caracteres", "Mot de passe actuel incorrect": "Senha atual incorreta", "Mot de passe provisoire : 8 caractères minimum": "Senha provisória: mínimo de 8 caracteres", "Objet JSON attendu": "Era esperado um objeto JSON", "Exercices en ligne non activés pour ce compte (à partir du forfait Essentiel)": "Exercícios on-line não ativados para esta conta (a partir do plano Essencial)", "Question invalide": "Questão inválida", "Quiz introuvable": "Quiz não encontrado", "Requête invalide": "Requisição inválida", "Route inconnue": "Rota desconhecida", "Réservé à l'administrateur": "Exclusivo para o administrador", "Session de quiz expirée : recommence": "Sessão do quiz expirada: comece de novo", "Ton inscription est en attente de validation par l'équipe Mastery. Tu pourras te connecter dès qu'elle sera acceptée.": "Sua inscrição está aguardando aprovação da equipe Mastery. Você poderá entrar assim que ela for aceita.", "Ton inscription n'a pas été acceptée. Contacte l'équipe Mastery.": "Sua inscrição não foi aceita. Entre em contato com a equipe Mastery.", "Trop d'essais : réessaie dans 15 minutes": "Muitas tentativas: tente novamente em 15 minutos", "Trop d'essais, réessaie dans 15 minutes": "Muitas tentativas: tente novamente em 15 minutos", "Trop de recherches, réessaie dans quelques minutes": "Muitas buscas: tente novamente em alguns minutos", "Tu ne peux pas te retirer tes propres droits": "Você não pode remover os seus próprios direitos de administrador", "Un compte existe déjà avec cet e-mail": "Já existe uma conta com este e-mail", "Indique ton école": "Informe a sua escola", "École invalide": "Escola inválida", "Trop lourd": "Arquivo grande demais", "Ton essai gratuit est terminé : choisis un abonnement dans Mon compte pour continuer.": "Seu teste grátis terminou: escolha uma assinatura em Minha conta para continuar.", "Tu fais déjà partie d'un établissement": "Você já faz parte de uma escola", "Indique le nom de l'établissement": "Informe o nome da escola", "Code d'établissement inconnu": "Código de escola desconhecido", "Résilie d'abord l'abonnement de l'établissement": "Cancele primeiro a assinatura da escola", "Réservé à la direction de l'établissement": "Exclusivo para a direção da escola", "Le paiement n'est pas encore ouvert : la bêta est gratuite": "O pagamento ainda não está disponível: a versão beta é gratuita", "Tarif non configuré sur le serveur": "Preço não configurado no servidor", "Tu as déjà un abonnement : gère-le avec « Gérer mon abonnement »": "Você já tem uma assinatura: gerencie-a em “Gerenciar minha assinatura”", "L'établissement a déjà un abonnement": "A escola já tem uma assinatura", "Indique le nombre d'élèves de l'établissement": "Informe o número de alunos da escola", "Aucun abonnement à gérer": "Nenhuma assinatura para gerenciar", "Paiement indisponible pour le moment : réessaie dans un instant.": "Pagamento indisponível no momento: tente novamente em instantes.", "Accepte les conditions d'utilisation et la politique de confidentialité": "Aceite os termos de uso e a política de privacidade", "Indique le nom de l'école, son code postal (5 chiffres) et sa ville": "Informe o nome da escola, o código postal (5 dígitos) e a cidade", "Plafond quotidien d'appels IA atteint.": "Limite diário de uso da IA atingido.", "Plafond quotidien d'appels IA atteint pour ton compte : réessaie demain.": "Sua conta atingiu o limite diário de uso da IA: tente novamente amanhã.", "Trop d'appels IA depuis cet appareil : réessaie dans une heure.": "Muitas solicitações de IA a partir deste dispositivo: tente novamente em uma hora."};
+const PT_MSG = {"Aucun service d'e-mail n'est configuré sur le serveur.": "Nenhum serviço de e-mail está configurado no servidor.", "Ton professeur n'a pas activé les comptes pour cette classe : connecte-toi avec ton code.": "Seu professor não ativou as contas para esta turma: entre com seu código.", "Accès refusé": "Acesso negado", "Classe introuvable": "Turma não encontrada", "Méthode non autorisée": "Método não permitido", "Crée d'abord ton compte": "Crie sua conta primeiro", "Ce code est déjà relié à un autre compte.": "Este código já está ligado a outra conta.", "Trop de codes sur ce compte": "Códigos demais nesta conta", "Un compte existe déjà avec cet e-mail : connecte-toi, puis ajoute ton code.": "Já existe uma conta com este e-mail: entre e depois adicione seu código.", "Un compte existe déjà pour cet élève : connecte-toi avec ton e-mail, ou demande à ton professeur de le remettre à zéro.": "Já existe uma conta para este aluno: entre com seu e-mail ou peça ao professor para reiniciá-la.", "Code ou nom de famille incorrect : vérifie ta carte": "Código ou sobrenome incorreto: confira seu cartão", "Lien expiré ou déjà utilisé : refais une demande de mot de passe oublié.": "Link expirado ou já usado: faça um novo pedido de senha esquecida.", "Tu as utilisé tous les contrôles de ton forfait ce mois-ci : ajoute un contrôle ou passe au forfait supérieur dans Mon compte.": "Você usou todas as provas do seu plano neste mês: adicione uma prova ou mude para o plano superior em Minha conta.", "Cette classe dépasse la taille d'un contrôle : celui-ci compte pour plusieurs, et il ne t'en reste pas assez ce mois-ci. Ajoute un contrôle ou passe au forfait supérieur dans Mon compte.": "Esta turma ultrapassa o tamanho de uma prova: esta conta como várias, e você não tem provas suficientes neste mês. Adicione uma prova ou mude para o plano superior em Minha conta.", "Ton forfait ne permet pas plus de classes : passe au forfait supérieur dans Mon compte.": "Seu plano não permite mais turmas: mude para o plano superior em Minha conta.", "Plafond mensuel de l'IA atteint pour ton compte : écris à l'équipe Mastery si tu en as besoin.": "Limite mensal de IA atingido para sua conta: escreva para a equipe Mastery se precisar.", "Contrôle introuvable": "Prova não encontrada", "Indique le nom de l'école et sa ville": "Informe o nome da escola e a cidade", "Appareil inconnu": "Aparelho desconhecido", "Trop de pages d'un coup : attends une minute": "Páginas demais de uma vez: espere um minuto", "Format accepté : JPEG, PNG ou PDF": "Formatos aceitos: JPEG, PNG ou PDF", "Fichier vide": "Arquivo vazio", "Nom de base invalide (format : auteur/nom)": "Nome de base inválido (formato: autor/nome)", "Hugging Face injoignable pour le moment": "Hugging Face indisponível no momento", "Cette base n'a pas de colonne image + texte": "Esta base não tem colunas de imagem + texto", "8 caractères minimum": "Mínimo de 8 caracteres", "ANTHROPIC_API_KEY manquante sur le serveur": "ANTHROPIC_API_KEY ausente no servidor", "Annuaire officiel injoignable pour le moment : tu peux enregistrer ton école manuellement.": "Diretório oficial de escolas indisponível no momento: você pode cadastrar sua escola manualmente.", "Ce compte existe déjà": "Esta conta já existe", "Ce document appartient à un autre professeur": "Este documento pertence a outro professor", "Ce quiz est fermé": "Este quiz está encerrado", "Chemin invalide": "Caminho inválido", "Code de l'établissement incorrect": "Código da escola incorreto", "Code inconnu : vérifie ta carte": "Código desconhecido: confira o seu cartão", "Compte désactivé": "Conta desativada", "Compte introuvable": "Conta não encontrada", "Connexion requise": "É necessário entrar na sua conta", "Document introuvable": "Documento não encontrado", "Définis la variable MASTERY_CODE sur le serveur": "Defina a variável MASTERY_CODE no servidor", "E-mail invalide": "E-mail inválido", "E-mail ou mot de passe incorrect": "E-mail ou senha incorretos", "E-mail valide et mot de passe de 8 caractères minimum": "Informe um e-mail válido e uma senha com no mínimo 8 caracteres", "Exercices en ligne : à partir du forfait Essentiel": "Exercícios on-line: a partir do plano Essencial", "IA injoignable": "Serviço de IA indisponível", "Impossible sur ton propre compte": "Não é possível na sua própria conta", "Indique ton nom": "Informe o seu nome", "Le compte administrateur existe déjà": "A conta de administrador já existe", "Les inscriptions sont fermées": "As inscrições estão encerradas", "Mot de passe : 8 caractères minimum": "Senha: mínimo de 8 caracteres", "Mot de passe actuel incorrect": "Senha atual incorreta", "Mot de passe provisoire : 8 caractères minimum": "Senha provisória: mínimo de 8 caracteres", "Objet JSON attendu": "Era esperado um objeto JSON", "Exercices en ligne non activés pour ce compte (à partir du forfait Essentiel)": "Exercícios on-line não ativados para esta conta (a partir do plano Essencial)", "Question invalide": "Questão inválida", "Quiz introuvable": "Quiz não encontrado", "Requête invalide": "Requisição inválida", "Route inconnue": "Rota desconhecida", "Réservé à l'administrateur": "Exclusivo para o administrador", "Session de quiz expirée : recommence": "Sessão do quiz expirada: comece de novo", "Ton inscription est en attente de validation par l'équipe Mastery. Tu pourras te connecter dès qu'elle sera acceptée.": "Sua inscrição está aguardando aprovação da equipe Mastery. Você poderá entrar assim que ela for aceita.", "Ton inscription n'a pas été acceptée. Contacte l'équipe Mastery.": "Sua inscrição não foi aceita. Entre em contato com a equipe Mastery.", "Trop d'essais : réessaie dans 15 minutes": "Muitas tentativas: tente novamente em 15 minutos", "Trop d'essais, réessaie dans 15 minutes": "Muitas tentativas: tente novamente em 15 minutos", "Trop de recherches, réessaie dans quelques minutes": "Muitas buscas: tente novamente em alguns minutos", "Tu ne peux pas te retirer tes propres droits": "Você não pode remover os seus próprios direitos de administrador", "Un compte existe déjà avec cet e-mail": "Já existe uma conta com este e-mail", "Indique ton école": "Informe a sua escola", "École invalide": "Escola inválida", "Trop lourd": "Arquivo grande demais", "Ton essai gratuit est terminé : choisis un abonnement dans Mon compte pour continuer.": "Seu teste grátis terminou: escolha uma assinatura em Minha conta para continuar.", "Tu fais déjà partie d'un établissement": "Você já faz parte de uma escola", "Indique le nom de l'établissement": "Informe o nome da escola", "Code d'établissement inconnu": "Código de escola desconhecido", "Résilie d'abord l'abonnement de l'établissement": "Cancele primeiro a assinatura da escola", "Réservé à la direction de l'établissement": "Exclusivo para a direção da escola", "Le paiement n'est pas encore ouvert : la bêta est gratuite": "O pagamento ainda não está disponível: a versão beta é gratuita", "Tarif non configuré sur le serveur": "Preço não configurado no servidor", "Tu as déjà un abonnement : gère-le avec « Gérer mon abonnement »": "Você já tem uma assinatura: gerencie-a em “Gerenciar minha assinatura”", "L'établissement a déjà un abonnement": "A escola já tem uma assinatura", "Indique le nombre d'élèves de l'établissement": "Informe o número de alunos da escola", "Aucun abonnement à gérer": "Nenhuma assinatura para gerenciar", "Paiement indisponible pour le moment : réessaie dans un instant.": "Pagamento indisponível no momento: tente novamente em instantes.", "Accepte les conditions d'utilisation et la politique de confidentialité": "Aceite os termos de uso e a política de privacidade", "Indique le nom de l'école, son code postal (5 chiffres) et sa ville": "Informe o nome da escola, o código postal (5 dígitos) e a cidade", "Plafond quotidien d'appels IA atteint.": "Limite diário de uso da IA atingido.", "Plafond quotidien d'appels IA atteint pour ton compte : réessaie demain.": "Sua conta atingiu o limite diário de uso da IA: tente novamente amanhã.", "Trop d'appels IA depuis cet appareil : réessaie dans une heure.": "Muitas solicitações de IA a partir deste dispositivo: tente novamente em uma hora."};
 const langOf = req => { const c = ((req.headers.cookie || "").match(/(?:^|;\s*)lang=(fr|en|pt)/) || [])[1]; if (c) return c; const h = String(req.headers["x-lang"] || ""); if (/^(fr|en|pt)$/.test(h)) return h; const al = String(req.headers["accept-language"] || ""); return /^en\b/i.test(al) ? "en" : /^pt\b/i.test(al) ? "pt" : "fr"; };
 const sendJ = (res, status, obj, extra) => { const DICT = res._lang === "en" ? EN_MSG : res._lang === "pt" ? PT_MSG : null; if (DICT && obj?.error?.message && DICT[obj.error.message]) obj = {...obj, error:{...obj.error, message:DICT[obj.error.message]}}; return send(res, status, JSON.stringify(obj), TYPES[".json"], extra); };
 const same = (a, b) => { const x = Buffer.from(String(a)), y = Buffer.from(String(b)); return x.length === y.length && crypto.timingSafeEqual(x, y); };
@@ -82,8 +92,8 @@ const ipOf = req => { const real = String(req.headers["x-real-ip"] || "").trim()
 /* ---------- Stockage (Volume Railway) ---------- */
 const DATA = env("DATA_DIR") || env("RAILWAY_VOLUME_MOUNT_PATH") || path.join(ROOT, "data");
 const PERSISTENT = !!(env("DATA_DIR") || env("RAILWAY_VOLUME_MOUNT_PATH"));
-const DOCDIR = path.join(DATA, "docs"), FILEDIR = path.join(DATA, "files");
-fs.mkdirSync(DOCDIR, {recursive:true}); fs.mkdirSync(FILEDIR, {recursive:true});
+const DOCDIR = path.join(DATA, "docs"), FILEDIR = path.join(DATA, "files"), JDIR = path.join(DATA, "journal");
+fs.mkdirSync(DOCDIR, {recursive:true}); fs.mkdirSync(FILEDIR, {recursive:true}); fs.mkdirSync(JDIR, {recursive:true});
 const writeAtomic = (f, obj) => { const tmp = f + ".tmp"; fs.writeFileSync(tmp, JSON.stringify(obj)); fs.renameSync(tmp, f); };
 const readJ = (f, d, critical) => {
   let raw; try { raw = fs.readFileSync(f, "utf8"); } catch(e){ return d; }
@@ -101,9 +111,20 @@ for (const f of fs.readdirSync(DOCDIR)) if (f.endsWith(".json")){ try { DOCS.set
 const EPOCH = Date.now().toString(36) + crypto.randomBytes(3).toString("hex"); let SEQ = 0; const LOG = [];
 const PATH_OK = p => /^[A-Za-z0-9_\-.~:@+]{1,200}(\/[A-Za-z0-9_\-.~:@+]{1,200}){1,15}$/.test(p) && !p.split("/").some(x => x === "." || x === "..");
 const docFile = p => path.join(DOCDIR, encodeURIComponent(p) + ".json");
+/* Journal de validation : un fichier par contrôle, une ligne par événement (qui a validé ou changé quelle note, quand, note proposée
+   par l'IA et note retenue). Écrit seulement quand un professeur enregistre ; supprimé avec les feuilles du contrôle. */
+const journalFile = cid => path.join(JDIR, encodeURIComponent(cid) + ".jsonl");
+function journalise(dp, avant, apres, u){
+  try { const ev = FIAB.journal(avant, apres, u.id, new Date().toISOString()); if (ev.length) fs.appendFileSync(journalFile(dp.split("/")[1]), ev.map(e => JSON.stringify(e)).join("\n") + "\n"); }
+  catch(e){ console.warn("Journal de validation :", e.message); }
+}
+function journalOf(cid){
+  let raw = ""; try { raw = fs.readFileSync(journalFile(cid), "utf8"); } catch(e){ return []; }
+  return raw.split("\n").filter(Boolean).map(l => { try { return JSON.parse(l); } catch(e){ return null; } }).filter(Boolean);
+}
 function persist(p, data){
   const esp = (data || DOCS.get(p))?.espace || null, own = (data || DOCS.get(p))?.owner || null;
-  if (data == null){ DOCS.delete(p); fs.rmSync(docFile(p), {force:true}); } else { DOCS.set(p, data); writeAtomic(docFile(p), data); }
+  if (data == null){ DOCS.delete(p); fs.rmSync(docFile(p), {force:true}); if (p.startsWith("feuilles/")) fs.rmSync(journalFile(p.slice(9)), {force:true}); } else { DOCS.set(p, data); writeAtomic(docFile(p), data); }
   LOG.push({seq:++SEQ, path:p, esp, own}); if (LOG.length > 20000) LOG.splice(0, LOG.length - 20000);
 }
 const isObj = x => x && typeof x === "object" && !Array.isArray(x);
@@ -140,7 +161,7 @@ const AFF = ["ecole", "nom", "les2"];
 const PREF_Q = {format:["redige","mixte","qcm"], profondeur:["simple","standard","exigeant"], longueur:["courte","moyenne","developpee"]};
 const cleanPrefs = p => { const n = (v, a, b, d) => { v = +v; return v >= a && v <= b ? v : d; }, q = isObj(p.q) ? p.q : {};
   return {police:n(p.police, 13, 17, 15), lh:n(p.lh, 26, 46, 30), reglure:["lignes", "seyes", "carreaux", "aucune"].includes(p.reglure) ? p.reglure : "lignes",
-    ton:["bienveillant", "neutre", "exigeant", "chaleureux"].includes(p.ton) ? p.ton : "bienveillant", adresse:p.adresse === "vous" ? "vous" : "tu",
+    ton:["bienveillant", "neutre", "exigeant", "chaleureux"].includes(p.ton) ? p.ton : "bienveillant", adresse:p.adresse === "vous" ? "vous" : "tu", severite:p.severite === "exigeante" ? "exigeante" : "bienveillante",
     ...(isObj(p.notation) && ["sur", "pct", "lettres"].includes(p.notation.type) ? {notation:(N => ({type:N.type, sur:Math.round(n(N.sur, 1, 1000, 20)), pas:[1, 0.5, 0.25, 0.1, 0.01].includes(+N.pas) ? +N.pas : N.type === "pct" ? 1 : 0.1,
       lettres:(Array.isArray(N.lettres) ? N.lettres : []).slice(0, 20).map(x => ({l:String(x?.l || "").trim().slice(0, 30), min:n(x?.min, 0, 100, 0)})).filter(x => x.l), pctLettre:N.pctLettre !== false}))(p.notation)} : {}),
     periodes:(r => { const md = (v, d) => /^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(v || "") ? v : d; return {mode:r.mode === "sem" ? "sem" : "trim", t2:md(r.t2, "12-01"), t3:md(r.t3, "03-15"), s2:md(r.s2, "02-01")}; })(isObj(p.periodes) ? p.periodes : {}), bareme:p.bareme !== false, consignes:String(p.consignes ?? "Écris uniquement dans les cadres.").slice(0, 400),
@@ -166,10 +187,40 @@ setInterval(() => { const now = Date.now(); for (const [k, l] of tries){ const r
 const validEmail = e => /^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/.test(e);
 /* Contact affiché (mentions légales, mot de passe oublié) et e-mails transactionnels via Resend (RESEND_API_KEY + MAIL_FROM) */
 const CONTACT = () => env("LEGAL_EMAIL") || env("ADMIN_EMAIL") || USERS.find(x => x.role === "admin")?.email || "";
-const MAIL = () => !!(env("RESEND_API_KEY") && env("MAIL_FROM"));
+/* Deux façons d'envoyer : par SMTP (une boîte Gmail avec un « mot de passe d'application » : SMTP_USER + SMTP_PASS), ou par l'API Resend (RESEND_API_KEY + MAIL_FROM).
+   Attention : certains hébergeurs ferment les ports SMTP (Railway hors forfait Pro) ; l'e-mail d'essai de la page Comptes le dit tout de suite. */
+const SMTP = () => !!(env("SMTP_USER") && env("SMTP_PASS"));
+const MAIL = () => SMTP() || !!(env("RESEND_API_KEY") && env("MAIL_FROM"));
+const mailFrom = () => (env("MAIL_FROM") || (SMTP() ? "Mastery <" + env("SMTP_USER") + ">" : "")).replace(/[\r\n]/g, "");
 async function sendMail(to, subject, text){
-  const r = await fetch("https://api.resend.com/emails", {method:"POST", headers:{"Authorization":"Bearer " + env("RESEND_API_KEY"), "Content-Type":"application/json"}, body:JSON.stringify({from:env("MAIL_FROM"), to:[to], subject, text})});
+  if (SMTP()) return smtpSend(to, subject, text);
+  const r = await fetch(env("RESEND_URL") || "https://api.resend.com/emails", {method:"POST", headers:{"Authorization":"Bearer " + env("RESEND_API_KEY"), "Content-Type":"application/json"}, body:JSON.stringify({from:env("MAIL_FROM"), to:[to], subject, text})});
   if (!r.ok) throw new Error("Resend " + r.status); }
+/* Petit client SMTP, sans dépendance : TLS direct (port 465, Gmail par défaut) ou STARTTLS (587) ; connexion AUTH LOGIN ; message en texte UTF-8 */
+function smtpSend(to, subject, text){
+  const host = env("SMTP_HOST") || "smtp.gmail.com", port = +env("SMTP_PORT") || 465, local = /^(127\.0\.0\.1|localhost)$/.test(host), from = mailFrom(), addr = (from.match(/<([^>]+)>/) || [, from])[1].trim();
+  const b64 = t => Buffer.from(String(t), "utf8").toString("base64"), mime = t => /^[\x20-\x7e]*$/.test(t) ? t : "=?UTF-8?B?" + b64(t) + "?=";
+  const nom = (from.match(/^(.*?)\s*</) || [, ""])[1].replace(/^"|"$/g, "");
+  const msg = [`From: ${nom ? mime(nom) + " " : ""}<${addr}>`, `To: <${to}>`, `Subject: ${mime(String(subject).replace(/[\r\n]/g, " "))}`, `Date: ${new Date().toUTCString()}`, `Message-ID: <${crypto.randomBytes(12).toString("hex")}@${addr.split("@")[1] || "mastery"}>`,
+    "MIME-Version: 1.0", "Content-Type: text/plain; charset=utf-8", "Content-Transfer-Encoding: base64", "", ...(b64(text).match(/.{1,76}/g) || [""])].join("\r\n");
+  return new Promise((resolve, reject) => {
+    const tls = require("tls"), net = require("net"); let sock = port === 465 && !local ? tls.connect({host, port, servername:host}) : net.connect({host, port}), buf = "", attente = null, fini = false;
+    const fin = e => { if (fini) return; fini = true; clearTimeout(garde); try { sock.destroy(); } catch(x){} e ? reject(e) : resolve(); };
+    const garde = setTimeout(() => fin(new Error("SMTP : pas de réponse de " + host + ":" + port + " (port fermé par l'hébergeur ?)")), 20000);
+    const brancher = () => { sock.setEncoding("utf8"); sock.on("error", e => fin(new Error("SMTP : " + e.message)));
+      sock.on("data", d => { buf += d; let m; while ((m = buf.match(/^(?:\d{3}-[^\n]*\n)*(\d{3}) [^\n]*\n/))){ buf = buf.slice(m[0].length); const f = attente; attente = null; if (f) f(+m[1], m[0].trim()); } }); };
+    const lire = () => new Promise(r => { attente = r; }), dire = async (ligne, ok) => { if (ligne !== null) sock.write(ligne + "\r\n"); const [code, txt] = await new Promise(r => { attente = (c, t) => r([c, t]); }); if (!ok.includes(code)) throw new Error("SMTP " + code + " : " + txt.split("\n").pop().slice(4, 200)); return txt; };
+    brancher();
+    (async () => {
+      await dire(null, [220]); let caps = await dire("EHLO mastery", [250]);
+      if (port !== 465 && !local){ if (!/STARTTLS/i.test(caps)) throw new Error("SMTP : le serveur ne propose pas de connexion chiffrée"); await dire("STARTTLS", [220]);
+        sock.removeAllListeners("data"); sock.removeAllListeners("error"); sock = tls.connect({socket:sock, servername:host}); await new Promise((r, x) => { sock.once("secureConnect", r); sock.once("error", x); }); brancher(); caps = await dire("EHLO mastery", [250]); }
+      await dire("AUTH LOGIN", [334]); await dire(b64(env("SMTP_USER")), [334]); await dire(b64(env("SMTP_PASS").replace(/\s+/g, "")), [235]);
+      await dire(`MAIL FROM:<${addr}>`, [250]); await dire(`RCPT TO:<${to}>`, [250, 251]); await dire("DATA", [354]); await dire(msg + "\r\n.", [250]);
+      try { sock.write("QUIT\r\n"); } catch(e){}
+    })().then(() => fin(), fin);
+  });
+}
 const tokHash = t => crypto.createHash("sha256").update(String(t)).digest("hex");
 
 /* Propriété : un prof modifie ses contrôles, cours, copies et bilans ; les classes sont communes ; l'admin peut tout. */
@@ -183,10 +234,12 @@ const docsFor = u => Object.fromEntries([...DOCS].filter(([k, v]) => visible(u, 
 
 /* ---------- Abonnements, essai gratuit, parrainage, forfait établissement (Stripe) ----------
    Sans STRIPE_SECRET_KEY : mode bêta, tout est gratuit (comportement d'avant).
-   Avec : chaque prof inscrit a un essai (TRIAL_DAYS, 30 j par défaut, +30 j s'il vient d'un parrain), puis choisit un abonnement.
+   Avec : chaque prof inscrit a un essai (TRIAL_DAYS, 30 j par défaut, +30 j s'il vient d'un parrain ; TRIAL_CTRL contrôles par mois, 1 par défaut), puis choisit un abonnement.
    Les comptes créés par l'administrateur et l'administrateur lui-même restent inclus (établissement fondateur). */
 const BILLING = () => !!env("STRIPE_SECRET_KEY");
 const DAY = 864e5, TRIAL_DAYS = () => Number(env("TRIAL_DAYS")) || 30;
+/* Gratuit (essai, mois offerts) : TRIAL_CTRL contrôles par mois. Un contrôle couvre COPIES_PAR_CONTROLE élèves : au-delà, il compte pour un de plus par tranche. */
+const TRIAL_CTRL = () => clampN(Math.round(+env("TRIAL_CTRL")) || 1, 1, 50), COPIES_CTRL = () => clampN(Math.round(+env("COPIES_PAR_CONTROLE")) || 35, 5, 500);
 /* Forfaits du prof par paliers : nombre de classes et de contrôles imprimés par mois.
    Variables Stripe : STRIPE_PRICE_<DECOUVERTE|ESSENTIEL|COMPLET>_<MOIS|AN>, STRIPE_PRICE_CONTROLE (contrôle supplémentaire), STRIPE_PRICE_ECOLE (par élève et par an) ;
    suffixe _BRL pour les prix en reais (site en portugais). Les anciens forfaits « essentiel » et « pro » restent reconnus (pro → complet). */
@@ -226,11 +279,17 @@ const classesOf = u => [...DOCS].filter(([k, v]) => k.startsWith("classes/") && 
 /* Ce que le forfait permet ce mois-ci : null = illimité (bêta, comptes inclus) */
 function quota(u){
   const a = access(u); if (!BILLING() || a.mode === "inclus" || a.mode === "beta" || !a.ok) return {illimite:true, mode:a.mode};
-  const c = u.credits?.[MOIS()] || {}, used = (c.ids || []).length, extra = c.extra || 0;
-  if (a.mode === "ecole") return {illimite:false, mode:a.mode, plan:"ecole", classes:null, ctrl:2 * Math.max(1, classesOf(u)) + extra, used};
-  const t = TIERS[tierOf(a.plan)]; return {illimite:false, mode:a.mode, plan:tierOf(a.plan), classes:t.classes, ctrl:t.ctrl + extra, used};
+  const c = u.credits?.[MOIS()] || {}, used = (c.ids || []).length, extra = c.extra || 0, par = COPIES_CTRL();
+  if (a.mode === "ecole") return {illimite:false, mode:a.mode, plan:"ecole", classes:null, ctrl:2 * Math.max(1, classesOf(u)) + extra, used, par};
+  const t = TIERS[tierOf(a.plan)]; return {illimite:false, mode:a.mode, plan:tierOf(a.plan), classes:t.classes, ctrl:(a.mode === "essai" ? TRIAL_CTRL() : t.ctrl) + extra, used, par};
+}
+/* Nombre de contrôles du forfait qu'utilise un contrôle : 1 par tranche de COPIES_PAR_CONTROLE élèves concernés */
+function unitesCtrl(c){
+  const el = DOCS.get("classes/" + c.classeId)?.eleves, tous = Array.isArray(el) ? el : [], n = Array.isArray(c.eleves) && c.eleves.length ? tous.filter(e => c.eleves.includes(e?.id)).length : tous.length;
+  return Math.max(1, Math.ceil(n / COPIES_CTRL()));
 }
 const QUOTA_MSG = "Tu as utilisé tous les contrôles de ton forfait ce mois-ci : ajoute un contrôle ou passe au forfait supérieur dans Mon compte.";
+const QUOTA_TAILLE_MSG = "Cette classe dépasse la taille d'un contrôle : celui-ci compte pour plusieurs, et il ne t'en reste pas assez ce mois-ci. Ajoute un contrôle ou passe au forfait supérieur dans Mon compte.";
 const CLASSES_MSG = "Ton forfait ne permet pas plus de classes : passe au forfait supérieur dans Mon compte.";
 const refStats = u => { const f = USERS.filter(v => v.referredBy === u.id); return {filleuls:f.length, payants:f.filter(v => v.refRewarded).length, mois:(u.refMonths || []).length}; };
 const NO_ACCESS = "Ton essai gratuit est terminé : choisis un abonnement dans Mon compte pour continuer.";
@@ -326,10 +385,12 @@ async function billingApi(req, res, url, p, u){
   }
   if (p === "/api/billing/use" && req.method === "POST"){
     const cid = String(b.ctrlId || "").slice(0, 40), c = DOCS.get("controles/" + cid); if (!cid || !c) return sendJ(res, 404, {error:{message:"Contrôle introuvable"}});
-    const q = quota(u); if (q.illimite || c.type === "rattrapage" || (u.printed || []).includes(cid)) return sendJ(res, 200, {quota:q});
-    if (q.used >= q.ctrl) return sendJ(res, 402, {error:{message:QUOTA_MSG, code:"quota"}, quota:q});
-    const m = MOIS(), unAn = (+m.slice(0, 4) - 1) + m.slice(4); u.credits = Object.fromEntries(Object.entries(u.credits || {}).filter(([k]) => k >= unAn));   // on garde un an d'historique
-    u.credits[m] = {...(u.credits[m] || {}), ids:[...(u.credits[m]?.ids || []), cid]}; u.printed = [...(u.printed || []), cid].slice(-500); saveUsers();
+    const q = quota(u); if (q.illimite || c.type === "rattrapage") return sendJ(res, 200, {quota:q});
+    // Déjà compté (réimpression) : gratuit, sauf si la classe a grossi au point de passer une tranche de plus
+    const besoin = unitesCtrl(c), deja = (u.printed || []).filter(id => id === cid).length, manque = besoin - deja; if (manque <= 0) return sendJ(res, 200, {quota:q});
+    if (q.used + manque > q.ctrl) return sendJ(res, 402, {error:{message:besoin > 1 && q.used < q.ctrl ? QUOTA_TAILLE_MSG : QUOTA_MSG, code:"quota"}, quota:q});
+    const m = MOIS(), unAn = (+m.slice(0, 4) - 1) + m.slice(4), plus = Array(manque).fill(cid); u.credits = Object.fromEntries(Object.entries(u.credits || {}).filter(([k]) => k >= unAn));   // on garde un an d'historique
+    u.credits[m] = {...(u.credits[m] || {}), ids:[...(u.credits[m]?.ids || []), ...plus]}; u.printed = [...(u.printed || []), ...plus].slice(-500); saveUsers();
     return sendJ(res, 200, {quota:quota(u)});
   }
   if (!BILLING()) return sendJ(res, 400, {error:{message:"Le paiement n'est pas encore ouvert : la bêta est gratuite"}});
@@ -469,7 +530,7 @@ async function accounts(req, res, url, p, u){
       const en = res._lang === "en", pt = res._lang === "pt";
       sendMail(x.email, en ? "Reset your Mastery password" : pt ? "Redefina sua senha do Mastery" : "Réinitialise ton mot de passe Mastery",
         (en ? "To choose a new password, open this link (valid for 1 hour):\n" : pt ? "Para escolher uma nova senha, abra este link (válido por 1 hora):\n" : "Pour choisir un nouveau mot de passe, ouvre ce lien (valable 1 heure) :\n") + base + "/app#/reset/" + t +
-        (en ? "\n\nIf you didn't ask for this, ignore this email." : pt ? "\n\nSe você não pediu, ignore este e-mail." : "\n\nSi tu n'as rien demandé, ignore cet e-mail.")).catch(e => console.warn("E-mail non envoyé", e.message)); }
+        (en ? "\n\nIf you didn't ask for this, ignore this email." : pt ? "\n\nSe você não pediu, ignore este e-mail." : "\n\nSi tu n'as rien demandé, ignore cet e-mail.") + SIGNE).catch(e => console.warn("E-mail non envoyé", e.message)); }
     else if (x){ x.resetDemande = new Date().toISOString(); saveUsers(); console.log(`Mot de passe oublié · ${x.id}`); }
     return sendJ(res, 200, {mail:MAIL(), contact:CONTACT()});
   }
@@ -566,10 +627,18 @@ async function storage(req, res, url, p, u){
       if (req.method === "PUT"){
         const own = cur?.owner || (col === "feuilles" ? ownerOf(dp) : null) || u.id;
         const esp = espaceFor(dp, u);
+        if (col === "feuilles" && cur) journalise(dp, cur, body, u);
         persist(dp, OWNED.includes(col) ? {...body, owner:own, espace:esp} : {...body, espace:esp, ...(cur?.createdBy || !cur ? {createdBy:cur?.createdBy || u.id} : {})});
         return sendJ(res, 200, {seq:SEQ});
       }
-      if (req.method === "PATCH"){ if (!cur) return sendJ(res, 404, {error:{message:"Document introuvable"}}); const {owner, espace, ...rest} = body; persist(dp, merge(cur, rest)); return sendJ(res, 200, {seq:SEQ}); }
+      if (req.method === "PATCH"){ if (!cur) return sendJ(res, 404, {error:{message:"Document introuvable"}}); const {owner, espace, ...rest} = body, next = merge(cur, rest);
+        if (col === "feuilles") journalise(dp, cur, next, u);
+        persist(dp, next); return sendJ(res, 200, {seq:SEQ}); }
+    }
+    if (p === "/api/journal" && req.method === "GET"){
+      const cid = url.searchParams.get("ctrl") || "", doc = PATH_OK("feuilles/" + cid) ? DOCS.get("feuilles/" + cid) : null;
+      if (!doc || !visible(u, doc)) return sendJ(res, 404, {error:{message:"Document introuvable"}});
+      const noms = {}; return sendJ(res, 200, {events:journalOf(cid).map(e => ({...e, nom:noms[e.par] ?? (noms[e.par] = USERS.find(x => x.id === e.par)?.nom || "")}))});
     }
     if (p === "/api/files" && req.method === "POST"){
       if (!access(u).ok) return sendJ(res, 402, {error:{message:NO_ACCESS, code:"no_access"}});
@@ -624,7 +693,40 @@ const ESESS = new Map(Object.entries(readJ(ESESS_F, {})).filter(([, v]) => v && 
 let esessTimer = null; const saveEsess = () => { clearTimeout(esessTimer); esessTimer = setTimeout(() => { for (const [k, v] of ESESS) if (v.exp < Date.now()) ESESS.delete(k); writeAtomic(ESESS_F, Object.fromEntries(ESESS)); }, 500); };
 const TIRAGES = new Map();                     // tirage en cours → {quizId, key, qids, used, answered, start, exp}
 const esidOf = req => ((req.headers.cookie || "").match(/(?:^|;\s*)esid=([a-f0-9]{48})/) || [])[1] || "";
-function eleveOf(req){ const s = ESESS.get(esidOf(req)); if (!s || s.exp < Date.now()) return null; const cl = DOCS.get("classes/" + s.classeId); const e = cl?.eleves?.find(x => x.id === s.eleveId && x.code === s.code); return e ? {...s, cl, e} : null; }
+/* Comptes élèves : l'élève crée son compte (e-mail + mot de passe) avec son code ; un compte peut réunir plusieurs codes (une classe par professeur).
+   Rangés à part des classes : le professeur ne voit ni l'e-mail en entier ni le mot de passe, et ils ne sont pas dans son export. */
+const ECOMPTES_F = path.join(DATA, "comptes-eleves.json");
+let ECOMPTES = readJ(ECOMPTES_F, []);          // [{id, email, h, liens:[{classeId, eleveId}], cree, vu, reset}]
+const saveEcomptes = () => writeAtomic(ECOMPTES_F, ECOMPTES);
+const compteDe = (classeId, eleveId) => ECOMPTES.find(c => (c.liens || []).some(l => l.classeId === classeId && l.eleveId === eleveId));
+const masqueMail = em => { const [a, d] = String(em).split("@"); return a.slice(0, 1) + "•••@" + d; };
+const finCompte = c => { ECOMPTES = ECOMPTES.filter(x => x !== c); for (const [k, v] of ESESS) if (v.compte === c.id) ESESS.delete(k); saveEcomptes(); saveEsess(); };
+let PW_VIDE = null;                            // comparaison à blanc : un e-mail inconnu prend le même temps qu'un mauvais mot de passe
+/* Qui est connecté : avec un code, un élève d'une classe ; avec un compte, tous les codes réunis dans ce compte */
+function elevesOf(req){
+  const s = ESESS.get(esidOf(req)); if (!s || s.exp < Date.now()) return null;
+  const un = (classeId, eleveId, code) => { const cl = DOCS.get("classes/" + classeId), e = cl?.eleves?.find(x => x.id === eleveId && (code === undefined || x.code === code)); return e ? {classeId, eleveId, espace:cl.espace, cl, e} : null; };
+  if (s.compte){ const c = ECOMPTES.find(x => x.id === s.compte); return c ? {compte:c, els:(c.liens || []).map(l => un(l.classeId, l.eleveId)).filter(Boolean)} : null; }
+  const el = un(s.classeId, s.eleveId, s.code); return el ? {compte:null, els:[el]} : null;
+}
+function ouvrirEleve(req, res, sess, body){
+  const tok = crypto.randomBytes(24).toString("hex"); ESESS.set(tok, {...sess, exp:Date.now() + 120 * 864e5}); saveEsess();
+  const secure = String(req.headers["x-forwarded-proto"] || "").includes("https") ? "; Secure" : "";
+  return sendJ(res, 200, body || {ok:true}, {"Set-Cookie":`esid=${tok}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${120 * 86400}${secure}`});
+}
+const essais = k => (tries.get(k) || []).filter(t => Date.now() - t < 15 * 60e3).length;
+/* Code personnel + nom de famille : deviner un code ne suffit pas. Renvoie l'élève trouvé ; sinon la réponse d'erreur est déjà partie. */
+function verifCode(req, res, b){
+  const elK = "el:" + ipOf(req), codeK = "elc:" + String(b.code || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 20);
+  if (essais(elK) >= 40 || essais(codeK) >= 8){ sendJ(res, 429, {error:{message:"Trop d'essais : réessaie dans 15 minutes"}}); return null; }
+  const hit = findCode(b.code), norm = t => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9\u0590-\u05ff]+/g, "");
+  /* Nom de famille attendu ; le prénom ou le nom complet sont aussi acceptés (listes importées « NOM Prénom » rangées à l'envers) */
+  const t = norm(b.nom), N = norm(hit?.e.nom), P = norm(hit?.e.prenom), nameOk = !!t && (!N || [N, P, N + P, P + N].includes(t));
+  if (!hit || !nameOk){ tooMany(elK); tooMany(codeK); sendJ(res, 401, {error:{message:"Code ou nom de famille incorrect : vérifie ta carte"}}); return null; }
+  return hit;
+}
+const SIGNE = "\n\n—\nMastery · Made by Les Institutions Sinaï";
+const lienBase = req => env("APP_URL") || baseUrl(req);
 function findCode(code){
   code = String(code || "").toUpperCase().replace(/[^A-Z0-9]/g, ""); if (code.length < 5) return null;
   for (const [k, v] of DOCS) if (k.startsWith("classes/") && isObj(v)){ const e = (v.eleves || []).find(x => x.code === code); if (e) return {classeId:k.slice(8), cl:v, e, code}; }
@@ -656,7 +758,7 @@ const ctrlDocs = () => [...DOCS].filter(([k, v]) => k.startsWith("controles/") &
 const ansNote = a => a ? (a.note ?? a.noteIA ?? null) : null;
 function ctrlsEleve(el){
   return ctrlDocs().filter(({c}) => c.classeId === el.classeId && (c.type || "controle") === "controle" && c.pub?.res?.[el.eleveId])
-    .map(({id, c}) => { const r = c.pub.res[el.eleveId]; return {id, titre:c.titre, matiere:c.matiere, date:c.date || "", publieLe:c.pub.at, note:r.aff?.retenue || "", base:r.aff?.base || "", ratt:r.aff?.ratt || "", rattrape:r.ratt != null && Math.abs(r.retenue - r.base) > 0.001}; })
+    .map(({id, c}) => { const r = c.pub.res[el.eleveId]; return {id, titre:c.titre, matiere:c.matiere, date:c.date || "", publieLe:c.pub.at, note:r.aff?.retenue || "", sur20:typeof r.retenue === "number" ? r.retenue : null, base:r.aff?.base || "", ratt:r.aff?.ratt || "", rattrape:r.ratt != null && Math.abs(r.retenue - r.base) > 0.001}; })
     .sort((a, b) => (b.date || b.publieLe || "").localeCompare(a.date || a.publieLe || ""));
 }
 function rattsEleve(el){
@@ -676,34 +778,111 @@ function detailEleve(el, id){
   return {id, titre:c.titre, matiere:c.matiere, date:c.date || "", rattrapage:isR, parent:parent?.titre || "", corrige, consignes:c.mise?.consignes || "",
     notes:res ? {base:res.aff?.base || "", ratt:res.aff?.ratt || "", retenue:res.aff?.retenue || "", regle:res.regle || "", rattrape:res.ratt != null && Math.abs(res.retenue - res.base) > 0.001} : null, questions:qs};
 }
+/* Professeur : quels élèves de la classe ont créé leur compte (e-mail masqué) ; remettre un compte à zéro (l'élève le recrée avec son code) */
+function comptesClasse(req, res, u, classeId, eleveId){
+  if (!u) return sendJ(res, 401, {error:{message:"Connexion requise"}});
+  const cl = DOCS.get("classes/" + classeId); if (!isObj(cl) || !visible(u, cl)) return sendJ(res, 404, {error:{message:"Classe introuvable"}});
+  if (req.method === "GET" && !eleveId) return sendJ(res, 200, {comptes:Object.fromEntries((cl.eleves || []).map(e => [e.id, compteDe(classeId, e.id)]).filter(([, c]) => c).map(([id, c]) => [id, {email:masqueMail(c.email), cree:c.cree}]))});
+  if (req.method === "DELETE" && eleveId){
+    if (!canWrite(u, "classes/" + classeId)) return sendJ(res, 403, {error:{message:"Accès refusé"}});
+    const c = compteDe(classeId, eleveId); if (!c) return sendJ(res, 404, {error:{message:"Compte introuvable"}});
+    c.liens = c.liens.filter(l => !(l.classeId === classeId && l.eleveId === eleveId)); if (c.liens.length) saveEcomptes(); else finCompte(c);
+    return sendJ(res, 200, {ok:true});
+  }
+  return sendJ(res, 405, {error:{message:"Méthode non autorisée"}});
+}
 async function eleveApi(req, res, url, p){
+  const lg = res._lang, L = (fr, en, pt) => lg === "en" ? en : lg === "pt" ? pt : fr;
   if (p === "/api/eleve/login" && req.method === "POST"){
-    const elK = "el:" + ipOf(req), elFails = (tries.get(elK) || []).filter(t => Date.now() - t < 15 * 60e3);
-    if (elFails.length >= 40) return sendJ(res, 429, {error:{message:"Trop d'essais : réessaie dans 15 minutes"}});
-    const b = await readJSON(req, 2e3) || {}; const hit = findCode(b.code);
-    const codeK = "elc:" + String(b.code || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 20);
-    if ((tries.get(codeK) || []).filter(t => Date.now() - t < 15 * 60e3).length >= 8) return sendJ(res, 429, {error:{message:"Trop d'essais : réessaie dans 15 minutes"}});
-    /* Code personnel + nom de famille : deviner un code ne suffit pas */
-    const norm = t => String(t || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9\u0590-\u05ff]+/g, "");
-    /* Nom de famille attendu ; le prénom ou le nom complet sont aussi acceptés (listes importées « NOM Prénom » rangées à l'envers) */
-    const t = norm(b.nom), N = norm(hit?.e.nom), P = norm(hit?.e.prenom), nameOk = !!t && (!N || [N, P, N + P, P + N].includes(t));
-    if (!hit || !nameOk){ tooMany(elK); tooMany(codeK); return sendJ(res, 401, {error:{message:"Code ou nom de famille incorrect : vérifie ta carte"}}); }
-    const tok = crypto.randomBytes(24).toString("hex"); ESESS.set(tok, {classeId:hit.classeId, eleveId:hit.e.id, code:hit.code, espace:hit.cl.espace, exp:Date.now() + 120 * 864e5}); saveEsess();
-    const secure = String(req.headers["x-forwarded-proto"] || "").includes("https") ? "; Secure" : "";
-    return sendJ(res, 200, {ok:true}, {"Set-Cookie":`esid=${tok}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${120 * 86400}${secure}`});
+    const b = await readJSON(req, 2e3) || {};
+    if (b.email !== undefined){                      // compte : e-mail + mot de passe
+      const em = String(b.email || "").trim().toLowerCase(), elK = "el:" + ipOf(req), mK = "elm:" + em.slice(0, 120);
+      if (essais(elK) >= 40 || essais(mK) >= 8) return sendJ(res, 429, {error:{message:"Trop d'essais : réessaie dans 15 minutes"}});
+      const c = ECOMPTES.find(x => x.email === em), ok = c ? checkPw(b.password, c.h) : (checkPw(b.password, PW_VIDE || (PW_VIDE = hashPw(crypto.randomBytes(8).toString("hex")))), false);
+      if (!ok){ tooMany(elK); tooMany(mK); return sendJ(res, 401, {error:{message:"E-mail ou mot de passe incorrect"}}); }
+      c.vu = new Date().toISOString(); saveEcomptes(); return ouvrirEleve(req, res, {compte:c.id});
+    }
+    const hit = verifCode(req, res, b); if (!hit) return;
+    return ouvrirEleve(req, res, {classeId:hit.classeId, eleveId:hit.e.id, code:hit.code, espace:hit.cl.espace});
   }
   if (p === "/api/eleve/logout" && req.method === "POST"){ ESESS.delete(esidOf(req)); saveEsess(); return sendJ(res, 200, {}, {"Set-Cookie":"esid=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0"}); }
-  const el = eleveOf(req); if (!el) return sendJ(res, 401, {error:{message:"Connexion requise"}});
+  /* Créer son compte : avec le code et le nom de famille (ou depuis une session ouverte avec le code) */
+  if (p === "/api/eleve/compte" && req.method === "POST"){
+    const b = await readJSON(req, 2e3) || {}, em = String(b.email || "").trim().toLowerCase(), pw = String(b.password || "");
+    if (!validEmail(em) || pw.length < 8) return sendJ(res, 400, {error:{message:"E-mail valide et mot de passe de 8 caractères minimum"}});
+    if (tooMany("elcr:" + ipOf(req), 12)) return sendJ(res, 429, {error:{message:"Trop d'essais : réessaie dans 15 minutes"}});
+    let cible = null; const cur = elevesOf(req);
+    if (b.code){ const hit = verifCode(req, res, b); if (!hit) return; cible = {classeId:hit.classeId, eleveId:hit.e.id}; }
+    else if (cur && !cur.compte && cur.els[0]) cible = {classeId:cur.els[0].classeId, eleveId:cur.els[0].eleveId};
+    else return sendJ(res, 401, {error:{message:"Connexion requise"}});
+    if (DOCS.get("classes/" + cible.classeId)?.sansCompte) return sendJ(res, 403, {error:{message:"Ton professeur n'a pas activé les comptes pour cette classe : connecte-toi avec ton code."}});
+    if (compteDe(cible.classeId, cible.eleveId)) return sendJ(res, 409, {error:{message:"Un compte existe déjà pour cet élève : connecte-toi avec ton e-mail, ou demande à ton professeur de le remettre à zéro."}});
+    if (ECOMPTES.some(c => c.email === em)) return sendJ(res, 409, {error:{message:"Un compte existe déjà avec cet e-mail : connecte-toi, puis ajoute ton code."}});
+    const c = {id:crypto.randomBytes(8).toString("hex"), email:em, h:hashPw(pw), liens:[cible], cree:new Date().toISOString()}; ECOMPTES.push(c); saveEcomptes(); ESESS.delete(esidOf(req));
+    if (MAIL()) sendMail(em, L("Ton compte Mastery est créé", "Your Mastery account is ready", "Sua conta Mastery foi criada"),
+      L("Ton compte élève Mastery est créé. Pour te connecter : ", "Your Mastery student account is ready. To sign in: ", "Sua conta de aluno Mastery foi criada. Para entrar: ") + lienBase(req) + "/eleve" +
+      L("\n\nSi tu n'as rien demandé, ignore cet e-mail.", "\n\nIf you didn't ask for this, ignore this email.", "\n\nSe você não pediu, ignore este e-mail.") + SIGNE).catch(e => console.warn("E-mail non envoyé", e.message));
+    return ouvrirEleve(req, res, {compte:c.id});
+  }
+  /* Mot de passe oublié : lien valable une heure, envoyé à l'e-mail du compte ; sans service d'e-mail, le professeur remet le compte à zéro */
+  if (p === "/api/eleve/oubli" && req.method === "POST"){
+    if (tooMany(ipOf(req))) return sendJ(res, 429, {error:{message:"Trop d'essais : réessaie dans 15 minutes"}});
+    const b = await readJSON(req, 2e3) || {}, em = String(b.email || "").trim().toLowerCase();
+    if (!validEmail(em)) return sendJ(res, 400, {error:{message:"E-mail invalide"}});
+    const c = ECOMPTES.find(x => x.email === em);
+    if (c && MAIL()){ const t = crypto.randomBytes(24).toString("hex"); c.reset = {h:tokHash(t), exp:Date.now() + 3600e3}; saveEcomptes();
+      sendMail(c.email, L("Réinitialise ton mot de passe Mastery", "Reset your Mastery password", "Redefina sua senha do Mastery"),
+        L("Pour choisir un nouveau mot de passe, ouvre ce lien (valable 1 heure) :\n", "To choose a new password, open this link (valid for 1 hour):\n", "Para escolher uma nova senha, abra este link (válido por 1 hora):\n") + lienBase(req) + "/eleve#reset/" + t +
+        L("\n\nSi tu n'as rien demandé, ignore cet e-mail.", "\n\nIf you didn't ask for this, ignore this email.", "\n\nSe você não pediu, ignore este e-mail.") + SIGNE).catch(e => console.warn("E-mail non envoyé", e.message)); }
+    return sendJ(res, 200, {mail:MAIL()});
+  }
+  if (p === "/api/eleve/reset" && req.method === "POST"){
+    if (tooMany(ipOf(req))) return sendJ(res, 429, {error:{message:"Trop d'essais : réessaie dans 15 minutes"}});
+    const b = await readJSON(req, 2e3) || {}, h = tokHash(String(b.token || "")), c = /^[a-f0-9]{48}$/.test(String(b.token || "")) ? ECOMPTES.find(x => x.reset && x.reset.h === h && x.reset.exp > Date.now()) : null;
+    if (!c) return sendJ(res, 400, {error:{message:"Lien expiré ou déjà utilisé : refais une demande de mot de passe oublié."}});
+    if (String(b.password || "").length < 8) return sendJ(res, 400, {error:{message:"Mot de passe : 8 caractères minimum"}});
+    c.h = hashPw(b.password); delete c.reset; for (const [k, v] of ESESS) if (v.compte === c.id) ESESS.delete(k); saveEcomptes();
+    return ouvrirEleve(req, res, {compte:c.id});
+  }
+  const A = elevesOf(req); if (!A) return sendJ(res, 401, {error:{message:"Connexion requise"}});
   if (p === "/api/eleve/me" && req.method === "GET"){
-    const list = quizzesFor(el).map(({id, q}) => { const rd = DOCS.get("quizrep/" + id + "_" + el.eleveId) || {}; const notions = [...new Set((q.questions || []).map(x => x.notion).filter(Boolean))];
-      return {id, titre:q.titre, matiere:q.matiere, fermeture:q.fermeture || null, ouvert:quizOpen(q), nbNotions:notions.length, acquises:notions.filter(n => rd.notions?.[n]?.acquis).length, tentatives:(rd.tentatives || []).length, redige:!!q.redige}; });
-    return sendJ(res, 200, {eleve:{prenom:el.e.prenom, nom:(el.e.nom || "").slice(0, 1) + ".", classe:el.cl.nom}, quizzes:list, controles:ctrlsEleve(el), rattrapages:rattsEleve(el)});
+    const plus = A.els.length > 1, tag = (el, x) => plus ? {...x, classe:el.cl.nom} : x;
+    const quizzes = A.els.flatMap(el => quizzesFor(el).map(({id, q}) => { const rd = DOCS.get("quizrep/" + id + "_" + el.eleveId) || {}; const notions = [...new Set((q.questions || []).map(x => x.notion).filter(Boolean))];
+      return tag(el, {id, titre:q.titre, matiere:q.matiere, fermeture:q.fermeture || null, ouvert:quizOpen(q), nbNotions:notions.length, acquises:notions.filter(n => rd.notions?.[n]?.acquis).length, tentatives:(rd.tentatives || []).length, redige:!!q.redige}); }));
+    const e0 = A.els[0]?.e, tri = l => l.sort((a, b) => (b.date || b.publieLe || "").localeCompare(a.date || a.publieLe || ""));
+    return sendJ(res, 200, {eleve:{prenom:e0?.prenom || "", nom:(e0?.nom || "").slice(0, 1) + (e0?.nom ? "." : ""), classe:[...new Set(A.els.map(el => el.cl.nom))].join(" · ")},
+      compte:A.compte ? {email:A.compte.email, classes:A.els.map(el => ({nom:el.cl.nom}))} : null, dejaCompte:!A.compte && !!compteDe(A.els[0].classeId, A.els[0].eleveId), peutCompte:!A.compte && !A.els[0].cl.sansCompte, mail:MAIL(),
+      quizzes, controles:tri(A.els.flatMap(el => ctrlsEleve(el).map(x => tag(el, x)))), rattrapages:tri(A.els.flatMap(el => rattsEleve(el).map(x => tag(el, x))))});
+  }
+  /* Compte : ajouter un autre code (une autre classe), changer de mot de passe, supprimer le compte */
+  if (p === "/api/eleve/lier" && req.method === "POST"){
+    if (!A.compte) return sendJ(res, 403, {error:{message:"Crée d'abord ton compte"}});
+    const hit = verifCode(req, res, await readJSON(req, 2e3) || {}); if (!hit) return;
+    const deja = compteDe(hit.classeId, hit.e.id);
+    if (hit.cl.sansCompte) return sendJ(res, 403, {error:{message:"Ton professeur n'a pas activé les comptes pour cette classe : connecte-toi avec ton code."}});
+    if (deja && deja !== A.compte) return sendJ(res, 409, {error:{message:"Ce code est déjà relié à un autre compte."}});
+    if (!deja){ if ((A.compte.liens || []).length >= 30) return sendJ(res, 400, {error:{message:"Trop de codes sur ce compte"}}); A.compte.liens = [...(A.compte.liens || []), {classeId:hit.classeId, eleveId:hit.e.id}]; saveEcomptes(); }
+    return sendJ(res, 200, {ok:true, classe:hit.cl.nom});
+  }
+  if (p === "/api/eleve/compte/motdepasse" && req.method === "POST"){
+    if (!A.compte) return sendJ(res, 403, {error:{message:"Crée d'abord ton compte"}});
+    const b = await readJSON(req, 2e3) || {};
+    if (!checkPw(b.actuel, A.compte.h)){ tooMany("el:" + ipOf(req)); return sendJ(res, 401, {error:{message:"Mot de passe actuel incorrect"}}); }
+    if (String(b.nouveau || "").length < 8) return sendJ(res, 400, {error:{message:"Mot de passe : 8 caractères minimum"}});
+    A.compte.h = hashPw(b.nouveau); const moi = esidOf(req); for (const [k, v] of ESESS) if (v.compte === A.compte.id && k !== moi) ESESS.delete(k); saveEcomptes(); saveEsess();
+    return sendJ(res, 200, {ok:true});
+  }
+  if (p === "/api/eleve/compte/supprimer" && req.method === "POST"){
+    if (!A.compte) return sendJ(res, 403, {error:{message:"Crée d'abord ton compte"}});
+    const b = await readJSON(req, 2e3) || {};
+    if (!checkPw(b.password, A.compte.h)){ tooMany("el:" + ipOf(req)); return sendJ(res, 401, {error:{message:"Mot de passe actuel incorrect"}}); }
+    finCompte(A.compte); return sendJ(res, 200, {ok:true}, {"Set-Cookie":"esid=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0"});
   }
   const mc = p.match(/^\/api\/eleve\/controle\/([A-Za-z0-9_-]{4,40})$/);
-  if (mc && req.method === "GET"){ const d = detailEleve(el, mc[1]); return d ? sendJ(res, 200, d) : sendJ(res, 404, {error:{message:"Contrôle introuvable"}}); }
+  if (mc && req.method === "GET"){ const cc = DOCS.get("controles/" + mc[1]), elc = A.els.find(x => x.classeId === cc?.classeId), d = elc ? detailEleve(elc, mc[1]) : null; return d ? sendJ(res, 200, d) : sendJ(res, 404, {error:{message:"Contrôle introuvable"}}); }
   const m = p.match(/^\/api\/eleve\/quiz\/([A-Za-z0-9_-]{4,40})\/(tirage|reponse|fin)$/); if (!m || req.method !== "POST") return sendJ(res, 404, {error:{message:"Route inconnue"}});
-  const qid = m[1], q = DOCS.get("quizzes/" + qid);
-  if (!q || q.classeId !== el.classeId) return sendJ(res, 404, {error:{message:"Quiz introuvable"}});
+  const qid = m[1], q = DOCS.get("quizzes/" + qid), el = A.els.find(x => x.classeId === q?.classeId);
+  if (!q || !el) return sendJ(res, 404, {error:{message:"Quiz introuvable"}});
   if (!quizOpen(q)) return sendJ(res, 403, {error:{message:"Ce quiz est fermé"}});
   const b = await readJSON(req, 2e5) || {};
   for (const [k, t] of TIRAGES) if (t.exp < Date.now()) TIRAGES.delete(k);
@@ -745,7 +924,7 @@ const day = () => new Date().toISOString().slice(0, 10);
 /* Budget IA en dollars (coût estimé d'après les jetons consommés), enregistré sur le disque : il ne repart pas à zéro à chaque mise à jour */
 const USAGE_F = path.join(DATA, "ia-usage.json"); let USAGE = readJ(USAGE_F, {day:day(), users:{}, total:0});
 let usageTimer = null; const saveUsage = () => { clearTimeout(usageTimer); usageTimer = setTimeout(() => writeAtomic(USAGE_F, USAGE), 1000); };
-const PRICES = {quick:[1, 5], default:[1, 5], complex:[3, 15]};   // dollars par million de jetons (entrée, sortie), modifiables par AI_PRICE_<NIVEAU>="entrée,sortie"
+const PRICES = {quick:[1, 5], default:[1, 5], complex:[3, 15], grade:[3, 15]};   // dollars par million de jetons (entrée, sortie), modifiables par AI_PRICE_<NIVEAU>="entrée,sortie"
 /* Tarifs publics Anthropic (octobre 2026), reconnus d'après le nom du modèle : changer de modèle par MODEL_<NIVEAU> garde un suivi des coûts juste */
 const MODEL_PRICES = [[/haiku-5/, [0.1, 0.5]], [/haiku-4/, [1, 5]], [/sonnet-5/, [2, 10]], [/sonnet-4/, [3, 15]], [/opus-5-5/, [4, 20]], [/opus/, [5, 25]]];
 const priceOf = tier => { const e = env("AI_PRICE_" + String(tier).toUpperCase()).split(",").map(Number); if (e.length === 2 && e.every(x => x > 0)) return e;
@@ -756,7 +935,7 @@ function budgetLeft(u){
   usageReset();
   // Filet de sécurité caché, par mois : environ 3 fois le coût normal des contrôles du forfait (il ne gêne pas un usage normal)
   const q = quota(u), capAll = Number(env("AI_BUDGET_DAY")) || 150;
-  const capM = q.illimite ? (Number(env("AI_BUDGET_USER_MONTH")) || 60) * (u.role === "admin" ? 5 : 1) : q.ctrl * (Number(env("AI_BUDGET_PER_CTRL")) || 3) + 2;
+  const capM = q.illimite ? (Number(env("AI_BUDGET_USER_MONTH")) || 60) * (u.role === "admin" ? 5 : 1) : Math.max(8, q.ctrl * (Number(env("AI_BUDGET_PER_CTRL")) || 3) + 2);   // plancher : un contrôle de 35 copies doit toujours pouvoir être corrigé en entier (essai gratuit)
   if ((USAGE.total || 0) >= capAll) return "Plafond quotidien de l'IA atteint pour la plateforme : réessaie demain.";
   if ((USAGE.mois.users[u.id] || 0) >= capM) return "Plafond mensuel de l'IA atteint pour ton compte : écris à l'équipe Mastery si tu en as besoin.";
   return null;
@@ -766,10 +945,10 @@ function spend(u, tier, usage){
   const cost = ((usage.input_tokens || 0) + (usage.cache_creation_input_tokens || 0)) * pi / 1e6 + (usage.output_tokens || 0) * po / 1e6 + (usage.cache_read_input_tokens || 0) * pi * 0.1 / 1e6;
   USAGE.users[u.id] = (USAGE.users[u.id] || 0) + cost; USAGE.mois.users[u.id] = (USAGE.mois.users[u.id] || 0) + cost; USAGE.total = (USAGE.total || 0) + cost; saveUsage();
 }
-const tierOk = t => ["quick", "default", "complex"].includes(t) ? t : "default";
+const tierOk = t => ["quick", "default", "complex", "grade"].includes(t) ? t : "default";
 /* Plafond de longueur par niveau. Les modèles récents réfléchissent avant de répondre et cette réflexion compte dans la sortie :
    à 12 000 jetons, les contrôles longs étaient coupés (journaux : sorties à 12 000 tout rond, « Réponse de l'IA illisible »). */
-const MAXTOK = {quick:2000, default:8000, complex:20000};
+const MAXTOK = {quick:2000, default:8000, complex:20000, grade:20000};
 let counter = {day:day(), n:0}; const perIp = new Map(), perUser = new Map();
 function allowCall(ip, uid){
   const who = USERS.find(x => x.id === uid); if (who){ const b = budgetLeft(who); if (b) return b; }
@@ -860,6 +1039,49 @@ function looseJSON(t){
   return null;
 }
 function markF(t, fautes){ let out = t; for (const f of (Array.isArray(fautes) ? fautes : []).map(String).filter(x => x.trim()).slice(0, 8)){ const i = out.indexOf(f); if (i >= 0 && !out.slice(0, i).endsWith("⟦")) out = out.slice(0, i) + "⟦" + f + "⟧" + out.slice(i + f.length); } return out; }
+/* Réponse rédigée lue par l'IA → réponse enregistrée, avec le détail par critère et le niveau de doute (fiabilite.js) */
+function reponseIA(q, r, T){
+  const tr = String(r.transcription ?? ""), vide = isNoAns(tr);
+  const ans = {transcription:tr, transcriptionIA:tr, annot:r.annotee != null ? String(r.annotee) : markF(tr, r.fautes), lisible:r.lisible !== false, noteIA:clampN(halfN(Number(r.note) || 0), 0, +q.points), note:null,
+    commentaire:String(r.commentaire ?? ""), erreurs:(Array.isArray(r.erreurs) ? r.erreurs : []).map(String).slice(0, 4), acquis:(Array.isArray(r.acquis) ? r.acquis : []).map(String).slice(0, 4), valide:false};
+  if (vide){ ans.noteIA = 0; ans.commentaire = T.vide || "Pas de réponse : revois cette notion."; ans.erreurs = [T.videTag || "pas de réponse"]; ans.acquis = []; }
+  return FIAB.completer(ans, r, q, {vide});
+}
+/* Seconde lecture du seul cadre d'une question (image du cadre + consigne de relecture préparée par l'application), par le modèle précis.
+   Sans renfort : pour les réponses « à vérifier d'abord » ; la relecture signale, elle ne remplace pas (voir FIAB.fusion).
+   En renfort (première correction par un modèle économique) : aussi pour toute réponse contenant de l'hébreu manuscrit, et c'est la
+   relecture qui devient la proposition. Si l'élève a rempli sa fiche d'écriture, ses échantillons (image + texte exact recopié)
+   sont joints : le modèle voit comment CET élève forme ses lettres. */
+function echantillons(u, j){
+  const w = j.usage ? DOCS.get("ecritures/" + j.eleveId) : null; if (!isObj(w) || !visible(u, w)) return [];
+  return (Array.isArray(w.samples) ? w.samples : []).filter(x => isObj(x) && x.usage === j.usage && /^[a-z0-9]{8,40}$/.test(x.asset || "") && String(x.texte || "").trim() && fs.existsSync(path.join(FILEDIR, x.asset + ".jpg"))).slice(0, 3);
+}
+async function relireDouteux(u, j, answers){
+  const tpl = String(j.relire || ""); if (!tpl || env("AI_REREAD") === "0") return 0;
+  const c = DOCS.get("controles/" + j.ctrlId), cp = DOCS.get("feuilles/" + j.ctrlId)?.copies?.[j.eleveId]; if (!isObj(c)) return 0;
+  if (cp?.validee) return 0;                                    // copie déjà validée : rien ne sera modifié, inutile de relire
+  const renfort = MODELS()[tierOk(j.tier)] !== MODELS().complex, T = j.txt || {};   // première correction par un modèle plus économique que le modèle précis
+  const libre = q => { const old = cp?.answers?.[q.id]; return !old?.valide && old?.note == null; };   // le professeur n'a pas déjà tranché
+  const aRelire = a => a?.doute?.n === 2 || (renfort && !a?.auto && FIAB.hebreu(a?.transcription));
+  const todo = (j.qs || []).filter(q => q.type !== "qcm" && q.crop && aRelire(answers[q.id]) && libre(q) && fs.existsSync(path.join(FILEDIR, q.crop + ".jpg"))).slice(0, clampN(+env("AI_REREAD_MAX") || 3, 1, 12));
+  if (!todo.length) return 0;
+  const ech = echantillons(u, j), img = id => ({type:"image", source:{type:"base64", media_type:"image/jpeg", data:fs.readFileSync(path.join(FILEDIR, id + ".jpg")).toString("base64")}});
+  const echTxt = ech.length && T.ech ? FIAB.remplir(T.ech, {DERNIERE:ech.length + 1, LISTE:ech.map((x, k) => FIAB.remplir(T.echItem || "image {{N}} = « {{TEXTE}} »", {N:k + 2, TEXTE:String(x.texte).slice(0, 200)})).join(" ; ")}) : "";
+  let n = 0;
+  await Promise.all(todo.map(async q => {
+    try {
+      const i = (c.questions || []).findIndex(x => x.id === q.id), Q = c.questions?.[i]; if (!Q) return;
+      const lvl = cp?.version?.[q.id] || "standard", v = (Q.v?.[lvl]?.enonce ? Q.v[lvl] : Q.v?.standard) || {};
+      const prompt = FIAB.remplir(tpl, {ID:q.id, N:i + 1, PTS:q.points, ENONCE:v.enonce || "", CORRIGE:v.corrige || "—", CRITERES:v.criteres || "—", ERREURS:(Q.erreurs || []).join(" | ") || "—", ECHANTILLONS:echTxt});
+      const txt = await claude(u, [img(q.crop), ...(echTxt ? ech.map(x => img(x.asset)) : []), {type:"text", text:prompt}], "complex", Math.min(8000, MAXTOK.complex));
+      const r = looseJSON(txt); if (!isObj(r) || typeof r.transcription !== "string") return;
+      const seconde = reponseIA(q, r, T); seconde.crop = q.crop;
+      answers[q.id] = FIAB.fusion(answers[q.id], seconde, {renfort}); n++;
+    } catch(e){ console.warn("Relecture", j.id, q.id, e.message); }
+  }));
+  if (n) console.log(`IA (relecture${renfort ? " en renfort" : ""}) · ${u.id} · ${n} réponse(s) relue(s)${echTxt ? " · avec " + ech.length + " échantillon(s) d'écriture" : ""}`);
+  return n;
+}
 function jobAnswers(j, res){
   const T = j.txt || {}, arr = Array.isArray(res?.reponses) ? res.reponses : Array.isArray(res) ? res : [], answers = {}, missing = [];
   for (const q of j.qs || []){
@@ -871,10 +1093,8 @@ function jobAnswers(j, res){
       ans = {transcription:(T.coche || "Coché : ") + (got.map(n => L[n]).join(", ") || T.aucune || "aucune case"), annot:(T.coche || "Coché : ") + (got.map(n => good.has(n) ? L[n] : `⟦${L[n]}⟧`).join(", ") || `⟦${T.aucune || "aucune case"}⟧`),
         lisible:r.lisible !== false, noteIA:ok ? +q.points : 0, note:null, commentaire:ok ? (T.bonne || "Bonne réponse.") : (T.etait || "La bonne réponse était : ") + [...good].sort().map(n => L[n]).join(", ") + ".",
         erreurs:ok ? [] : [T.qcmFaux || "réponse QCM incorrecte"], acquis:ok ? [q.notion || "QCM"] : [], valide:false, auto:true}; }
-    else { const tr = String(r.transcription ?? "");
-      ans = {transcription:tr, transcriptionIA:tr, annot:r.annotee != null ? String(r.annotee) : markF(tr, r.fautes), lisible:r.lisible !== false, noteIA:clampN(halfN(Number(r.note) || 0), 0, +q.points), note:null,
-        commentaire:String(r.commentaire ?? ""), erreurs:(r.erreurs || []).map(String).slice(0, 4), acquis:(r.acquis || []).map(String).slice(0, 4), valide:false};
-      if (isNoAns(tr)){ ans.noteIA = 0; ans.commentaire = T.vide || "Pas de réponse : revois cette notion."; ans.erreurs = [T.videTag || "pas de réponse"]; ans.acquis = []; } }
+    else ans = reponseIA(q, r, T);
+    if (q.type === "qcm") FIAB.completer(ans, r, q);
     ans.crop = q.crop || null; answers[q.id] = ans;
   }
   return {answers, missing, lisibleKo:arr.some(r => r && r.lisible === false)};
@@ -909,19 +1129,21 @@ async function runJob(j){
   const res = looseJSON((jr?.content || []).filter(b => b.type === "text").map(b => b.text).join(""));
   if (!res){ j.tries = (j.tries || 0) + 1; j.status = j.tries >= 3 ? "erreur" : "attente"; j.msg = "Réponse de l'IA illisible"; return; }
   if (j.status === "annule" || cancelled(j.ctrlId, j.eleveId, j.createdAt)){ j.status = "annule"; j.msg = "Annulée (scan recommencé)"; return; }
-  const dp = "feuilles/" + j.ctrlId, cur = DOCS.get(dp); if (!cur){ j.status = "erreur"; j.msg = "Feuilles du contrôle introuvables"; return; }
-  if (j.status === "annule" || cancelled(j.ctrlId, j.eleveId, j.createdAt)){ j.status = "annule"; j.msg = "Annulée (scan recommencé)"; return; }
+  const dp = "feuilles/" + j.ctrlId; if (!DOCS.get(dp)){ j.status = "erreur"; j.msg = "Feuilles du contrôle introuvables"; return; }
   const jr0 = jobAnswers(j, res);
   if (jr0.missing.length && (j.tries || 0) < 2){ j.tries = (j.tries || 0) + 1; j.status = "attente"; j.msg = "Réponse de l'IA incomplète : nouvel essai"; j.notBefore = Date.now() + 5000; return; }
-  const kt = keepTeacher(cur, j.eleveId, jr0.answers), answers = kt.answers, lisibleKo = jr0.lisibleKo;
+  await relireDouteux(u, j, jr0.answers);
+  const cur = DOCS.get(dp); if (!cur){ j.status = "erreur"; j.msg = "Feuilles du contrôle introuvables"; return; }
+  if (j.status === "annule" || cancelled(j.ctrlId, j.eleveId, j.createdAt)){ j.status = "annule"; j.msg = "Annulée (scan recommencé)"; return; }
+  const kt = keepTeacher(cur, j.eleveId, jr0.answers), answers = kt.answers, lisibleKo = jr0.lisibleKo, aVoir = Object.values(answers).filter(a => a?.doute?.n === 2).length;
   const patch = {copies:{[j.eleveId]:kt.validee ? {answers} : {answers, validee:false}}};
   if (String(res?.alerte || "").trim()) patch.copies[j.eleveId].alertes = {[j.page]:{txt:String(res.alerte).trim().slice(0, 600), at:new Date().toISOString()}};   // écrit inquiétant : signalé au seul professeur
   if (j.bonus) patch.copies[j.eleveId].bonusPages = {[j.page]:{proprete:clampN(+res?.proprete || 0, 0, 1), orthographe:clampN(+res?.orthographe || 0, 0, 1)}};
   persist(dp, merge(cur, patch));
   j.status = jr0.missing.length ? "erreur" : "fait"; j.doneAt = new Date().toISOString();
-  j.msg = kt.validee ? "Copie déjà validée : rien n'a été modifié (« Recommencer le scan » pour la refaire)" : Object.keys(answers).length + " question(s) corrigée(s)" + (lisibleKo ? " · passage peu lisible signalé" : "") + (kt.kept ? " · " + kt.kept + " note(s) du professeur gardée(s)" : "")
+  j.msg = kt.validee ? "Copie déjà validée : rien n'a été modifié (« Recommencer le scan » pour la refaire)" : Object.keys(answers).length + " question(s) corrigée(s)" + (aVoir ? " · " + aVoir + " à vérifier d'abord" : lisibleKo ? " · passage peu lisible signalé" : "") + (kt.kept ? " · " + kt.kept + " note(s) du professeur gardée(s)" : "")
     + (jr0.missing.length ? " · " + jr0.missing.length + " question(s) non lue(s) : recadre-les ou relance" : "");
-  if (!jr0.missing.length){ delete j.prompt; delete j.qs; }
+  if (!jr0.missing.length){ delete j.prompt; delete j.qs; delete j.relire; }
 }
 /* ---------- Génération en arrière-plan (sur le serveur) ----------
    Nouveau contrôle, dictée, régénération, variante, rattrapage : l'application prépare la consigne, puis le serveur fait tout
@@ -992,24 +1214,37 @@ async function runGen(j){
     const add = (Array.isArray(r3?.questions) ? r3.questions : []).map(genQ).slice(0, dup.length);
     dup.forEach((i, m) => { if (add[m]){ add[m].points = qs[i].points; qs[i] = add[m]; } }); }
   if (Array.isArray(j.points)) qs.forEach((q, i) => { if (j.points[i] != null) q.points = +j.points[i]; if (j.lignes?.[i]) q.lignes = +j.lignes[i]; });
-  const dp = j.path, cur = DOCS.get(dp);
+  const dp = j.path;
+  /* Vérification automatique (fiabilite.js) : barème ramené au total demandé, versions absentes complétées, QCM et énoncés contrôlés,
+     sujets couverts. Une question inutilisable est redemandée une fois ; ce qui reste à voir va dans « À vérifier ». */
+  const optV = {total:j.total || 0, n:j.n || 0, sujets:j.sujets || [], differencie:!!(j.mode === "update" ? DOCS.get(dp)?.differencie : j.base?.differencie), pointsFixes:Array.isArray(j.points)};
+  const bad = FIAB.invalides(qs);
+  if (bad.length){
+    try { const garde = qs.filter((q, i) => !bad.includes(i)).map(q => stdOf(q).enonce);
+      const r4 = await genAI(u, j.prompt + `\n\nCORRECTION : les questions n° ${bad.map(i => i + 1).join(", ")} de ta réponse sont inutilisables (énoncé vide, ou QCM sans au moins deux choix différents et une bonne réponse).${garde.length ? `\nQuestions gardées dans la feuille (à ne pas répéter) : ${garde.map(t => "« " + t.slice(0, 200) + " »").join(" / ")}.` : ""}\nRédige UNIQUEMENT ${bad.length} question(s) complète(s) pour les remplacer, chacune sur un angle que la feuille n'utilise pas encore, en respectant toutes les règles ci-dessus. Même format JSON.`, j.tier);
+      const add = (Array.isArray(r4?.questions) ? r4.questions : []).map(genQ).slice(0, bad.length);
+      bad.forEach((i, m) => { if (add[m] && !FIAB.invalides([add[m]]).length){ add[m].points = qs[i].points; qs[i] = add[m]; } }); }
+    catch(e){ console.warn("Génération : question inutilisable non remplacée", j.id, e.message); }
+  }
+  const V = FIAB.verifier(qs, optV);
+  qs = V.qs; const verif = V.verif.slice(0, 20), cur = DOCS.get(dp);
   if (!canWrite(u, dp)) throw new Error("Ce contrôle appartient à un autre professeur");
   const tIA = /rattrapage/i.test(j.titre?.prefixe || "") ? titreIA.replace(/^(feuille de |fiche de )?rattrapage\s*[-:·–]?\s*/i, "") : titreIA;
   const titre = j.titre?.fixe || (tIA ? (j.titre?.prefixe || "") + tIA + (j.titre?.suffixe || "") : "") || j.titre?.defaut || "Contrôle";
   if (j.mode === "update"){ if (!cur) throw new Error("Contrôle introuvable");
-    persist(dp, {...cur, questions:qs, ...(j.titre?.ia && titreIA ? {titre:titreIA} : j.titre?.fixe ? {titre:j.titre.fixe} : {}), ...(manque ? {remarques:[manque]} : {})}); }
+    persist(dp, {...cur, questions:qs, verif, ...(j.titre?.ia && titreIA ? {titre:titreIA} : j.titre?.fixe ? {titre:j.titre.fixe} : {}), ...(manque ? {remarques:[manque]} : {})}); }
   else { const base = isObj(j.base) ? j.base : {};
     const rem = [...(j.remarques && Array.isArray(res?.remarques) ? res.remarques.map(String).filter(Boolean) : []), ...(manque ? [manque] : [])].slice(0, 12);
-    persist(dp, {...base, titre, questions:qs, ...(rem.length || j.remarques ? {remarques:rem} : {}), owner:u.id, espace:espaceFor(dp, u), createdAt:new Date().toISOString()}); }
+    persist(dp, {...base, titre, questions:qs, verif, ...(rem.length || j.remarques ? {remarques:rem} : {}), owner:u.id, espace:espaceFor(dp, u), createdAt:new Date().toISOString()}); }
   j.open = j.openHash || ("#/controle/" + dp.split("/")[1] + "/preparer");
-  j.msg = (j.msgOk || "Prêt") + (j.mode === "update" ? "" : " : « " + titre + " »") + "." + (manque ? " Le cours ne suffit pas pour plus de questions vraiment différentes : regarde « À vérifier »." : "");
+  j.msg = (j.msgOk || "Prêt") + (j.mode === "update" ? "" : " : « " + titre + " »") + "." + (manque ? " Le cours ne suffit pas pour plus de questions vraiment différentes : regarde « À vérifier »." : verif.length ? " Regarde « À vérifier » avant d'imprimer." : "");
 }
 let gensRunning = 0;
 async function pumpGens(){
   while (gensRunning < (+env("AI_GEN_PARALLEL") || 4)){
     const j = GENS.find(x => x.status === "attente"); if (!j) break;
     j.status = "en_cours"; gensRunning++; saveGens();
-    runGen(j).then(() => { j.status = "fait"; j.doneAt = new Date().toISOString(); delete j.prompt; delete j.base; delete j.olds; })
+    runGen(j).then(() => { j.status = "fait"; j.doneAt = new Date().toISOString(); delete j.prompt; delete j.base; delete j.olds; delete j.sujets; })
       .catch(e => { j.status = "erreur"; j.msg = String(e?.message || e).slice(0, 300); console.warn("Génération", j.id, j.msg); })
       .finally(() => { gensRunning--; saveGens(); setTimeout(pumpGens, 50); });
   }
@@ -1030,6 +1265,7 @@ async function genApi(req, res, p, u){
     const j = {id:crypto.randomBytes(8).toString("hex"), user:u.id, status:"attente", createdAt:new Date().toISOString(), label:String(b.label || "Génération").slice(0, 160),
       prompt:String(b.prompt || "").slice(0, 120000), tier:GEN_TIER(), check:!!b.check, n:clampN(+b.n || 0, 0, 12), path:dp, mode:b.mode === "update" ? "update" : "create",
       base:isObj(b.base) ? b.base : null, titre:isObj(b.titre) ? {fixe:String(b.titre.fixe || "").slice(0, 200), prefixe:String(b.titre.prefixe || "").slice(0, 60), suffixe:String(b.titre.suffixe || "").slice(0, 60), defaut:String(b.titre.defaut || "").slice(0, 200), ia:!!b.titre.ia} : null,
+      total:clampN(+b.total || 0, 0, 200), sujets:(Array.isArray(b.sujets) ? b.sujets : []).slice(0, 10).map(x => String(x).slice(0, 160)).filter(x => x.trim()),
       remarques:!!b.remarques, points:Array.isArray(b.points) ? b.points.slice(0, 12).map(Number) : null, lignes:Array.isArray(b.lignes) ? b.lignes.slice(0, 12).map(Number) : null,
       olds:(Array.isArray(b.olds) ? b.olds : []).slice(0, 60).map(o => ({enonce:String(o?.enonce || "").slice(0, 600), corrige:String(o?.corrige || "").slice(0, 400)})).filter(o => o.enonce),
       msgOk:String(b.msgOk || "Prêt").slice(0, 120), openHash:/^#\/[\w\/-]{1,80}$/.test(b.open || "") ? b.open : null};
@@ -1067,7 +1303,7 @@ async function jobsApi(req, res, url, p, u){
     if (JOBS.filter(j => j.user === u.id && (j.status === "attente" || j.status === "en_cours")).length > 400) return sendJ(res, 429, {error:{message:"Trop de pages en attente"}});
     const j = {id:crypto.randomBytes(8).toString("hex"), user:u.id, status:"attente", createdAt:new Date().toISOString(), name:String(b.name || "").slice(0, 120),
       ctrlId:b.ctrlId, eleveId:b.eleveId, page:Math.max(1, +b.page || 1), prompt:String(b.prompt || "").slice(0, 60000), tier:GRADE_TIER(),
-      images:(Array.isArray(b.images) ? b.images : []).filter(x => /^[a-z0-9]{8,40}$/.test(x) && canSeeFile(u, x)).slice(0, 12), bonus:!!b.bonus, txt:isObj(b.txt) ? b.txt : {},
+      images:(Array.isArray(b.images) ? b.images : []).filter(x => /^[a-z0-9]{8,40}$/.test(x) && canSeeFile(u, x)).slice(0, 12), bonus:!!b.bonus, txt:isObj(b.txt) ? b.txt : {}, relire:String(b.relire || "").slice(0, 20000), usage:["maths", "hebreu", "francais"].includes(b.usage) ? b.usage : "",
       qs:(Array.isArray(b.qs) ? b.qs : []).slice(0, 40).map(q => ({id:String(q.id), points:+q.points || 0, type:q.type === "qcm" ? "qcm" : "", good:Array.isArray(q.good) ? q.good.map(Number) : [], notion:String(q.notion || "").slice(0, 80), crop:/^[a-z0-9]{8,40}$/.test(q.crop || "") ? q.crop : null}))};
     if (!j.images.length || !j.qs.length) return sendJ(res, 400, {error:{message:"Tâche vide"}});
     JOBS.push(j); saveJobs(); setTimeout(pumpJobs, 10); return sendJ(res, 200, {id:j.id});
@@ -1119,7 +1355,7 @@ async function pumpLots(){
     saveAsset:async buf => { const id = crypto.randomBytes(10).toString("hex"); fs.writeFileSync(path.join(FILEDIR, id + ".jpg"), buf); setOwner(id, u); return id; },
     patch:(dp, upd) => { const cid = dp.split("/")[1], eid = Object.keys(upd.copies || {})[0]; if (cancelled(cid, eid, l.createdAt)) return; const cur = DOCS.get(dp); if (cur) persist(dp, merge(cur, upd)); },
     addJob:b => { if (cancelled(b.ctrlId, b.eleveId, l.createdAt)) return null; const j = {id:crypto.randomBytes(8).toString("hex"), user:u.id, status:"attente", createdAt:new Date().toISOString(), name:l.name, lot:l.id,
-      ctrlId:b.ctrlId, eleveId:b.eleveId, page:b.page, prompt:b.prompt, tier:GRADE_TIER(), images:b.images, bonus:b.bonus, txt:b.txt, qs:b.qs}; JOBS.push(j); saveJobs(); setTimeout(pumpJobs, 10); return j.id; },
+      ctrlId:b.ctrlId, eleveId:b.eleveId, page:b.page, prompt:b.prompt, tier:GRADE_TIER(), images:b.images, bonus:b.bonus, txt:b.txt, qs:b.qs, relire:String(b.relire || "").slice(0, 20000), usage:["maths", "hebreu", "francais"].includes(b.usage) ? b.usage : ""}; JOBS.push(j); saveJobs(); setTimeout(pumpJobs, 10); return j.id; },
     footerAI:async jpg => looseJSON(await claude(u, [{type:"image", source:{type:"base64", media_type:"image/jpeg", data:jpg.toString("base64")}}, {type:"text", text:String(kit.footerPrompt || "")}], "quick", 300)),
     setTotal:n => { l.total = n; saveLots(); },
     pageStart:i => { l.cur = i; clearTimeout(lotsTimer); writeAtomic(LOTS_F, LOTS); },
@@ -1369,7 +1605,8 @@ function autoBackup(){
   try {
     const key = env("BACKUP_KEY"), f = path.join(BAKDIR, "mastery-" + new Date().toISOString().slice(0, 10) + ".json" + (key ? ".enc" : ""));
     if (fs.existsSync(f) || (!USERS.length && !DOCS.size)) return;
-    const data = {mastery:1, at:new Date().toISOString(), users:USERS, docs:Object.fromEntries(DOCS), banque:BANQUE, banqueRegles:REGLES, appareils:DEVICES, inbox:INBOX, etablissements:GROUPES, fichiers:FOWN};
+    const data = {mastery:1, at:new Date().toISOString(), users:USERS, docs:Object.fromEntries(DOCS), banque:BANQUE, banqueRegles:REGLES, appareils:DEVICES, inbox:INBOX, etablissements:GROUPES, fichiers:FOWN, comptesEleves:ECOMPTES,
+      journal:Object.fromEntries(fs.readdirSync(JDIR).filter(x => x.endsWith(".jsonl")).map(x => [x, fs.readFileSync(path.join(JDIR, x), "utf8")]))};
     if (key){ /* AES-256-GCM : sel(16) · iv(12) · tag(16) · données ; clé dérivée de BACKUP_KEY (scrypt) */
       const salt = crypto.randomBytes(16), iv = crypto.randomBytes(12), k = crypto.scryptSync(key, salt, 32), c = crypto.createCipheriv("aes-256-gcm", k, iv);
       const enc = Buffer.concat([c.update(JSON.stringify(data)), c.final()]); fs.writeFileSync(f + ".tmp", Buffer.concat([salt, iv, c.getAuthTag(), enc])); fs.renameSync(f + ".tmp", f); }
@@ -1426,12 +1663,20 @@ const SERVER = http.createServer(async (req, res) => {
       if (p === "/api/banque" || p.startsWith("/api/banque/")) return await banqueApi(req, res, url, p, u);
       if (p === "/api/devices" || p.startsWith("/api/devices/") || p.startsWith("/api/scan/")) return await scanApi(req, res, url, p, u);
       if (p === "/api/etab" || p.startsWith("/api/etab/") || p.startsWith("/api/billing/")){ try { return await billingApi(req, res, url, p, u); } catch(e){ console.warn("Abonnement :", e.message); return sendJ(res, 502, {error:{message:"Paiement indisponible pour le moment : réessaie dans un instant."}}); } }
-      if (p.startsWith("/api/db") || p.startsWith("/api/files") || p === "/api/export") return await storage(req, res, url, p, u);
+      if (p.startsWith("/api/db") || p.startsWith("/api/files") || p === "/api/export" || p === "/api/journal") return await storage(req, res, url, p, u);
+      if (p === "/api/mail/test" && req.method === "POST"){
+        if (!u || u.role !== "admin") return sendJ(res, 403, {error:{message:"Accès refusé"}});
+        if (!MAIL()) return sendJ(res, 400, {error:{message:"Aucun service d'e-mail n'est configuré sur le serveur."}});
+        try { await sendMail(u.email, "Mastery · e-mail d'essai", "Cet e-mail confirme que Mastery sait envoyer des e-mails (mot de passe oublié, comptes élèves)." + SIGNE); return sendJ(res, 200, {ok:true, to:u.email, via:SMTP() ? "smtp" : "resend"}); }
+        catch(e){ console.warn("E-mail d'essai :", e.message); return sendJ(res, 502, {error:{message:"L'e-mail n'est pas parti : " + String(e.message).slice(0, 220)}}); }
+      }
+      const mcp = p.match(/^\/api\/classes\/([A-Za-z0-9_-]{1,60})\/comptes(?:\/([A-Za-z0-9_-]{1,60}))?$/);
+      if (mcp) return comptesClasse(req, res, u, mcp[1], mcp[2]);
       return await accounts(req, res, url, p, u);
     }
     if (req.method !== "GET" && req.method !== "HEAD") return send(res, 405, "Méthode non autorisée");
     if (p === "/config.js")
-      return send(res, 200, "window.TIKOUN_CONFIG = " + JSON.stringify({aiEndpoint:env("ANTHROPIC_API_KEY") ? "/api/ai" : "", jobs:!!env("ANTHROPIC_API_KEY"), lots:!!(ENGINE && env("ANTHROPIC_API_KEY")), storage:"server", accounts:true, signup:signupOpen(), persistent:PERSISTENT, billing:BILLING(), trialDays:TRIAL_DAYS(),
+      return send(res, 200, "window.TIKOUN_CONFIG = " + JSON.stringify({aiEndpoint:env("ANTHROPIC_API_KEY") ? "/api/ai" : "", jobs:!!env("ANTHROPIC_API_KEY"), lots:!!(ENGINE && env("ANTHROPIC_API_KEY")), storage:"server", accounts:true, signup:signupOpen(), persistent:PERSISTENT, billing:BILLING(), mail:MAIL(), trialDays:TRIAL_DAYS(), trialCtrl:TRIAL_CTRL(), copiesCtrl:COPIES_CTRL(),
         prix:prixLabels(res._lang), contact:CONTACT()}) + ";\n", TYPES[".js"], {"Cache-Control":"no-store"});
     if (p === "/" || p === "") p = u ? "/index.html" : "/landing.html";
     if (p === "/app" || p === "/app/") p = "/index.html";

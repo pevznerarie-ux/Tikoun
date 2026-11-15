@@ -118,6 +118,7 @@ Variables à ajouter (Railway → service → Variables) :
 | `LEGAL_SIREN` | `RCS Nanterre 123 456 789` | Immatriculation (mentions légales) |
 | `LEGAL_DIRECTOR` | ton nom | Directeur de la publication |
 | `LEGAL_PHONE` | *(facultatif)* | Téléphone affiché dans les mentions légales |
+| `SMTP_USER` + `SMTP_PASS` | adresse Gmail + mot de passe d'application (16 lettres) | Facultatif : envoie les e-mails (mot de passe oublié, comptes élèves) depuis une boîte Gmail. `SMTP_HOST` (défaut `smtp.gmail.com`) et `SMTP_PORT` (défaut 465) pour un autre fournisseur. **Railway ferme les ports SMTP hors forfait Pro** : dans ce cas, utiliser Resend ci-dessous. Vérifier avec « Envoyer un e-mail d'essai » dans Comptes |
 | `RESEND_API_KEY` | `re_…` (compte gratuit sur resend.com) | Facultatif : envoie le lien « mot de passe oublié » par e-mail. Sans cette variable, la demande apparaît dans Comptes |
 | `MAIL_FROM` | `Mastery <noreply@ton-domaine.fr>` | Expéditeur des e-mails (domaine vérifié dans Resend) |
 | `APP_URL` | `https://ton-domaine.fr` | Facultatif : adresse du site utilisée dans les liens envoyés par e-mail |
@@ -159,6 +160,8 @@ Pour ouvrir le paiement :
 | `STRIPE_PRICE_ECOLE` | `price_…` (par élève et par an) |
 | les mêmes avec `_BRL` à la fin | prix en reais, utilisés sur le site en portugais |
 | `TRIAL_DAYS` | facultatif, 30 par défaut |
+| `TRIAL_CTRL` | facultatif : contrôles par mois pendant l'essai gratuit et les mois offerts, 1 par défaut |
+| `COPIES_PAR_CONTROLE` | facultatif : élèves couverts par un contrôle du forfait, 35 par défaut (au-delà, un contrôle de plus par tranche) |
 | `ECOLE_MIN_ELEVES` | facultatif, 100 par défaut |
 | `AI_BUDGET_PER_CTRL` | facultatif : plafond IA en dollars par contrôle du forfait, 3 par défaut |
 | `AI_BUDGET_USER_MONTH` | facultatif : plafond IA mensuel des comptes sans quota, 60 $ par défaut |
