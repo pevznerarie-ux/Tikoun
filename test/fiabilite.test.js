@@ -68,6 +68,20 @@ test("fusion : la relecture ne remplace jamais la réponse proposée ; elle lèv
   assert.equal(F.fusion(p, rep({doute:{n:2, r:["illisible"]}})).doute.n, 2, "les deux lectures butent : le doute reste entier");
   assert.equal(F.fusion(rep({doute:{n:2, r:["detail"]}}), rep({doute:{n:0, r:[]}})).doute.n, 2, "un détail des points incohérent n'est pas levé par une relecture");
 });
+test("fusion en renfort : la lecture du modèle précis devient la proposition", () => {
+  const eco = rep({transcription:"la brakha est מזונות", noteIA:1, commentaire:"Faux.", doute:{n:1, r:["confiance"]}});
+  const fort = rep({transcription:"la brakha est האדמה", noteIA:3, doute:{n:0, r:[]}});
+  const r = F.fusion(eco, fort, {renfort:true});
+  assert.equal(r.transcription, "la brakha est האדמה"); assert.equal(r.noteIA, 3);
+  assert.deepEqual(r.doute, {n:1, r:["lectures"]}, "deux lectures différentes : au moins « à regarder »");
+  assert.deepEqual(r.alt, {transcription:"la brakha est מזונות", noteIA:1, commentaire:"Faux."});
+  const pareil = F.fusion(rep({doute:{n:2, r:["lecture"]}}), rep({doute:{n:0, r:[]}}), {renfort:true});
+  assert.deepEqual(pareil.doute, {n:0, r:["relu"]}); assert.equal(pareil.alt, null);
+  assert.equal(F.fusion(eco, rep({transcription:"x [illisible] y [illisible]", noteIA:3, doute:{n:2, r:["illisible"]}}), {renfort:true}).doute.n, 2, "le modèle précis doute lui-même");
+});
+test("hebreu : repère l'écriture hébraïque", () => {
+  assert.equal(F.hebreu("la brakha est האדמה"), true); assert.equal(F.hebreu("la brakha est haadama"), false); assert.equal(F.hebreu(null), false);
+});
 test("remplir : remplace les repères sans interpréter le texte inséré", () => {
   assert.equal(F.remplir("Q{{N}} : {{ENONCE}} {{INCONNU}}", {N:3, ENONCE:"prix $& de {{N}}"}), "Q3 : prix $& de {{N}} {{INCONNU}}");
 });

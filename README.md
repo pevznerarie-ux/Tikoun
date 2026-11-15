@@ -69,3 +69,7 @@ Lancer en local : `DATA_DIR=./data MASTERY_CODE=test node server.js`, puis ouvri
 Relecture automatique des réponses douteuses : `AI_REREAD=0` la désactive, `AI_REREAD_MAX` fixe le nombre de relectures par page (3 par défaut). Le journal de validation est écrit dans `DATA_DIR/journal` et fait partie des sauvegardes quotidiennes.
 
 Modèles IA par défaut (variables `MODEL_QUICK`, `MODEL_DEFAULT`, `MODEL_COMPLEX`) : `claude-haiku-4-5-20251001` pour les tâches rapides, `claude-sonnet-5` pour la rédaction des contrôles et la lecture des copies (`GEN_TIER`, `GRADE_TIER`).
+
+Correction économique (facultative) : `MODEL_GRADE` choisit un modèle moins cher pour la première lecture des copies (par défaut, le même que `MODEL_COMPLEX`). Quand il diffère, le modèle précis sert de renfort : il relit seul les réponses « à vérifier d'abord » et celles qui contiennent de l'hébreu manuscrit, et sa lecture devient la proposition (l'autre reste affichée à côté si elles diffèrent). Si l'élève a rempli sa **fiche d'écriture**, ses échantillons de la même matière accompagnent chaque relecture.
+
+Sévérité de la notation : chaque professeur choisit dans Mon compte → IA et correction entre « bienveillante » (par défaut : l'idée compte, pas la formulation) et « exigeante ».

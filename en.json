@@ -2239,5 +2239,19 @@
  "à regarder": "worth a look",
  "À vérifier d'abord :": "Check first:",
  "À regarder :": "Worth a look:",
- "Note de l'IA gardée": "AI grade kept"
+ "Note de l'IA gardée": "AI grade kept",
+ "Hébreu en caractères hébreux, dans l'ordre de lecture (l'écriture manuscrite hébraïque est souvent cursive : lis-la avec soin, lettre par lettre). Passage illisible : [illisible]. Cadre vide : \"\". Ignore ce qui est barré.\n2. \"fautes\" : liste des passages erronés, recopiés exactement tels qu'ils figurent dans la transcription (courts : quelques mots). Liste vide si tout est juste.\n3.": "Hebrew in Hebrew characters, in reading order (handwritten Hebrew is often cursive: read it carefully, letter by letter). Illegible passage: [illegible]. Empty box: \"\". Ignore anything crossed out.\n2. \"fautes\": list of incorrect passages, copied exactly as they appear in the transcription (short: a few words). Empty list if everything is correct.\n3.",
+ "Note par pas de 0,5, strictement selon les critères : chaque demi-point doit correspondre à un élément juste réellement écrit par l'élève. Jamais de point « d'encouragement ».": "Score in steps of 0.5, strictly according to the criteria: every half point must correspond to a correct element actually written by the student. Never give \"encouragement\" points.",
+ "Réponse vide, « je ne sais pas », « ? », énoncé recopié, hors sujet ou sans aucun élément juste = 0.\n4. \"commentaire\" : 1 ou 2 phrases courtes (40 mots maximum),": "Empty answer, \"I don't know\", \"?\", copied prompt, off-topic or no correct element = 0.\n4. \"commentaire\": 1 or 2 short sentences (40 words max),",
+ "Hébreu en caractères hébreux. Passage vraiment illisible : [illisible]. \"annotee\" = transcription avec chaque passage erroné entouré de ⟦ ⟧ (hors des $…$).": "Hebrew in Hebrew characters. Truly illegible passage: [illegible]. \"annotee\" = transcription with each incorrect passage surrounded by ⟦ ⟧ (outside of $…$).",
+ "\"annotee\" = la réponse avec chaque passage erroné entouré de ⟦ ⟧ (hors des $…$).": "\"annotee\" = the answer with each incorrect passage surrounded by ⟦ ⟧ (outside of $…$).",
+ "Bienveillante : l'idée compte, pas la formulation": "Lenient: the idea counts, not the wording",
+ "Chaque demi-point doit correspondre à un élément juste réellement écrit : les notes proposées sont plus basses.": "Every half point must match something correct the student actually wrote: suggested scores are lower.",
+ "Exigeante : chaque demi-point doit être justifié": "Demanding: every half point must be justified",
+ "L'élève qui a compris l'idée a l'essentiel des points, même s'il l'exprime mal ou brièvement.": "A student who understood the idea gets most of the points, even if it is expressed poorly or briefly.",
+ "La façon dont l'IA propose les notes des réponses rédigées. Tu gardes toujours la main : chaque note se valide ou se change dans la correction.": "How AI suggests scores for written answers. You always stay in control: every score is approved or changed during grading.",
+ "Notation de l'IA": "AI grading",
+ "Notation enregistrée": "Grading saved",
+ "Note par pas de 0,5, comme un professeur juste et bienveillant qui cherche ce que l'élève a compris. Un critère est acquis dès que l'idée attendue est là, même dite avec d'autres mots, brièvement, maladroitement ou avec des fautes : ne retire rien pour la formulation, l'orthographe, la longueur ou un détail du corrigé-type qui manque. Si l'élève montre qu'il a compris l'idée principale de la question, il a au moins les trois quarts des points ; s'il n'en a saisi qu'une partie, environ la moitié.": "Score in steps of 0.5, like a fair and kind teacher looking for what the student understood. A criterion is met as soon as the expected idea is there, even in other words, briefly, clumsily, or with mistakes: take nothing off for wording, spelling, length, or a missing detail of the answer key. If the student shows they understood the main idea of the question, they get at least three quarters of the points; if they grasped only part of it, about half.",
+ "Sévérité": "Strictness"
 }

@@ -75,7 +75,7 @@ document.addEventListener("click", async ev => {
    Un encart « Correction en cours » reste visible sur toutes les pages de l'application. */
 const JSON_ONLY = "\n\n(Réponds uniquement avec le JSON demandé, sans texte autour.)";
 const jobsOn = () => !!(window.TIKOUN_CONFIG?.jobs && ASSETS && typeof SERVERSTORE !== "undefined" && SERVERSTORE);
-const jobTxt = () => ({coche:"Coché : ", aucune:"aucune case", bonne:"Bonne réponse.", etait:"La bonne réponse était : ", qcmFaux:"réponse QCM incorrecte", vide:"Pas de réponse : revois cette notion.", videTag:"pas de réponse"});
+const jobTxt = () => ({coche:"Coché : ", aucune:"aucune case", bonne:"Bonne réponse.", etait:"La bonne réponse était : ", qcmFaux:"réponse QCM incorrecte", vide:"Pas de réponse : revois cette notion.", videTag:"pas de réponse", ech:echTxt("{{DERNIERE}}", "{{LISTE}}"), echItem:echItem("{{N}}", "{{TEXTE}}")});
 S.jobs = []; S.jobsHide = 0; let jobsTimer = null;
 async function pollJobs(){
   try { const r = await fetch("/api/jobs", {credentials:"same-origin"}); if (!r.ok) return; S.jobs = (await r.json()).jobs || []; } catch(e){ return; }
@@ -122,13 +122,13 @@ S.lots = []; S.lotFixed = {}; S.lotGone = new Set();
 function buildKit(){
   const ids = S.scanCtrl ? [S.scanCtrl] : store.controles.filter(c => c.statut !== "brouillon" && Object.keys(feuille(c.id)?.copies || {}).length)
     .sort((a, b) => (b.date || b.createdAt || "").localeCompare(a.date || a.createdAt || "")).slice(0, 8).map(c => c.id);
-  const prompts = {}, relire = {};
-  for (const cid of ids){ const c = ctrl(cid), f = feuille(cid); if (!c || !f) continue; prompts[cid] = {}; relire[cid] = rereadTpl(c);
+  const prompts = {}, relire = {}, usage = {};
+  for (const cid of ids){ const c = ctrl(cid), f = feuille(cid); if (!c || !f) continue; prompts[cid] = {}; relire[cid] = rereadTpl(c); usage[cid] = usageOf(c.matiere);
     for (const [eid, cp] of Object.entries(f.copies || {})){ prompts[cid][eid] = {};
       (cp.pages || []).forEach((pg, i) => { const qids = pageQ(pg).filter(id => c.questions.some(q => q.id === id)); if (!qids.length) return; const boxes = pg?.b || [];
         const cq = qids.filter(id => !boxes.some(b => b.q === id && b.type === "qcm"));
         prompts[cid][eid][i + 1] = {crops:cq.length ? {qids:cq, prompt:gradePrompt(c, cp, cq, "crops")} : null, halves:{qids, prompt:gradePrompt(c, cp, qids, "halves")}}; }); } }
-  return {prompts, relire, footerPrompt:FOOTER_PROMPT, jsonOnly:JSON_ONLY, txt:{...jobTxt(), vide0:"Pas de réponse."}};
+  return {prompts, relire, usage, footerPrompt:FOOTER_PROMPT, jsonOnly:JSON_ONLY, txt:{...jobTxt(), vide0:"Pas de réponse."}};
 }
 async function uploadLot(file){
   const it = {id:uid(), name:file.name, thumb:"", status:"envoi", pct:0, msg:"Envoi du fichier…"}; S.queue.push(it); scheduleRender();

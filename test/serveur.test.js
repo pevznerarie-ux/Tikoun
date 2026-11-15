@@ -10,18 +10,22 @@ const ENONCES = ["Calcule la somme de un demi et un tiers.", "Explique ce que re
 /* Le faux service IA répond selon la consigne reçue et note chaque appel */
 function fauxIA(calls){
   return http.createServer((req, res) => { let b = ""; req.on("data", c => b += c); req.on("end", () => {
-    const parts = JSON.parse(b || "{}").messages?.[0]?.content || [], text = parts.filter(p => p.type === "text").map(p => p.text).join("\n"), imgs = parts.filter(p => p.type === "image").length;
+    const body = JSON.parse(b || "{}"), model = body.model, parts = body.messages?.[0]?.content || [], text = parts.filter(p => p.type === "text").map(p => p.text).join("\n"), imgs = parts.filter(p => p.type === "image").length;
     let kind, out;
     if (text.includes("Tu contrôles qu'une feuille ne répète pas")){ kind = "doublons"; out = {doublons:[]}; }
     else if (text.includes("Relis très attentivement")){ kind = "relecture"; const diff = text.includes("id=q2]");   // q2 : la relecture diffère de la première lecture
       out = {transcription:diff ? "x = 5 donc y = 7" : "La somme vaut 180 degrés", annotee:diff ? "x = 5 donc y = 7" : "La somme vaut 180 degrés", lisible:true, note:diff ? 2 : 1, detail:[{critere:"résultat", points:diff ? 2 : 1}], confiance:3, hesitation:"", commentaire:"Relu.", erreurs:[], acquis:[]}; }
+    else if (text.includes('{"reponses":[') && model === "modele-eco"){ kind = "correction"; const ids = [...text.matchAll(/id=([A-Za-z0-9_-]+)\]/g)].map(m => m[1]);   // modèle économique : sûr de lui partout, mais q2 contient de l'hébreu et q1 est devinée
+      out = {reponses:ids.map(id => id === "q1" ? {id, transcription:"La somme vaut 180 degrés", fautes:[], lisible:false, note:1, detail:[{critere:"résultat", points:1}], confiance:1, hesitation:"", commentaire:"Bien.", erreurs:[], acquis:[]}
+        : id === "q2" ? {id, transcription:"la brakha est מזונות", fautes:[], lisible:true, note:1, detail:[{critere:"brakha", points:1}], confiance:3, hesitation:"", commentaire:"Faux.", erreurs:[], acquis:[]}
+        : {id, transcription:"Paris est la capitale de la France.", fautes:[], lisible:true, note:2, detail:[{critere:"réponse", points:2}], confiance:3, hesitation:"", commentaire:"Très bien.", erreurs:[], acquis:[]}), alerte:""}; }
     else if (text.includes('{"reponses":[')){ kind = "correction"; const ids = [...text.matchAll(/id=([A-Za-z0-9_-]+)\]/g)].map(m => m[1]);
       out = {reponses:ids.map(id => id === "q1" ? {id, transcription:"La somme vaut 180 degrés", fautes:[], lisible:false, note:1, detail:[{critere:"résultat", points:1}], confiance:2, hesitation:"", commentaire:"Bien.", erreurs:[], acquis:[]}
         : id === "q2" ? {id, transcription:"x = 3 donc y = [illisible] et z = [illisible]", fautes:["x = 3"], lisible:true, note:1, detail:[{critere:"résultat", points:2}], confiance:1, hesitation:"entre 1 et 2", commentaire:"Presque.", erreurs:["calcul"], acquis:[]}
         : {id, transcription:"Paris est la capitale de la France.", fautes:[], lisible:true, note:2, detail:[{critere:"réponse", points:2}], confiance:3, hesitation:"", commentaire:"Très bien.", erreurs:[], acquis:[]}), alerte:""}; }
     else if (text.includes("CORRECTION : les questions n°")){ kind = "remplacement"; out = {questions:[Q({e:"Quelle fraction est égale à un demi ?", qcm:true, choix:["2/4", "1/3", "3/5"], bonnes:[0], sujet:"Chapitre 2 · Les pourcentages"})]}; }
     else { kind = "generation"; out = {titre:"Les fractions", questions:ENONCES.map((e, i) => i === 1 ? Q({qcm:true, choix:["a", "a"], bonnes:[], e:"QCM inutilisable"}) : Q({e, points:i === 0 ? 6 : 4, sujet:"Chapitre 1 · Les fractions", sansApprofondi:i === 2}))}; }
-    calls.push({kind, imgs});
+    calls.push({kind, imgs, model, ech:text.includes("échantillons de l'écriture")});
     res.writeHead(200, {"content-type":"application/json"}); res.end(JSON.stringify({content:[{type:"text", text:JSON.stringify(out)}], stop_reason:"end_turn", usage:{input_tokens:100, output_tokens:50}})); }); });
 }
 const listen = srv => new Promise(r => srv.listen(0, "127.0.0.1", () => r(srv.address().port)));
@@ -83,4 +87,44 @@ test("serveur : correction, relecture des réponses douteuses, journal, généra
     assert.deepEqual(c.verif, [{k:"points", avant:22, total:20}, {k:"version", q:3, l:"approfondi"}]);
     assert.equal(c.questions[2].v.approfondi.enonce, c.questions[2].v.standard.enonce);
   });
+});
+
+test("serveur en renfort : modèle économique d'abord, modèle précis pour les doutes et l'hébreu, avec la fiche d'écriture", {timeout:60000}, async t => {
+  const calls = [], ia = fauxIA(calls), iaPort = await listen(ia), data = fs.mkdtempSync(path.join(os.tmpdir(), "mastery-test-"));
+  const probe = http.createServer(), port = await listen(probe); await new Promise(r => probe.close(r));
+  const srv = spawn(process.execPath, [path.join(__dirname, "..", "server.js")], {env:{...process.env, DATA_DIR:data, MASTERY_CODE:"test", ANTHROPIC_API_KEY:"x", ANTHROPIC_BASE_URL:"http://127.0.0.1:" + iaPort, PORT:String(port), STRIPE_SECRET_KEY:"", MODEL_GRADE:"modele-eco", MODEL_COMPLEX:"modele-precis"}, stdio:"ignore"});
+  t.after(async () => { await new Promise(r => { srv.once("exit", r); srv.kill(); }); ia.close(); fs.rmSync(data, {recursive:true, force:true, maxRetries:5, retryDelay:100}); });
+  const B = "http://127.0.0.1:" + port; let cookie = "";
+  const call = async (method, p, body, raw) => { const r = await fetch(B + p, {method, headers:{"content-type":raw ? "image/jpeg" : "application/json", cookie}, body:raw || (body ? JSON.stringify(body) : undefined)});
+    const sc = r.headers.get("set-cookie"); if (sc) cookie = sc.split(";")[0]; const txt = await r.text(); try { return {status:r.status, ...JSON.parse(txt)}; } catch(e){ return {status:r.status, txt}; } };
+  for (let k = 0; k < 50; k++){ try { if ((await fetch(B + "/health")).ok) break; } catch(e){} await sleep(100); }
+  await call("POST", "/api/setup", {code:"test", email:"prof@example.org", password:"motdepasse123", nom:"Prof Test"});
+  const doc = (p, b, m = "PUT") => call(m, "/api/db/doc?path=" + p, b), cid = "ctrlTest0002";
+  const qs = ["q1", "q2", "q3"].map(id => ({id, points:2, notion:id, erreurs:[], v:{standard:{enonce:"Énoncé " + id, corrige:"Corrigé " + id, criteres:"2 pts"}}}));
+  await doc("classes/cl1", {nom:"2de", niveau:"2de", eleves:[{id:"e1", prenom:"Léa", nom:"Martin"}, {id:"e2", prenom:"Hugo", nom:"Bernard"}]});
+  await doc("controles/" + cid, {type:"controle", titre:"Essai", matiere:"Halakha", niveau:"2de", classeId:"cl1", statut:"imprime", questions:qs});
+  await doc("feuilles/" + cid, {copies:{e1:{pages:[["q1", "q2", "q3"]], answers:{}, version:{}}, e2:{pages:[["q1", "q2", "q3"]], answers:{}, version:{}}}});
+  const image = async i => (await call("POST", "/api/files", null, Buffer.from([0xff, 0xd8, 0xff, i]))).id;
+  const imgs = [await image(0), await image(1), await image(2)], ech = [await image(10), await image(11), await image(12)];
+  // fiche d'écriture de e1 : deux échantillons d'hébreu (un de maths, qui ne doit pas partir pour un contrôle de Halakha) ; e2 n'a pas rempli la sienne
+  await doc("ecritures/e1", {classeId:"cl1", samples:[{id:"alefbet", texte:"א ב ג", usage:"hebreu", asset:ech[0]}, {id:"chiffres", texte:"0 1 2", usage:"maths", asset:ech[1]}, {id:"michna", texte:"שנים אוחזין", usage:"hebreu", asset:ech[2]}]});
+  const prompt = qs.map((q, i) => `[Q${i + 1} · id=${q.id}] (sur 2 points)`).join("\n") + '\nRéponds uniquement en JSON : {"reponses":[{"id":"…"}]}';
+  const relire = "Relis très attentivement ce cadre.{{ECHANTILLONS}}\n[Q1 · id={{ID}}] (sur {{PTS}} points)\nÉnoncé : {{ENONCE}}";
+  const txt = {ech:"\nLes images 2 à {{DERNIERE}} sont des échantillons de l'écriture de CET élève, avec le texte exact qu'il a recopié : {{LISTE}}.", echItem:"image {{N}} = « {{TEXTE}} »"};
+  for (const eleveId of ["e1", "e2"]) await call("POST", "/api/jobs", {ctrlId:cid, eleveId, page:1, name:"p", prompt, images:imgs, qs:qs.map((q, i) => ({id:q.id, points:2, crop:imgs[i]})), txt, relire, usage:"hebreu"});
+  let jobs = []; for (let k = 0; k < 100; k++){ await sleep(150); jobs = (await call("GET", "/api/jobs")).jobs; if (jobs.every(j => !["attente", "en_cours"].includes(j.status))) break; }
+  assert.deepEqual(jobs.map(j => j.status), ["fait", "fait"]);
+  const copies = (await call("GET", "/api/db")).docs["feuilles/" + cid].copies, a = copies.e1.answers;
+  // première correction par le modèle économique, relectures par le modèle précis
+  assert.deepEqual(calls.filter(c => c.kind === "correction").map(c => c.model), ["modele-eco", "modele-eco"]);
+  const relues = calls.filter(c => c.kind === "relecture");
+  assert.equal(relues.length, 4, "par copie : la réponse devinée (q1) et la réponse en hébreu (q2), pas la réponse nette (q3)");
+  assert.ok(relues.every(c => c.model === "modele-precis"));
+  assert.deepEqual(relues.map(c => c.imgs).sort(), [1, 1, 3, 3], "e1 : le cadre + ses 2 échantillons d'hébreu ; e2 : le cadre seul");
+  assert.equal(relues.filter(c => c.ech).length, 2);
+  // la lecture du modèle précis devient la proposition ; celle du modèle économique reste à côté quand elle diffère
+  assert.equal(a.q2.transcription, "x = 5 donc y = 7"); assert.equal(a.q2.noteIA, 2);
+  assert.deepEqual([a.q2.alt.transcription, a.q2.alt.noteIA], ["la brakha est מזונות", 1]); assert.deepEqual(a.q2.doute, {n:1, r:["lectures"]});
+  assert.deepEqual(a.q1.doute, {n:0, r:["relu"]}); assert.equal(a.q1.alt, null);                 // deux lectures concordantes
+  assert.deepEqual(a.q3.doute, {n:0, r:[]}); assert.equal(a.q3.transcription, "Paris est la capitale de la France.");
 });

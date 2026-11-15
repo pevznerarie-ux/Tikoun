@@ -72,7 +72,7 @@ const OLD_ENTETE = "Collège-Lycée Beth Mena'hem · Levallois-Perret";
 /* En-tête des feuilles : choisi par le prof (école, son nom, ou les deux) ; un texte libre saisi dans la mise en page reste prioritaire. */
 const AFFICHE = {les2:"École et mon nom", ecole:"École seulement", nom:"Mon nom seulement"};
 /* Préférences du prof (Mon compte) : mise en page par défaut des feuilles et style des questions */
-const PREF_DEF = {police:15, lh:30, reglure:"lignes", ton:"bienveillant", adresse:"tu", bareme:true, consignes:"Écris uniquement dans les cadres.", q:{format:"mixte", justif:true, profondeur:"standard", longueur:"moyenne"}, ratt:{seuil:10, regle:"meilleure", plafond:10, bonus:3}, periodes:{mode:"trim", t2:"12-01", t3:"03-15", s2:"02-01"}};
+const PREF_DEF = {police:15, lh:30, reglure:"lignes", ton:"bienveillant", adresse:"tu", severite:"bienveillante", bareme:true, consignes:"Écris uniquement dans les cadres.", q:{format:"mixte", justif:true, profondeur:"standard", longueur:"moyenne"}, ratt:{seuil:10, regle:"meilleure", plafond:10, bonus:3}, periodes:{mode:"trim", t2:"12-01", t3:"03-15", s2:"02-01"}};
 function prefs(){ let p = S.me?.prefs; if (!p){ try { p = JSON.parse(localStorage.getItem("mastery.prefs") || "null"); } catch(e){} }
   return {...PREF_DEF, ...(p || {}), q:{...PREF_DEF.q, ...(p?.q || {})}, ratt:{...PREF_DEF.ratt, ...(p?.ratt || {})}}; }
 async function savePrefs(patch){ const cur = prefs(), next = {...cur, ...patch, q:{...cur.q, ...(patch.q || {})}, ratt:{...cur.ratt, ...(patch.ratt || {})}};
@@ -1269,7 +1269,7 @@ async function processPage(it){
         keepTeacherNotes(cp, upd.copies[it.eleveId]);
         await write("feuilles/" + c.id, upd, "update");
         if (c.statut === "imprime"){ c.statut = "correction"; await saveCtrl(c); }
-        const j = await api("/api/jobs", {method:"POST", body:JSON.stringify({ctrlId:c.id, eleveId:it.eleveId, page:it.page, name:it.name, prompt:gradePrompt(c, cp, aiQ, mode) + JSON_ONLY, images, qs, bonus:!!bonusMax(c), txt:jobTxt(), relire:rereadTpl(c)})});
+        const j = await api("/api/jobs", {method:"POST", body:JSON.stringify({ctrlId:c.id, eleveId:it.eleveId, page:it.page, name:it.name, prompt:gradePrompt(c, cp, aiQ, mode) + JSON_ONLY, images, qs, bonus:!!bonusMax(c), txt:jobTxt(), relire:rereadTpl(c), usage:usageOf(c.matiere)})});
         it.status = "serveur"; it.jobId = j.id; it.msg = "Page prête : la correction continue sur le serveur, tu peux quitter l'application."; if (it.load) freeCv(it); else it.cv = null;
         watchJobs(); return scheduleRender();
       } catch(e){ console.warn("Tâche serveur impossible, correction ici", e); }
@@ -1326,6 +1326,13 @@ Corrigé-type : ${v.corrige || "(non fourni)"}
 Critères : ${v.criteres || "selon le corrigé-type"}
 Erreurs types possibles : ${(q.erreurs || []).join(" | ") || "(aucune)"}`;
 }
+/* Sévérité de la notation, au choix du professeur (Mon compte → Notation de l'IA).
+   Essai sur de vraies copies (novembre 2026) : avec la consigne « exigeante », l'IA notait 3 points sur 20 sous le professeur ;
+   avec la consigne « bienveillante », moins d'un point. Les deux se terminent par la même règle sur les réponses vides. */
+const SEVERITES = {bienveillante:"Bienveillante : l'idée compte, pas la formulation", exigeante:"Exigeante : chaque demi-point doit être justifié"};
+const NOTE_RULE = () => prefs().severite === "exigeante"
+  ? "Note par pas de 0,5, strictement selon les critères : chaque demi-point doit correspondre à un élément juste réellement écrit par l'élève. Jamais de point « d'encouragement »."
+  : "Note par pas de 0,5, comme un professeur juste et bienveillant qui cherche ce que l'élève a compris. Un critère est acquis dès que l'idée attendue est là, même dite avec d'autres mots, brièvement, maladroitement ou avec des fautes : ne retire rien pour la formulation, l'orthographe, la longueur ou un détail du corrigé-type qui manque. Si l'élève montre qu'il a compris l'idée principale de la question, il a au moins les trois quarts des points ; s'il n'en a saisi qu'une partie, environ la moitié.";
 const MATH_RULE = "Mathématiques en LaTeX entre $…$ (ex. $\\frac{2}{3}$, $x^2$, $\\sqrt{5}$, $3\\times 4$), le reste en texte normal.";
 /* Ce que l'IA dit de sa propre correction : sert à repérer les réponses à vérifier d'abord (fiabilite.js) */
 const GRADE_EXTRA = `Pour chaque réponse rédigée, ajoute aussi :
@@ -1335,10 +1342,10 @@ const GRADE_EXTRA = `Pour chaque réponse rédigée, ajoute aussi :
 `;
 /* Relecture d'un seul cadre : à la demande du professeur (avec la première lecture) ou automatique sur le serveur pour une réponse douteuse (sans elle : lecture indépendante) */
 function relirePrompt(C, bloc, o = {}){
-  return `Relis très attentivement ce cadre de réponse manuscrit d'un élève (${C.matiere}, ${C.niveau || ""}), puis corrige. L'image 1 est le cadre à lire.${o.smp || ""}${lectureTips()}\n${bloc}${o.premiere != null ? `\n\nUne première lecture a donné : """${o.premiere}""" (jugée incertaine).` : ""}\nTranscris ligne par ligne, sans corriger l'orthographe. ${MATH_RULE} Hébreu en caractères hébreux. Passage vraiment illisible : [illisible]. "annotee" = transcription avec chaque passage erroné entouré de ⟦ ⟧ (hors des $…$). Note par pas de 0,5. Commentaire 2 à 3 phrases, ${tonTxt(C.niveau)}. ${NOSRC}\n${GRADE_EXTRA}Réponds uniquement en JSON : {"transcription":"…","annotee":"…","lisible":true,"note":0,"detail":[{"critere":"…","points":0}],"confiance":3,"hesitation":"","commentaire":"…","erreurs":["…"],"acquis":["…"]}`;
+  return `Relis très attentivement ce cadre de réponse manuscrit d'un élève (${C.matiere}, ${C.niveau || ""}), puis corrige. L'image 1 est le cadre à lire.${o.smp || ""}${lectureTips()}\n${bloc}${o.premiere != null ? `\n\nUne première lecture a donné : """${o.premiere}""" (jugée incertaine).` : ""}\nTranscris ligne par ligne, sans corriger l'orthographe. ${MATH_RULE} Hébreu en caractères hébreux. Passage vraiment illisible : [illisible]. "annotee" = transcription avec chaque passage erroné entouré de ⟦ ⟧ (hors des $…$). ${NOTE_RULE()} Commentaire 2 à 3 phrases, ${tonTxt(C.niveau)}. ${NOSRC}\n${GRADE_EXTRA}Réponds uniquement en JSON : {"transcription":"…","annotee":"…","lisible":true,"note":0,"detail":[{"critere":"…","points":0}],"confiance":3,"hesitation":"","commentaire":"…","erreurs":["…"],"acquis":["…"]}`;
 }
 /* Gabarit envoyé avec chaque page à corriger : le serveur remplace les repères {{…}} par la question concernée */
-const rereadTpl = C => relirePrompt(C, qBlockPrompt(C, {id:"{{ID}}", points:"{{PTS}}", erreurs:["{{ERREURS}}"], v:{standard:{enonce:"{{ENONCE}}", corrige:"{{CORRIGE}}", criteres:"{{CRITERES}}"}}}, "standard", 0));
+const rereadTpl = C => relirePrompt(C, qBlockPrompt(C, {id:"{{ID}}", points:"{{PTS}}", erreurs:["{{ERREURS}}"], v:{standard:{enonce:"{{ENONCE}}", corrige:"{{CORRIGE}}", criteres:"{{CRITERES}}"}}}, "standard", 0), {smp:"{{ECHANTILLONS}}"});
 function gradePrompt(c, cp, qids, mode){
   const blocks = qids.map(id => { const i = c.questions.findIndex(q => q.id === id); return qBlockPrompt(c, c.questions[i], cp.version?.[id] || "standard", i); }).join("\n\n");
   const bm = bonusMax(c);
@@ -1353,7 +1360,7 @@ ${lectureTips()}
 Consignes :
 1. Transcris fidèlement ce que l'élève a écrit dans chaque cadre, sans corriger l'orthographe, ligne par ligne. ${MATH_RULE} Hébreu en caractères hébreux, dans l'ordre de lecture (l'écriture manuscrite hébraïque est souvent cursive : lis-la avec soin, lettre par lettre). Passage illisible : [illisible]. Cadre vide : "". Ignore ce qui est barré.
 2. "fautes" : liste des passages erronés, recopiés exactement tels qu'ils figurent dans la transcription (courts : quelques mots). Liste vide si tout est juste.
-3. Note par pas de 0,5, strictement selon les critères : chaque demi-point doit correspondre à un élément juste réellement écrit par l'élève. Jamais de point « d'encouragement ». Réponse vide, « je ne sais pas », « ? », énoncé recopié, hors sujet ou sans aucun élément juste = 0.
+3. ${NOTE_RULE()} Réponse vide, « je ne sais pas », « ? », énoncé recopié, hors sujet ou sans aucun élément juste = 0.
 4. "commentaire" : 1 ou 2 phrases courtes (40 mots maximum), ${tonTxt(c.niveau)} : ce qui est réussi, puis l'erreur précise et comment la corriger.
 5. "erreurs" : choisis dans les erreurs types (texte exact) ; sinon une étiquette de 2 à 5 mots. "acquis" : 1 à 3 étiquettes courtes.
 6. "lisible" : false si tu as dû deviner une partie importante de la réponse.
@@ -2211,7 +2218,7 @@ document.addEventListener("click", async ev => {
       t.disabled = true; st.innerHTML = `<span class="thinking">Correction…</span>`;
       try{
         const i = C.questions.indexOf(q);
-        const r = await ai(`Corrige la réponse d'un élève (${C.matiere}, ${C.niveau || ""}).\n${qBlockPrompt(C, q, cp.version?.[qid] || "standard", i)}\n\nRéponse de l'élève (transcrite et vérifiée par le professeur) :\n"""${text}"""\n\nNote par pas de 0,5. "annotee" = la réponse avec chaque passage erroné entouré de ⟦ ⟧ (hors des $…$). ${MATH_RULE} Commentaire 2 à 3 phrases, ${tonTxt(C.niveau)}. "erreurs" choisies dans les erreurs types si possible. ${NOSRC}\nRéponds uniquement en JSON : {"annotee":"…","note":0,"commentaire":"…","erreurs":["…"],"acquis":["…"]}`);
+        const r = await ai(`Corrige la réponse d'un élève (${C.matiere}, ${C.niveau || ""}).\n${qBlockPrompt(C, q, cp.version?.[qid] || "standard", i)}\n\nRéponse de l'élève (transcrite et vérifiée par le professeur) :\n"""${text}"""\n\n${NOTE_RULE()} "annotee" = la réponse avec chaque passage erroné entouré de ⟦ ⟧ (hors des $…$). ${MATH_RULE} Commentaire 2 à 3 phrases, ${tonTxt(C.niveau)}. "erreurs" choisies dans les erreurs types si possible. ${NOSRC}\nRéponds uniquement en JSON : {"annotee":"…","note":0,"commentaire":"…","erreurs":["…"],"acquis":["…"]}`);
         await write("feuilles/" + C.id, {copies:{[S.corrEleve]:{validee:false, answers:{[qid]:{transcription:text, annot:String(r.annotee || text), lisible:true, noteIA:clamp(half(+r.note || 0), 0, +q.points), note:null,
           commentaire:String(r.commentaire || ""), erreurs:(r.erreurs || []).map(String).slice(0, 4), acquis:(r.acquis || []).map(String).slice(0, 4), valide:false, detail:[], hesite:"", alt:null, doute:{n:0, r:[]}}}}}}, "update");
         delete S.editTr[qid];
@@ -2314,6 +2321,7 @@ document.addEventListener("change", async ev => {
     const R = {...rattRule(c), ...(el.id === "rr-regle" ? {regle:el.value} : el.id === "rr-bonus" ? {bonus:+el.value} : {plafond:+el.value})};
     await saveCtrl({...c, regle:R}); return; }
   if (el.id === "ap-mode"){ await savePrefs({periodes:{...PREF_DEF.periodes, ...(prefs().periodes || {}), mode:el.value}}); render(); return; }
+  if (el.id === "tp-sev"){ await savePrefs({severite:el.value === "exigeante" ? "exigeante" : "bienveillante"}); render(); toast("Notation enregistrée"); return; }
   if (el.id === "tp-ton" || el.id === "tp-adr"){ await savePrefs(el.id === "tp-ton" ? {ton:el.value} : {adresse:el.value}); render(); toast("Ton enregistré"); return; }
   if (["rp-seuil", "rp-regle", "rp-bonus", "rp-plaf"].includes(el.id)){ const k = {"rp-seuil":"seuil", "rp-regle":"regle", "rp-bonus":"bonus", "rp-plaf":"plafond"}[el.id];
     await savePrefs({ratt:{[k]:el.id === "rp-regle" ? el.value : +el.value}}); render(); toast("Règle de rattrapage enregistrée"); return; }

@@ -16,6 +16,8 @@
 //   ADMIN_RESET_PASSWORD : mot de passe oublié, réinitialise le compte ADMIN_EMAIL (une fois par valeur)
 //   SIGNUP            : "off" pour fermer l'inscription libre des professeurs (ouverte par défaut)
 //   MODEL_QUICK, MODEL_DEFAULT, MODEL_COMPLEX : modèles (défaut économique)
+//   MODEL_GRADE       : modèle de la première correction des copies (défaut : MODEL_COMPLEX). S'il est différent, plus économique,
+//                       les réponses douteuses ou contenant de l'hébreu manuscrit sont relues en renfort par MODEL_COMPLEX.
 //   AI_REREAD         : "0" pour ne pas relire automatiquement les réponses douteuses ; AI_REREAD_MAX : relectures par page (défaut 3)
 const http = require("http"), fs = require("fs"), path = require("path"), crypto = require("crypto"), zlib = require("zlib");
 const FIAB = require("./fiabilite.js");   // doutes sur une correction, journal de validation, vérification des contrôles générés (testé : npm test)
@@ -26,8 +28,9 @@ const env = k => (process.env[k] || "").trim();
 /* Lecture des copies manuscrites : modèle le plus précis par défaut (GRADE_TIER=default pour revenir au modèle rapide) */
 /* Rédaction des contrôles, rattrapages et variantes : modèle puissant par défaut (GEN_TIER=default pour le modèle rapide) */
 const GEN_TIER = () => ["quick","default","complex"].includes(env("GEN_TIER")) ? env("GEN_TIER") : "complex";
-const GRADE_TIER = () => ["quick","default","complex"].includes(env("GRADE_TIER")) ? env("GRADE_TIER") : "complex";
-const MODELS = () => ({quick:env("MODEL_QUICK") || "claude-haiku-4-5-20251001", default:env("MODEL_DEFAULT") || "claude-haiku-4-5-20251001", complex:env("MODEL_COMPLEX") || "claude-sonnet-5"});
+const GRADE_TIER = () => ["quick","default","complex","grade"].includes(env("GRADE_TIER")) ? env("GRADE_TIER") : "grade";
+const MODELS = () => { const complex = env("MODEL_COMPLEX") || "claude-sonnet-5";
+  return {quick:env("MODEL_QUICK") || "claude-haiku-4-5-20251001", default:env("MODEL_DEFAULT") || "claude-haiku-4-5-20251001", complex, grade:env("MODEL_GRADE") || complex}; };
 
 const SEC_HEADERS = {"X-Content-Type-Options":"nosniff", "Referrer-Policy":"same-origin", "X-Frame-Options":"DENY", "Strict-Transport-Security":"max-age=31536000",
   "Content-Security-Policy":"frame-ancestors 'none'; object-src 'none'; base-uri 'self'", "Permissions-Policy":"geolocation=(), microphone=(self)"};
@@ -153,7 +156,7 @@ const AFF = ["ecole", "nom", "les2"];
 const PREF_Q = {format:["redige","mixte","qcm"], profondeur:["simple","standard","exigeant"], longueur:["courte","moyenne","developpee"]};
 const cleanPrefs = p => { const n = (v, a, b, d) => { v = +v; return v >= a && v <= b ? v : d; }, q = isObj(p.q) ? p.q : {};
   return {police:n(p.police, 13, 17, 15), lh:n(p.lh, 26, 46, 30), reglure:["lignes", "seyes", "carreaux", "aucune"].includes(p.reglure) ? p.reglure : "lignes",
-    ton:["bienveillant", "neutre", "exigeant", "chaleureux"].includes(p.ton) ? p.ton : "bienveillant", adresse:p.adresse === "vous" ? "vous" : "tu",
+    ton:["bienveillant", "neutre", "exigeant", "chaleureux"].includes(p.ton) ? p.ton : "bienveillant", adresse:p.adresse === "vous" ? "vous" : "tu", severite:p.severite === "exigeante" ? "exigeante" : "bienveillante",
     ...(isObj(p.notation) && ["sur", "pct", "lettres"].includes(p.notation.type) ? {notation:(N => ({type:N.type, sur:Math.round(n(N.sur, 1, 1000, 20)), pas:[1, 0.5, 0.25, 0.1, 0.01].includes(+N.pas) ? +N.pas : N.type === "pct" ? 1 : 0.1,
       lettres:(Array.isArray(N.lettres) ? N.lettres : []).slice(0, 20).map(x => ({l:String(x?.l || "").trim().slice(0, 30), min:n(x?.min, 0, 100, 0)})).filter(x => x.l), pctLettre:N.pctLettre !== false}))(p.notation)} : {}),
     periodes:(r => { const md = (v, d) => /^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(v || "") ? v : d; return {mode:r.mode === "sem" ? "sem" : "trim", t2:md(r.t2, "12-01"), t3:md(r.t3, "03-15"), s2:md(r.s2, "02-01")}; })(isObj(p.periodes) ? p.periodes : {}), bareme:p.bareme !== false, consignes:String(p.consignes ?? "Écris uniquement dans les cadres.").slice(0, 400),
@@ -766,7 +769,7 @@ const day = () => new Date().toISOString().slice(0, 10);
 /* Budget IA en dollars (coût estimé d'après les jetons consommés), enregistré sur le disque : il ne repart pas à zéro à chaque mise à jour */
 const USAGE_F = path.join(DATA, "ia-usage.json"); let USAGE = readJ(USAGE_F, {day:day(), users:{}, total:0});
 let usageTimer = null; const saveUsage = () => { clearTimeout(usageTimer); usageTimer = setTimeout(() => writeAtomic(USAGE_F, USAGE), 1000); };
-const PRICES = {quick:[1, 5], default:[1, 5], complex:[3, 15]};   // dollars par million de jetons (entrée, sortie), modifiables par AI_PRICE_<NIVEAU>="entrée,sortie"
+const PRICES = {quick:[1, 5], default:[1, 5], complex:[3, 15], grade:[3, 15]};   // dollars par million de jetons (entrée, sortie), modifiables par AI_PRICE_<NIVEAU>="entrée,sortie"
 /* Tarifs publics Anthropic (octobre 2026), reconnus d'après le nom du modèle : changer de modèle par MODEL_<NIVEAU> garde un suivi des coûts juste */
 const MODEL_PRICES = [[/haiku-5/, [0.1, 0.5]], [/haiku-4/, [1, 5]], [/sonnet-5/, [2, 10]], [/sonnet-4/, [3, 15]], [/opus-5-5/, [4, 20]], [/opus/, [5, 25]]];
 const priceOf = tier => { const e = env("AI_PRICE_" + String(tier).toUpperCase()).split(",").map(Number); if (e.length === 2 && e.every(x => x > 0)) return e;
@@ -787,10 +790,10 @@ function spend(u, tier, usage){
   const cost = ((usage.input_tokens || 0) + (usage.cache_creation_input_tokens || 0)) * pi / 1e6 + (usage.output_tokens || 0) * po / 1e6 + (usage.cache_read_input_tokens || 0) * pi * 0.1 / 1e6;
   USAGE.users[u.id] = (USAGE.users[u.id] || 0) + cost; USAGE.mois.users[u.id] = (USAGE.mois.users[u.id] || 0) + cost; USAGE.total = (USAGE.total || 0) + cost; saveUsage();
 }
-const tierOk = t => ["quick", "default", "complex"].includes(t) ? t : "default";
+const tierOk = t => ["quick", "default", "complex", "grade"].includes(t) ? t : "default";
 /* Plafond de longueur par niveau. Les modèles récents réfléchissent avant de répondre et cette réflexion compte dans la sortie :
    à 12 000 jetons, les contrôles longs étaient coupés (journaux : sorties à 12 000 tout rond, « Réponse de l'IA illisible »). */
-const MAXTOK = {quick:2000, default:8000, complex:20000};
+const MAXTOK = {quick:2000, default:8000, complex:20000, grade:20000};
 let counter = {day:day(), n:0}; const perIp = new Map(), perUser = new Map();
 function allowCall(ip, uid){
   const who = USERS.find(x => x.id === uid); if (who){ const b = budgetLeft(who); if (b) return b; }
@@ -889,27 +892,39 @@ function reponseIA(q, r, T){
   if (vide){ ans.noteIA = 0; ans.commentaire = T.vide || "Pas de réponse : revois cette notion."; ans.erreurs = [T.videTag || "pas de réponse"]; ans.acquis = []; }
   return FIAB.completer(ans, r, q, {vide});
 }
-/* Réponses « à vérifier d'abord » : seconde lecture, indépendante, du seul cadre de la question (image du cadre + consigne de relecture
-   préparée par l'application). Deux lectures concordantes : le doute retombe. Deux lectures différentes : le professeur voit les deux. */
+/* Seconde lecture du seul cadre d'une question (image du cadre + consigne de relecture préparée par l'application), par le modèle précis.
+   Sans renfort : pour les réponses « à vérifier d'abord » ; la relecture signale, elle ne remplace pas (voir FIAB.fusion).
+   En renfort (première correction par un modèle économique) : aussi pour toute réponse contenant de l'hébreu manuscrit, et c'est la
+   relecture qui devient la proposition. Si l'élève a rempli sa fiche d'écriture, ses échantillons (image + texte exact recopié)
+   sont joints : le modèle voit comment CET élève forme ses lettres. */
+function echantillons(u, j){
+  const w = j.usage ? DOCS.get("ecritures/" + j.eleveId) : null; if (!isObj(w) || !visible(u, w)) return [];
+  return (Array.isArray(w.samples) ? w.samples : []).filter(x => isObj(x) && x.usage === j.usage && /^[a-z0-9]{8,40}$/.test(x.asset || "") && String(x.texte || "").trim() && fs.existsSync(path.join(FILEDIR, x.asset + ".jpg"))).slice(0, 3);
+}
 async function relireDouteux(u, j, answers){
   const tpl = String(j.relire || ""); if (!tpl || env("AI_REREAD") === "0") return 0;
   const c = DOCS.get("controles/" + j.ctrlId), cp = DOCS.get("feuilles/" + j.ctrlId)?.copies?.[j.eleveId]; if (!isObj(c)) return 0;
   if (cp?.validee) return 0;                                    // copie déjà validée : rien ne sera modifié, inutile de relire
+  const renfort = MODELS()[tierOk(j.tier)] !== MODELS().complex, T = j.txt || {};   // première correction par un modèle plus économique que le modèle précis
   const libre = q => { const old = cp?.answers?.[q.id]; return !old?.valide && old?.note == null; };   // le professeur n'a pas déjà tranché
-  const todo = (j.qs || []).filter(q => q.type !== "qcm" && q.crop && answers[q.id]?.doute?.n === 2 && libre(q) && fs.existsSync(path.join(FILEDIR, q.crop + ".jpg"))).slice(0, clampN(+env("AI_REREAD_MAX") || 3, 1, 12));
+  const aRelire = a => a?.doute?.n === 2 || (renfort && !a?.auto && FIAB.hebreu(a?.transcription));
+  const todo = (j.qs || []).filter(q => q.type !== "qcm" && q.crop && aRelire(answers[q.id]) && libre(q) && fs.existsSync(path.join(FILEDIR, q.crop + ".jpg"))).slice(0, clampN(+env("AI_REREAD_MAX") || 3, 1, 12));
+  if (!todo.length) return 0;
+  const ech = echantillons(u, j), img = id => ({type:"image", source:{type:"base64", media_type:"image/jpeg", data:fs.readFileSync(path.join(FILEDIR, id + ".jpg")).toString("base64")}});
+  const echTxt = ech.length && T.ech ? FIAB.remplir(T.ech, {DERNIERE:ech.length + 1, LISTE:ech.map((x, k) => FIAB.remplir(T.echItem || "image {{N}} = « {{TEXTE}} »", {N:k + 2, TEXTE:String(x.texte).slice(0, 200)})).join(" ; ")}) : "";
   let n = 0;
   await Promise.all(todo.map(async q => {
     try {
       const i = (c.questions || []).findIndex(x => x.id === q.id), Q = c.questions?.[i]; if (!Q) return;
       const lvl = cp?.version?.[q.id] || "standard", v = (Q.v?.[lvl]?.enonce ? Q.v[lvl] : Q.v?.standard) || {};
-      const prompt = FIAB.remplir(tpl, {ID:q.id, N:i + 1, PTS:q.points, ENONCE:v.enonce || "", CORRIGE:v.corrige || "—", CRITERES:v.criteres || "—", ERREURS:(Q.erreurs || []).join(" | ") || "—"});
-      const tier = tierOk(j.tier), txt = await claude(u, [{type:"image", source:{type:"base64", media_type:"image/jpeg", data:fs.readFileSync(path.join(FILEDIR, q.crop + ".jpg")).toString("base64")}}, {type:"text", text:prompt}], tier, Math.min(8000, MAXTOK[tier]));
+      const prompt = FIAB.remplir(tpl, {ID:q.id, N:i + 1, PTS:q.points, ENONCE:v.enonce || "", CORRIGE:v.corrige || "—", CRITERES:v.criteres || "—", ERREURS:(Q.erreurs || []).join(" | ") || "—", ECHANTILLONS:echTxt});
+      const txt = await claude(u, [img(q.crop), ...(echTxt ? ech.map(x => img(x.asset)) : []), {type:"text", text:prompt}], "complex", Math.min(8000, MAXTOK.complex));
       const r = looseJSON(txt); if (!isObj(r) || typeof r.transcription !== "string") return;
-      const seconde = reponseIA(q, r, j.txt || {}); seconde.crop = q.crop;
-      answers[q.id] = FIAB.fusion(answers[q.id], seconde); n++;
+      const seconde = reponseIA(q, r, T); seconde.crop = q.crop;
+      answers[q.id] = FIAB.fusion(answers[q.id], seconde, {renfort}); n++;
     } catch(e){ console.warn("Relecture", j.id, q.id, e.message); }
   }));
-  if (n) console.log(`IA (relecture) · ${u.id} · ${n} réponse(s) douteuse(s) relue(s)`);
+  if (n) console.log(`IA (relecture${renfort ? " en renfort" : ""}) · ${u.id} · ${n} réponse(s) relue(s)${echTxt ? " · avec " + ech.length + " échantillon(s) d'écriture" : ""}`);
   return n;
 }
 function jobAnswers(j, res){
@@ -1133,7 +1148,7 @@ async function jobsApi(req, res, url, p, u){
     if (JOBS.filter(j => j.user === u.id && (j.status === "attente" || j.status === "en_cours")).length > 400) return sendJ(res, 429, {error:{message:"Trop de pages en attente"}});
     const j = {id:crypto.randomBytes(8).toString("hex"), user:u.id, status:"attente", createdAt:new Date().toISOString(), name:String(b.name || "").slice(0, 120),
       ctrlId:b.ctrlId, eleveId:b.eleveId, page:Math.max(1, +b.page || 1), prompt:String(b.prompt || "").slice(0, 60000), tier:GRADE_TIER(),
-      images:(Array.isArray(b.images) ? b.images : []).filter(x => /^[a-z0-9]{8,40}$/.test(x) && canSeeFile(u, x)).slice(0, 12), bonus:!!b.bonus, txt:isObj(b.txt) ? b.txt : {}, relire:String(b.relire || "").slice(0, 20000),
+      images:(Array.isArray(b.images) ? b.images : []).filter(x => /^[a-z0-9]{8,40}$/.test(x) && canSeeFile(u, x)).slice(0, 12), bonus:!!b.bonus, txt:isObj(b.txt) ? b.txt : {}, relire:String(b.relire || "").slice(0, 20000), usage:["maths", "hebreu", "francais"].includes(b.usage) ? b.usage : "",
       qs:(Array.isArray(b.qs) ? b.qs : []).slice(0, 40).map(q => ({id:String(q.id), points:+q.points || 0, type:q.type === "qcm" ? "qcm" : "", good:Array.isArray(q.good) ? q.good.map(Number) : [], notion:String(q.notion || "").slice(0, 80), crop:/^[a-z0-9]{8,40}$/.test(q.crop || "") ? q.crop : null}))};
     if (!j.images.length || !j.qs.length) return sendJ(res, 400, {error:{message:"Tâche vide"}});
     JOBS.push(j); saveJobs(); setTimeout(pumpJobs, 10); return sendJ(res, 200, {id:j.id});
@@ -1185,7 +1200,7 @@ async function pumpLots(){
     saveAsset:async buf => { const id = crypto.randomBytes(10).toString("hex"); fs.writeFileSync(path.join(FILEDIR, id + ".jpg"), buf); setOwner(id, u); return id; },
     patch:(dp, upd) => { const cid = dp.split("/")[1], eid = Object.keys(upd.copies || {})[0]; if (cancelled(cid, eid, l.createdAt)) return; const cur = DOCS.get(dp); if (cur) persist(dp, merge(cur, upd)); },
     addJob:b => { if (cancelled(b.ctrlId, b.eleveId, l.createdAt)) return null; const j = {id:crypto.randomBytes(8).toString("hex"), user:u.id, status:"attente", createdAt:new Date().toISOString(), name:l.name, lot:l.id,
-      ctrlId:b.ctrlId, eleveId:b.eleveId, page:b.page, prompt:b.prompt, tier:GRADE_TIER(), images:b.images, bonus:b.bonus, txt:b.txt, qs:b.qs, relire:String(b.relire || "").slice(0, 20000)}; JOBS.push(j); saveJobs(); setTimeout(pumpJobs, 10); return j.id; },
+      ctrlId:b.ctrlId, eleveId:b.eleveId, page:b.page, prompt:b.prompt, tier:GRADE_TIER(), images:b.images, bonus:b.bonus, txt:b.txt, qs:b.qs, relire:String(b.relire || "").slice(0, 20000), usage:["maths", "hebreu", "francais"].includes(b.usage) ? b.usage : ""}; JOBS.push(j); saveJobs(); setTimeout(pumpJobs, 10); return j.id; },
     footerAI:async jpg => looseJSON(await claude(u, [{type:"image", source:{type:"base64", media_type:"image/jpeg", data:jpg.toString("base64")}}, {type:"text", text:String(kit.footerPrompt || "")}], "quick", 300)),
     setTotal:n => { l.total = n; saveLots(); },
     pageStart:i => { l.cur = i; clearTimeout(lotsTimer); writeAtomic(LOTS_F, LOTS); },

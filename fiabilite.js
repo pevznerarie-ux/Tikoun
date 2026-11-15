@@ -69,19 +69,31 @@ function ouvert(a){
   if (isObj(a.doute)) return +a.doute.n || 0;
   return a.lisible === false ? 2 : 0;                          // réponses corrigées avant cette version
 }
-/* Seconde lecture d'une réponse douteuse : elle ne remplace jamais la réponse proposée, elle sert seulement à signaler.
-   Mêmes texte et note : le doute de lecture retombe à « à regarder ». Sinon la réponse reste « à vérifier d'abord » et la seconde
-   lecture est gardée à côté, pour le professeur. (Essai sur de vraies copies, novembre 2026 : quand les deux lectures différaient,
-   la relecture était plus loin de la note du professeur que la première lecture 5 fois sur 9.) */
+/* Seconde lecture d'une réponse douteuse. Deux cas.
+   Même modèle que la première lecture : la relecture ne remplace jamais la réponse proposée, elle sert seulement à signaler.
+     Mêmes texte et note : le doute de lecture retombe à « à regarder ». Sinon la réponse reste « à vérifier d'abord » et la seconde
+     lecture est gardée à côté. (Essai sur de vraies copies, novembre 2026 : quand les deux lectures différaient, la relecture
+     était plus loin de la note du professeur que la première lecture 5 fois sur 9.)
+   Renfort (o.renfort) : la première lecture vient du modèle économique, la relecture du modèle le plus précis. C'est alors la
+     relecture qui devient la proposition, avec son propre niveau de doute ; si elle diffère, la première lecture est gardée à côté
+     et la réponse est au moins « à regarder ». (Même essai : ce montage approche la justesse du modèle précis seul.) */
 const DOUTES_LECTURE = ["lecture", "illisible", "confiance", "relu", "lectures"];
-function fusion(premiere, seconde){
-  const s = proche(premiere.transcription, seconde.transcription), memeNote = Math.abs((+premiere.noteIA || 0) - (+seconde.noteIA || 0)) < 0.5;
-  const d1 = isObj(premiere.doute) ? premiere.doute : {n:0, r:[]}, d2 = isObj(seconde.doute) ? seconde.doute : {n:0, r:[]}, out = {...premiere};
-  if (s >= 0.9 && memeNote){ const reste = d1.r.filter(k => !DOUTES_LECTURE.includes(k));          // ce qui ne tient pas à la lecture reste signalé
+function fusion(premiere, seconde, o){
+  const s = proche(premiere.transcription, seconde.transcription), memes = s >= 0.9 && Math.abs((+premiere.noteIA || 0) - (+seconde.noteIA || 0)) < 0.5;
+  const d1 = isObj(premiere.doute) ? premiere.doute : {n:0, r:[]}, d2 = isObj(seconde.doute) ? seconde.doute : {n:0, r:[]};
+  const cote = a => ({transcription:str(a.transcription), noteIA:+a.noteIA || 0, commentaire:str(a.commentaire).slice(0, 400)});
+  if (o && o.renfort){ const out = {...seconde}, r2 = d2.r.filter(k => k !== "relu" && k !== "lectures");
+    if (memes){ out.doute = {n:d2.n, r:["relu", ...r2]}; out.alt = null; }
+    else { out.doute = {n:Math.max(d2.n, 1), r:["lectures", ...r2]}; out.alt = cote(premiere); }
+    return out; }
+  const out = {...premiere};
+  if (memes){ const reste = d1.r.filter(k => !DOUTES_LECTURE.includes(k));                          // ce qui ne tient pas à la lecture reste signalé
     out.doute = {n:d2.n === 2 || reste.includes("detail") ? 2 : 1, r:["relu", ...reste]}; out.alt = null; }
-  else { out.doute = {n:2, r:["lectures", ...d1.r.filter(k => k !== "lectures" && k !== "relu")]}; out.alt = {transcription:str(seconde.transcription), noteIA:+seconde.noteIA || 0, commentaire:str(seconde.commentaire).slice(0, 400)}; }
+  else { out.doute = {n:2, r:["lectures", ...d1.r.filter(k => k !== "lectures" && k !== "relu")]}; out.alt = cote(seconde); }
   return out;
 }
+/* Écriture hébraïque dans une réponse : le modèle économique la lit mal, elle part en renfort */
+const hebreu = t => /[\u05d0-\u05ea]/.test(str(t));
 /* Gabarit de consigne : remplace {{CLE}} par sa valeur, sans interpréter le texte inséré */
 function remplir(tpl, vars){ return str(tpl).replace(/\{\{([A-Z]+)\}\}/g, (m, k) => Object.prototype.hasOwnProperty.call(vars, k) ? str(vars[k]) : m); }
 
@@ -182,6 +194,6 @@ function plan(raw, o){
   return items;
 }
 
-const API = {half, norm, proche, detail, doute, completer, ouvert, fusion, remplir, journal, repartir, sommeCriteres, invalides, verifier, plan, TYPES_Q, COMPS_Q};
+const API = {half, norm, proche, detail, doute, completer, ouvert, fusion, hebreu, remplir, journal, repartir, sommeCriteres, invalides, verifier, plan, TYPES_Q, COMPS_Q};
 if (typeof module !== "undefined" && module.exports) module.exports = API; else root.FIAB = API;
 })(typeof globalThis !== "undefined" ? globalThis : this);

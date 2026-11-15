@@ -169,6 +169,10 @@ function vCompte(){
     <div class="form-row"><div class="field"><label for="tp-ton">Ton</label><select id="tp-ton">${selOpts(Object.keys(TONS), P.ton, x => TONS[x])}</select></div>
       <div class="field"><label for="tp-adr">S'adresser à l'élève</label><select id="tp-adr">${selOpts(["tu","vous"], P.adresse, x => x === "vous" ? "En le vouvoyant" : "En le tutoyant")}</select></div></div>
     <p class="small" style="margin:0;padding:10px 12px;border-radius:10px;background:var(--surface-2)">Exemple : <i>${esc(TON_EX[P.ton]?.[P.adresse] || "")}</i></p></section>
+  <section class="panel grid" style="max-width:640px" id="sev-pref"><h3>Notation de l'IA</h3>
+    <p class="small muted" style="margin:0">La façon dont l'IA propose les notes des réponses rédigées. Tu gardes toujours la main : chaque note se valide ou se change dans la correction.</p>
+    <div class="field"><label for="tp-sev">Sévérité</label><select id="tp-sev">${selOpts(Object.keys(SEVERITES), P.severite, x => SEVERITES[x])}</select></div>
+    <p class="small muted" style="margin:0">${P.severite === "exigeante" ? "Chaque demi-point doit correspondre à un élément juste réellement écrit : les notes proposées sont plus basses." : "L'élève qui a compris l'idée a l'essentiel des points, même s'il l'exprime mal ou brièvement."}</p></section>
   <section class="panel grid" style="max-width:640px"><h3>Les matières que j'enseigne</h3>
     <p class="small muted" style="margin:0">Seules ces matières te seront proposées. Si tu n'en enseignes qu'une, elle est choisie toute seule quand tu prépares un contrôle.</p>
     <div class="row">${enseigne().map(m => `<span class="chip">${esc(m)} <button class="btn sm ghost" style="padding:0 4px" data-ensdel="${esc(m)}" aria-label="Retirer">×</button></span>`).join("") || `<span class="small muted">Aucune matière choisie : toute la liste est proposée.</span>`}</div>

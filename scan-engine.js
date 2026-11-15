@@ -268,7 +268,7 @@ async function analysePage(cv, ctx, st){
   if (!toGrade.length) return {...res, status:"fait", job:null, hm:!!Hm};
   const qs = toGrade.map(qid => { const q = c.questions.find(x => x.id === qid); if (!q) return null; const ver = cp.version?.[qid] || "standard";
     return {id:qid, points:+q.points, type:q.type === "qcm" ? "qcm" : "", good:vOf(q, ver).bonnes || [], notion:q.notion || "", crop:crops[qid] || null}; }).filter(Boolean);
-  const job = ctx.addJob({ctrlId:cid, eleveId:eid, page, prompt:prompt + (ctx.kit.jsonOnly || ""), images, qs, bonus:!!((+c.bonus?.proprete || 0) + (+c.bonus?.orthographe || 0)), txt:T, relire:ctx.kit.relire?.[cid] || ""});
+  const job = ctx.addJob({ctrlId:cid, eleveId:eid, page, prompt:prompt + (ctx.kit.jsonOnly || ""), images, qs, bonus:!!((+c.bonus?.proprete || 0) + (+c.bonus?.orthographe || 0)), txt:T, relire:ctx.kit.relire?.[cid] || "", usage:ctx.kit.usage?.[cid] || ""});
   return {...res, status:"serveur", job, hm:!!Hm};
 }
 

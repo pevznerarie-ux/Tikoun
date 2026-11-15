@@ -657,19 +657,31 @@ function ouvert(a){
   if (isObj(a.doute)) return +a.doute.n || 0;
   return a.lisible === false ? 2 : 0;                          // réponses corrigées avant cette version
 }
-/* Seconde lecture d'une réponse douteuse : elle ne remplace jamais la réponse proposée, elle sert seulement à signaler.
-   Mêmes texte et note : le doute de lecture retombe à « à regarder ». Sinon la réponse reste « à vérifier d'abord » et la seconde
-   lecture est gardée à côté, pour le professeur. (Essai sur de vraies copies, novembre 2026 : quand les deux lectures différaient,
-   la relecture était plus loin de la note du professeur que la première lecture 5 fois sur 9.) */
+/* Seconde lecture d'une réponse douteuse. Deux cas.
+   Même modèle que la première lecture : la relecture ne remplace jamais la réponse proposée, elle sert seulement à signaler.
+     Mêmes texte et note : le doute de lecture retombe à « à regarder ». Sinon la réponse reste « à vérifier d'abord » et la seconde
+     lecture est gardée à côté. (Essai sur de vraies copies, novembre 2026 : quand les deux lectures différaient, la relecture
+     était plus loin de la note du professeur que la première lecture 5 fois sur 9.)
+   Renfort (o.renfort) : la première lecture vient du modèle économique, la relecture du modèle le plus précis. C'est alors la
+     relecture qui devient la proposition, avec son propre niveau de doute ; si elle diffère, la première lecture est gardée à côté
+     et la réponse est au moins « à regarder ». (Même essai : ce montage approche la justesse du modèle précis seul.) */
 const DOUTES_LECTURE = ["lecture", "illisible", "confiance", "relu", "lectures"];
-function fusion(premiere, seconde){
-  const s = proche(premiere.transcription, seconde.transcription), memeNote = Math.abs((+premiere.noteIA || 0) - (+seconde.noteIA || 0)) < 0.5;
-  const d1 = isObj(premiere.doute) ? premiere.doute : {n:0, r:[]}, d2 = isObj(seconde.doute) ? seconde.doute : {n:0, r:[]}, out = {...premiere};
-  if (s >= 0.9 && memeNote){ const reste = d1.r.filter(k => !DOUTES_LECTURE.includes(k));          // ce qui ne tient pas à la lecture reste signalé
+function fusion(premiere, seconde, o){
+  const s = proche(premiere.transcription, seconde.transcription), memes = s >= 0.9 && Math.abs((+premiere.noteIA || 0) - (+seconde.noteIA || 0)) < 0.5;
+  const d1 = isObj(premiere.doute) ? premiere.doute : {n:0, r:[]}, d2 = isObj(seconde.doute) ? seconde.doute : {n:0, r:[]};
+  const cote = a => ({transcription:str(a.transcription), noteIA:+a.noteIA || 0, commentaire:str(a.commentaire).slice(0, 400)});
+  if (o && o.renfort){ const out = {...seconde}, r2 = d2.r.filter(k => k !== "relu" && k !== "lectures");
+    if (memes){ out.doute = {n:d2.n, r:["relu", ...r2]}; out.alt = null; }
+    else { out.doute = {n:Math.max(d2.n, 1), r:["lectures", ...r2]}; out.alt = cote(premiere); }
+    return out; }
+  const out = {...premiere};
+  if (memes){ const reste = d1.r.filter(k => !DOUTES_LECTURE.includes(k));                          // ce qui ne tient pas à la lecture reste signalé
     out.doute = {n:d2.n === 2 || reste.includes("detail") ? 2 : 1, r:["relu", ...reste]}; out.alt = null; }
-  else { out.doute = {n:2, r:["lectures", ...d1.r.filter(k => k !== "lectures" && k !== "relu")]}; out.alt = {transcription:str(seconde.transcription), noteIA:+seconde.noteIA || 0, commentaire:str(seconde.commentaire).slice(0, 400)}; }
+  else { out.doute = {n:2, r:["lectures", ...d1.r.filter(k => k !== "lectures" && k !== "relu")]}; out.alt = cote(seconde); }
   return out;
 }
+/* Écriture hébraïque dans une réponse : le modèle économique la lit mal, elle part en renfort */
+const hebreu = t => /[\u05d0-\u05ea]/.test(str(t));
 /* Gabarit de consigne : remplace {{CLE}} par sa valeur, sans interpréter le texte inséré */
 function remplir(tpl, vars){ return str(tpl).replace(/\{\{([A-Z]+)\}\}/g, (m, k) => Object.prototype.hasOwnProperty.call(vars, k) ? str(vars[k]) : m); }
 
@@ -770,7 +782,7 @@ function plan(raw, o){
   return items;
 }
 
-const API = {half, norm, proche, detail, doute, completer, ouvert, fusion, remplir, journal, repartir, sommeCriteres, invalides, verifier, plan, TYPES_Q, COMPS_Q};
+const API = {half, norm, proche, detail, doute, completer, ouvert, fusion, hebreu, remplir, journal, repartir, sommeCriteres, invalides, verifier, plan, TYPES_Q, COMPS_Q};
 if (typeof module !== "undefined" && module.exports) module.exports = API; else root.FIAB = API;
 })(typeof globalThis !== "undefined" ? globalThis : this);
 
@@ -848,7 +860,7 @@ const OLD_ENTETE = "Collège-Lycée Beth Mena'hem · Levallois-Perret";
 /* En-tête des feuilles : choisi par le prof (école, son nom, ou les deux) ; un texte libre saisi dans la mise en page reste prioritaire. */
 const AFFICHE = {les2:"Escola e meu nome", ecole:"Somente a escola", nom:"Somente meu nome"};
 /* Préférences du prof (Mon compte) : mise en page par défaut des feuilles et style des questions */
-const PREF_DEF = {police:15, lh:30, reglure:"lignes", ton:"bienveillant", adresse:"tu", bareme:true, consignes:"Escreva apenas dentro dos quadros.", q:{format:"mixte", justif:true, profondeur:"standard", longueur:"moyenne"}, ratt:{seuil:10, regle:"meilleure", plafond:10, bonus:3}, periodes:{mode:"trim", t2:"12-01", t3:"03-15", s2:"02-01"}};
+const PREF_DEF = {police:15, lh:30, reglure:"lignes", ton:"bienveillant", adresse:"tu", severite:"bienveillante", bareme:true, consignes:"Escreva apenas dentro dos quadros.", q:{format:"mixte", justif:true, profondeur:"standard", longueur:"moyenne"}, ratt:{seuil:10, regle:"meilleure", plafond:10, bonus:3}, periodes:{mode:"trim", t2:"12-01", t3:"03-15", s2:"02-01"}};
 function prefs(){ let p = S.me?.prefs; if (!p){ try { p = JSON.parse(localStorage.getItem("mastery.prefs") || "null"); } catch(e){} }
   return {...PREF_DEF, ...(p || {}), q:{...PREF_DEF.q, ...(p?.q || {})}, ratt:{...PREF_DEF.ratt, ...(p?.ratt || {})}}; }
 async function savePrefs(patch){ const cur = prefs(), next = {...cur, ...patch, q:{...cur.q, ...(patch.q || {})}, ratt:{...cur.ratt, ...(patch.ratt || {})}};
@@ -2045,7 +2057,7 @@ async function processPage(it){
         keepTeacherNotes(cp, upd.copies[it.eleveId]);
         await write("feuilles/" + c.id, upd, "update");
         if (c.statut === "imprime"){ c.statut = "correction"; await saveCtrl(c); }
-        const j = await api("/api/jobs", {method:"POST", body:JSON.stringify({ctrlId:c.id, eleveId:it.eleveId, page:it.page, name:it.name, prompt:gradePrompt(c, cp, aiQ, mode) + JSON_ONLY, images, qs, bonus:!!bonusMax(c), txt:jobTxt(), relire:rereadTpl(c)})});
+        const j = await api("/api/jobs", {method:"POST", body:JSON.stringify({ctrlId:c.id, eleveId:it.eleveId, page:it.page, name:it.name, prompt:gradePrompt(c, cp, aiQ, mode) + JSON_ONLY, images, qs, bonus:!!bonusMax(c), txt:jobTxt(), relire:rereadTpl(c), usage:usageOf(c.matiere)})});
         it.status = "serveur"; it.jobId = j.id; it.msg = "Página pronta: a correção continua no servidor, você pode sair do aplicativo."; if (it.load) freeCv(it); else it.cv = null;
         watchJobs(); return scheduleRender();
       } catch(e){ console.warn("Tarefa no servidor indisponível, correção aqui", e); }
@@ -2102,6 +2114,13 @@ Gabarito: ${v.corrige || "(não fornecido)"}
 Critérios: ${v.criteres || "de acordo com o gabarito"}
 Erros comuns possíveis: ${(q.erreurs || []).join(" | ") || "(aucune)"}`;
 }
+/* Sévérité de la notation, au choix du professeur (Mon compte → Notation de l'IA).
+   Essai sur de vraies copies (novembre 2026) : avec la consigne « exigeante », l'IA notait 3 points sur 20 sous le professeur ;
+   avec la consigne « bienveillante », moins d'un point. Les deux se terminent par la même règle sur les réponses vides. */
+const SEVERITES = {bienveillante:"Benevolente: vale a ideia, não a formulação", exigeante:"Exigente: cada meio ponto deve ser justificado"};
+const NOTE_RULE = () => prefs().severite === "exigeante"
+  ? "Nota em passos de 0,5, estritamente segundo os critérios: cada meio ponto deve corresponder a um elemento correto realmente escrito pelo aluno. Nunca dê ponto “de incentivo”."
+  : "Nota em passos de 0,5, como um professor justo e benevolente que procura o que o aluno entendeu. Um critério está cumprido assim que a ideia esperada aparece, mesmo dita com outras palavras, de forma breve, desajeitada ou com erros: não desconte nada pela formulação, pela ortografia, pelo tamanho ou por um detalhe do gabarito que falte. Se o aluno mostra que entendeu a ideia principal da questão, recebe pelo menos três quartos dos pontos; se entendeu só uma parte, cerca de metade.";
 const MATH_RULE = "Matemática em LaTeX entre $…$ (ex.: $\\frac{2}{3}$, $x^2$, $\\sqrt{5}$, $3\\times 4$), o restante em texto normal.";
 /* Ce que l'IA dit de sa propre correction : sert à repérer les réponses à vérifier d'abord (fiabilite.js) */
 const GRADE_EXTRA = `Para cada resposta escrita, acrescente também:
@@ -2111,10 +2130,10 @@ const GRADE_EXTRA = `Para cada resposta escrita, acrescente também:
 `;
 /* Relecture d'un seul cadre : à la demande du professeur (avec la première lecture) ou automatique sur le serveur pour une réponse douteuse (sans elle : lecture indépendante) */
 function relirePrompt(C, bloc, o = {}){
-  return `Leia com muita atenção este quadro de resposta manuscrita de um aluno (${C.matiere}, ${C.niveau || ""}), depois corrija. A imagem 1 é o quadro a ler.${o.smp || ""}${lectureTips()}\n${bloc}${o.premiere != null ? `\n\nUma primeira leitura deu: """${o.premiere}""" (considerada incerta).` : ""}\nTranscreva linha por linha, sem corrigir a ortografia. ${MATH_RULE} Hebraico em caracteres hebraicos. Trecho realmente ilegível: [ilegível]. "annotee" = transcrição com cada trecho errado cercado por ⟦ ⟧ (fora dos $…$). Nota em passos de 0,5. Comentário de 2 a 3 frases, ${tonTxt(C.niveau)}. ${NOSRC}\n${GRADE_EXTRA}Responda somente em JSON: {"transcription":"…","annotee":"…","lisible":true,"note":0,"detail":[{"critere":"…","points":0}],"confiance":3,"hesitation":"","commentaire":"…","erreurs":["…"],"acquis":["…"]}`;
+  return `Leia com muita atenção este quadro de resposta manuscrita de um aluno (${C.matiere}, ${C.niveau || ""}), depois corrija. A imagem 1 é o quadro a ler.${o.smp || ""}${lectureTips()}\n${bloc}${o.premiere != null ? `\n\nUma primeira leitura deu: """${o.premiere}""" (considerada incerta).` : ""}\nTranscreva linha por linha, sem corrigir a ortografia. ${MATH_RULE} Hebraico em caracteres hebraicos. Trecho realmente ilegível: [ilegível]. "annotee" = transcrição com cada trecho errado cercado por ⟦ ⟧ (fora dos $…$). ${NOTE_RULE()} Comentário de 2 a 3 frases, ${tonTxt(C.niveau)}. ${NOSRC}\n${GRADE_EXTRA}Responda somente em JSON: {"transcription":"…","annotee":"…","lisible":true,"note":0,"detail":[{"critere":"…","points":0}],"confiance":3,"hesitation":"","commentaire":"…","erreurs":["…"],"acquis":["…"]}`;
 }
 /* Gabarit envoyé avec chaque page à corriger : le serveur remplace les repères {{…}} par la question concernée */
-const rereadTpl = C => relirePrompt(C, qBlockPrompt(C, {id:"{{ID}}", points:"{{PTS}}", erreurs:["{{ERREURS}}"], v:{standard:{enonce:"{{ENONCE}}", corrige:"{{CORRIGE}}", criteres:"{{CRITERES}}"}}}, "standard", 0));
+const rereadTpl = C => relirePrompt(C, qBlockPrompt(C, {id:"{{ID}}", points:"{{PTS}}", erreurs:["{{ERREURS}}"], v:{standard:{enonce:"{{ENONCE}}", corrige:"{{CORRIGE}}", criteres:"{{CRITERES}}"}}}, "standard", 0), {smp:"{{ECHANTILLONS}}"});
 function gradePrompt(c, cp, qids, mode){
   const blocks = qids.map(id => { const i = c.questions.findIndex(q => q.id === id); return qBlockPrompt(c, c.questions[i], cp.version?.[id] || "standard", i); }).join("\n\n");
   const bm = bonusMax(c);
@@ -2129,7 +2148,7 @@ ${lectureTips()}
 Instruções:
 1. Transcreva fielmente o que o aluno escreveu em cada quadro, sem corrigir a ortografia, linha por linha. ${MATH_RULE} Hebraico em caracteres hebraicos, na ordem de leitura (a escrita manuscrita hebraica costuma ser cursiva: leia com cuidado, letra por letra). Trecho ilegível: [ilegível]. Campo vazio: "". Ignore o que estiver riscado.
 2. "fautes": lista dos trechos errados, copiados exatamente como aparecem na transcrição (curtos: poucas palavras). Lista vazia se tudo estiver certo.
-3. Nota em passos de 0,5, estritamente segundo os critérios: cada meio ponto deve corresponder a um elemento correto realmente escrito pelo aluno. Nunca dê ponto “de incentivo”. Resposta vazia, “não sei”, “?”, enunciado copiado, fora do tema ou sem nenhum elemento correto = 0.
+3. ${NOTE_RULE()} Resposta vazia, “não sei”, “?”, enunciado copiado, fora do tema ou sem nenhum elemento correto = 0.
 4. "commentaire": 1 ou 2 frases curtas (no máximo 40 palavras), ${tonTxt(c.niveau)} : o que foi bem feito, depois o erro preciso e como corrigi-lo. Escreva em português.
 5. "erreurs": escolha entre os erros comuns (texto exato); senão, um rótulo de 2 a 5 palavras. "acquis": 1 a 3 rótulos curtos.
 6. "lisible": false se você teve de adivinhar uma parte importante da resposta.
@@ -2987,7 +3006,7 @@ document.addEventListener("click", async ev => {
       t.disabled = true; st.innerHTML = `<span class="thinking">Corrigindo…</span>`;
       try{
         const i = C.questions.indexOf(q);
-        const r = await ai(`Corrija a resposta de um aluno (${C.matiere}, ${C.niveau || ""}).\n${qBlockPrompt(C, q, cp.version?.[qid] || "standard", i)}\n\nResposta do aluno (transcrita e verificada pelo professor):\n"""${text}"""\n\nNota em passos de 0,5. "annotee" = a resposta com cada trecho errado cercado por ⟦ ⟧ (fora dos $…$). ${MATH_RULE} Comentário de 2 a 3 frases, ${tonTxt(C.niveau)}. Escolha "erreurs" entre os erros comuns quando possível. ${NOSRC}\nResponda apenas em JSON, em português para uma escola brasileira: {"annotee":"…","note":0,"commentaire":"…","erreurs":["…"],"acquis":["…"]}`);
+        const r = await ai(`Corrija a resposta de um aluno (${C.matiere}, ${C.niveau || ""}).\n${qBlockPrompt(C, q, cp.version?.[qid] || "standard", i)}\n\nResposta do aluno (transcrita e verificada pelo professor):\n"""${text}"""\n\n${NOTE_RULE()} "annotee" = a resposta com cada trecho errado cercado por ⟦ ⟧ (fora dos $…$). ${MATH_RULE} Comentário de 2 a 3 frases, ${tonTxt(C.niveau)}. Escolha "erreurs" entre os erros comuns quando possível. ${NOSRC}\nResponda apenas em JSON, em português para uma escola brasileira: {"annotee":"…","note":0,"commentaire":"…","erreurs":["…"],"acquis":["…"]}`);
         await write("feuilles/" + C.id, {copies:{[S.corrEleve]:{validee:false, answers:{[qid]:{transcription:text, annot:String(r.annotee || text), lisible:true, noteIA:clamp(half(+r.note || 0), 0, +q.points), note:null,
           commentaire:String(r.commentaire || ""), erreurs:(r.erreurs || []).map(String).slice(0, 4), acquis:(r.acquis || []).map(String).slice(0, 4), valide:false, detail:[], hesite:"", alt:null, doute:{n:0, r:[]}}}}}}, "update");
         delete S.editTr[qid];
@@ -3090,6 +3109,7 @@ document.addEventListener("change", async ev => {
     const R = {...rattRule(c), ...(el.id === "rr-regle" ? {regle:el.value} : el.id === "rr-bonus" ? {bonus:+el.value} : {plafond:+el.value})};
     await saveCtrl({...c, regle:R}); return; }
   if (el.id === "ap-mode"){ await savePrefs({periodes:{...PREF_DEF.periodes, ...(prefs().periodes || {}), mode:el.value}}); render(); return; }
+  if (el.id === "tp-sev"){ await savePrefs({severite:el.value === "exigeante" ? "exigeante" : "bienveillante"}); render(); toast("Critério de nota salvo"); return; }
   if (el.id === "tp-ton" || el.id === "tp-adr"){ await savePrefs(el.id === "tp-ton" ? {ton:el.value} : {adresse:el.value}); render(); toast("Tom salvo"); return; }
   if (["rp-seuil", "rp-regle", "rp-bonus", "rp-plaf"].includes(el.id)){ const k = {"rp-seuil":"seuil", "rp-regle":"regle", "rp-bonus":"bonus", "rp-plaf":"plafond"}[el.id];
     await savePrefs({ratt:{[k]:el.id === "rp-regle" ? el.value : +el.value}}); render(); toast("Regra de recuperação salva"); return; }
@@ -3819,6 +3839,10 @@ function vCompte(){
     <div class="form-row"><div class="field"><label for="tp-ton">Tom</label><select id="tp-ton">${selOpts(Object.keys(TONS), P.ton, x => TONS[x])}</select></div>
       <div class="field"><label for="tp-adr">Tratar o aluno</label><select id="tp-adr">${selOpts(["tu","vous"], P.adresse, x => x === "vous" ? "Formal (o senhor / a senhora)" : "Informal (você)")}</select></div></div>
     <p class="small" style="margin:0;padding:10px 12px;border-radius:10px;background:var(--surface-2)">Exemplo: <i>${esc(TON_EX[P.ton]?.[P.adresse] || "")}</i></p></section>
+  <section class="panel grid" style="max-width:640px" id="sev-pref"><h3>Notas da IA</h3>
+    <p class="small muted" style="margin:0">A forma como a IA propõe as notas das respostas escritas. Você sempre mantém o controle: cada nota é validada ou alterada na correção.</p>
+    <div class="field"><label for="tp-sev">Rigor</label><select id="tp-sev">${selOpts(Object.keys(SEVERITES), P.severite, x => SEVERITES[x])}</select></div>
+    <p class="small muted" style="margin:0">${P.severite === "exigeante" ? "Cada meio ponto deve corresponder a um elemento correto realmente escrito: as notas propostas são mais baixas." : "O aluno que entendeu a ideia recebe a maior parte dos pontos, mesmo que a expresse mal ou de forma breve."}</p></section>
   <section class="panel grid" style="max-width:640px"><h3>Disciplinas que leciono</h3>
     <p class="small muted" style="margin:0">Somente essas disciplinas serão sugeridas. Se você leciona apenas uma, ela é escolhida automaticamente ao preparar uma prova.</p>
     <div class="row">${enseigne().map(m => `<span class="chip">${esc(m)} <button class="btn sm ghost" style="padding:0 4px" data-ensdel="${esc(m)}" aria-label="Remover">×</button></span>`).join("") || `<span class="small muted">Nenhuma disciplina escolhida: a lista completa é exibida.</span>`}</div>
@@ -4476,8 +4500,11 @@ async function sampleImages(eid, mat, max = 3){
   const u = usageOf(mat), sel = (w.samples || []).filter(s => s.asset && s.usage === u).slice(0, max);
   const blobs = []; for (const s of sel){ try { blobs.push(await getBlob(s.asset)); } catch(x){} }
   const ok = sel.slice(0, blobs.length);
-  return {blobs, txt: ok.length ? `\nAs imagens 2 a ${ok.length + 1} são amostras da letra DESTE aluno, com o texto exato que ele copiou: ${ok.map((s, k) => `image ${k + 2} = « ${s.texte} ”`).join(" ; ")}. Use-as para reconhecer a forma como ele traça as letras e os números.` : ""};
+  return {blobs, txt: ok.length ? echTxt(ok.length + 1, ok.map((s, k) => echItem(k + 2, s.texte)).join(" ; ")) : ""};
 }
+/* Phrase qui présente à l'IA les échantillons d'écriture d'un élève (fiche d'écriture) ; le serveur s'en sert aussi, avec des repères {{…}} */
+const echTxt = (derniere, liste) => `\nAs imagens 2 a ${derniere} são amostras da letra DESTE aluno, com o texto exato que ele copiou: ${liste}. Use-as para reconhecer a forma como ele traça as letras e os números.`;
+const echItem = (n, texte) => `image ${n} = « ${texte} ”`;
 
 /* ================= Events for the modules above ================= */
 document.addEventListener("click", async ev => {
@@ -5103,7 +5130,7 @@ document.addEventListener("click", async ev => {
    Un encart « Correction en cours » reste visible sur toutes les pages de l'application. */
 const JSON_ONLY = "\n\n(Responda apenas com o JSON solicitado, sem texto em volta.)";
 const jobsOn = () => !!(window.TIKOUN_CONFIG?.jobs && ASSETS && typeof SERVERSTORE !== "undefined" && SERVERSTORE);
-const jobTxt = () => ({coche:"Marcado: ", aucune:"nenhuma caixa", bonne:"Resposta correta.", etait:"A resposta correta era: ", qcmFaux:"resposta de múltipla escolha incorreta", vide:"Sem resposta: revise este conteúdo.", videTag:"sem resposta"});
+const jobTxt = () => ({coche:"Marcado: ", aucune:"nenhuma caixa", bonne:"Resposta correta.", etait:"A resposta correta era: ", qcmFaux:"resposta de múltipla escolha incorreta", vide:"Sem resposta: revise este conteúdo.", videTag:"sem resposta", ech:echTxt("{{DERNIERE}}", "{{LISTE}}"), echItem:echItem("{{N}}", "{{TEXTE}}")});
 S.jobs = []; S.jobsHide = 0; let jobsTimer = null;
 async function pollJobs(){
   try { const r = await fetch("/api/jobs", {credentials:"same-origin"}); if (!r.ok) return; S.jobs = (await r.json()).jobs || []; } catch(e){ return; }
@@ -5150,13 +5177,13 @@ S.lots = []; S.lotFixed = {}; S.lotGone = new Set();
 function buildKit(){
   const ids = S.scanCtrl ? [S.scanCtrl] : store.controles.filter(c => c.statut !== "brouillon" && Object.keys(feuille(c.id)?.copies || {}).length)
     .sort((a, b) => (b.date || b.createdAt || "").localeCompare(a.date || a.createdAt || "")).slice(0, 8).map(c => c.id);
-  const prompts = {}, relire = {};
-  for (const cid of ids){ const c = ctrl(cid), f = feuille(cid); if (!c || !f) continue; prompts[cid] = {}; relire[cid] = rereadTpl(c);
+  const prompts = {}, relire = {}, usage = {};
+  for (const cid of ids){ const c = ctrl(cid), f = feuille(cid); if (!c || !f) continue; prompts[cid] = {}; relire[cid] = rereadTpl(c); usage[cid] = usageOf(c.matiere);
     for (const [eid, cp] of Object.entries(f.copies || {})){ prompts[cid][eid] = {};
       (cp.pages || []).forEach((pg, i) => { const qids = pageQ(pg).filter(id => c.questions.some(q => q.id === id)); if (!qids.length) return; const boxes = pg?.b || [];
         const cq = qids.filter(id => !boxes.some(b => b.q === id && b.type === "qcm"));
         prompts[cid][eid][i + 1] = {crops:cq.length ? {qids:cq, prompt:gradePrompt(c, cp, cq, "crops")} : null, halves:{qids, prompt:gradePrompt(c, cp, qids, "halves")}}; }); } }
-  return {prompts, relire, footerPrompt:FOOTER_PROMPT, jsonOnly:JSON_ONLY, txt:{...jobTxt(), vide0:"Sem resposta."}};
+  return {prompts, relire, usage, footerPrompt:FOOTER_PROMPT, jsonOnly:JSON_ONLY, txt:{...jobTxt(), vide0:"Sem resposta."}};
 }
 async function uploadLot(file){
   const it = {id:uid(), name:file.name, thumb:"", status:"envoi", pct:0, msg:"Enviando o arquivo…"}; S.queue.push(it); scheduleRender();
