@@ -84,8 +84,8 @@ function applyPrefParams(){ const Q = prefs().q;
   S.params.types = Q.format === "redige" ? ["cours","application"] : Q.format === "qcm" ? ["qcm","application"] : ["cours","application","qcm"];
   S.params._pref = true; }
 function questionRule(p){ const Q = prefs().q, L = {courte:"3 à 5", moyenne:"5 à 8", developpee:"8 à 14"}[Q.longueur] || "5 à 8";
-  return `Réponses attendues : environ ${L} lignes par question (sauf QCM).` + ((p.types || []).includes("qcm") && Q.justif
-    ? `\nQuestions à choix : n'utilise pas le type "qcm". Écris les propositions (A, B, C…) dans l'énoncé, demande à l'élève d'indiquer son choix ET de le justifier, et prévois des lignes de réponse ; le corrigé et les critères notent le choix et la justification. Le contrôle contient au moins une question à choix de ce genre.` : ""); }
+  return `Réponses attendues : environ ${L} lignes par question (sauf QCM).` + ((p.types || []).includes("choix")
+    ? `\nQuestions à choix avec justification : écris les propositions (A, B, C…) dans l'énoncé, demande à l'élève d'indiquer son choix ET de le justifier, et prévois des lignes de réponse ; le corrigé et les critères notent le choix et la justification. Ces questions sont rédigées : elles n'ont pas le type "qcm". Le contrôle en contient au moins une.` : ""); }
 function headerFrom(aff){
   const e = S.me?.ecole, ec = e?.nom ? e.nom + (e.ville ? " · " + e.ville : "") : "", nom = S.me?.nom || "";
   if (aff === "ecole") return ec || nom; if (aff === "nom") return nom || ec; return [ec, nom].filter(Boolean).join(" · ");
@@ -640,7 +640,7 @@ function wizParams(){
   if (!p.classeId && store.classes[0]) p.classeId = (store.classes.find(c => c.niveau === p.niveau) || store.classes[0]).id;
   if (p.kind !== "controle") p.kind = "controle";
   const EXO = p.kind === "exercices";
-  const T = [["cours","Questions de cours"],["application","Exercices d'application"],["probleme","Problème / rédaction"],["texte","Lecture / explication de texte"],["traduction","Traduction"],["qcm", prefs().q.justif ? "Questions à choix avec justification" : "QCM (corrigés sans IA, gratuit)"]];
+  const T = [["cours","Questions de cours"],["application","Exercices d'application"],["probleme","Problème / rédaction"],["texte","Lecture / explication de texte"],["traduction","Traduction"],["qcm","QCM (corrigés sans IA, gratuit)"],["choix","Questions à choix avec justification"]];
   return `
   <section class="panel grid">
     <div class="row between"><div><div class="label">Cours</div><b>${esc(co?.titre || "?")}</b> <span class="muted small">· ${esc(co?.matiere)} · ${esc(co?.niveau)}</span></div><button class="btn sm" id="back1">Changer de cours</button></div>
@@ -653,7 +653,7 @@ function wizParams(){
       <div class="field"><label for="p-dif">Difficulté</label><select id="p-dif" data-p="difficulte">${selOpts(["facile","moyen","exigeant"], p.difficulte)}</select></div>
     </div>
     ${(() => { const cl = classe(p.classeId), nv = nivOf(cl); return cl && nv && p.niveau && nv !== p.niveau ? `<p class="banner">Attention : le niveau choisi (${esc(p.niveau)}) ne correspond pas à la classe ${esc(cl.nom)}. <button class="btn sm" id="p-niv-cl" data-niv="${esc(nv)}">Utiliser ${esc(nv)}</button></p>` : ""; })()}
-    <div class="field"><label>Types de questions</label><div class="row">${T.map(([k, l]) => `<label class="row small" style="gap:6px"><input type="checkbox" data-type="${k}"${p.types.includes(k) ? " checked" : ""}> ${l}</label>`).join("")}</div>${prefs().q.justif ? `<p class="small muted" style="margin:6px 0 0">Questions à choix : les propositions sont dans l'énoncé, avec un cadre pour justifier (corrigé par l'IA). Pour de vrais QCM à cocher, corrigés sans IA, décoche « toujours laisser un cadre pour justifier » dans Mon compte.</p>` : ""}</div>
+    <div class="field"><label>Types de questions</label><div class="row">${T.map(([k, l]) => `<label class="row small" style="gap:6px"><input type="checkbox" data-type="${k}"${p.types.includes(k) ? " checked" : ""}> ${l}</label>`).join("")}</div></div>
     <div class="field"><label>Compétences à évaluer en priorité (facultatif)</label><div class="row">${Object.entries(COMPS).map(([k, l]) => `<label class="row small" style="gap:6px"><input type="checkbox" data-pcomp="${k}"${(p.comps || []).includes(k) ? " checked" : ""}> ${l}</label>`).join("")}</div></div>
     <label class="row small" style="gap:6px"><input type="checkbox" id="p-diff"${p.differencie ? " checked" : ""}> Feuilles différenciées : chaque question en 3 niveaux (socle, standard, approfondi), selon le niveau de chaque élève</label>
     ${sujetsField(sujetsOf(co, S.params.sujets), "p")}
@@ -673,10 +673,10 @@ const aVoir = c => [...(c.remarques || []).map(String), ...(Array.isArray(c.veri
 /* ---------- Plan du contrôle ----------
    Avant la rédaction, l'IA propose une ligne par question (notion, type, compétence, points). Le professeur modifie, retire ou ajoute
    des lignes, puis lance la rédaction : l'IA suit le plan, et les points du plan sont ceux du contrôle. */
-const PLAN_T = {cours:"Question de cours", application:"Exercice d'application", probleme:"Problème / rédaction", texte:"Lecture de texte", traduction:"Traduction", qcm:"QCM"};
+const PLAN_T = {cours:"Question de cours", application:"Exercice d'application", probleme:"Problème / rédaction", texte:"Lecture de texte", traduction:"Traduction", qcm:"QCM", choix:"Choix justifié"};
 const planTotal = () => (S.plan?.items || []).reduce((a, x) => a + (+x.points || 0), 0);
 function planPrompt(co, p, n){
-  const T = {cours:"questions de cours", application:"exercices d'application", probleme:"problème ou rédaction", texte:"lecture / explication de texte", traduction:"traduction", qcm:"QCM"};
+  const T = {cours:"questions de cours", application:"exercices d'application", probleme:"problème ou rédaction", texte:"lecture / explication de texte", traduction:"traduction", qcm:"QCM", choix:"questions à choix avec justification"};
   return `Tu es un professeur expérimenté de ${p.matiere} en France. Avant de rédiger un contrôle pour une classe de ${p.niveau}, propose son PLAN à partir du cours ci-dessous : ${n} lignes, une par question, sans rédiger les questions.
 
 Durée : ${p.duree} minutes · Difficulté : ${p.difficulte} · Types : ${(p.types || []).map(t => T[t]).join(", ") || "variés"}
@@ -1833,7 +1833,7 @@ function sujetsField(list, k){
     <div class="row"><button class="btn sm" data-sujdetect="${k}">↻ Détecter les sujets du cours (IA)</button><span class="small muted">Laisse vide pour un seul sujet.</span><span class="status" id="${k}-suj-st"></span></div></div>`;
 }
 function genPrompt(co, p, n, extra){
-  const T = {cours:"questions de cours", application:"exercices d'application", probleme:"problème ou rédaction", texte:"lecture / explication de texte", traduction:"traduction", qcm:"QCM"};
+  const T = {cours:"questions de cours", application:"exercices d'application", probleme:"problème ou rédaction", texte:"lecture / explication de texte", traduction:"traduction", qcm:"QCM", choix:"questions à choix avec justification"};
   return `Tu es un professeur expérimenté de ${p.matiere} en France. Prépare ${n === 1 ? "UNE question" : "un contrôle"} pour une classe de ${p.niveau}, à partir du cours ci-dessous.${isPrim(p.niveau) ? "\nÉcole primaire (élèves de 6 à 11 ans) : consignes très courtes et concrètes, une seule tâche par question, vocabulaire simple, réponses de quelques mots ou d'une phrase (2 à 4 lignes de cadre)." : ""}
 
 Durée : ${p.duree} minutes · Difficulté : ${p.difficulte} · Types : ${(p.types || []).map(t => T[t]).join(", ") || "variés"}${(p.types || []).length > 1 && n > 1 ? " (chaque type demandé apparaît au moins une fois si le nombre de questions le permet)" : ""}
@@ -1849,7 +1849,7 @@ Pour chaque question, rédige 3 versions de la même question, portant sur la m�
 - "standard" : niveau attendu de la classe ;
 - "approfondi" : plus exigeante (justification, cas général, extension).
 Chaque version a son énoncé, son corrigé-type détaillé et des critères de notation dont la somme fait les points de la question.
-${(p.types || []).includes("qcm") && !prefs().q.justif ? `Inclus au moins un QCM (corrigé automatiquement, sans IA) : pour lui "type":"qcm", et dans chaque version "choix" (3 à 5 propositions courtes, sans lettre) et "bonnes" (indices des bonnes réponses, à partir de 0) ; "lignes" inutile.\n` : ""}Ajoute pour chaque question : la notion évaluée, 2 à 4 erreurs types fréquentes (étiquettes de 2 à 5 mots), et le nombre de lignes de réponse nécessaires (3 à 14).
+${(p.types || []).includes("qcm") ? `Inclus au moins un QCM (corrigé automatiquement, sans IA) : pour lui "type":"qcm", et dans chaque version "choix" (3 à 5 propositions courtes, sans lettre) et "bonnes" (indices des bonnes réponses, à partir de 0) ; "lignes" inutile.\n` : ""}Ajoute pour chaque question : la notion évaluée, 2 à 4 erreurs types fréquentes (étiquettes de 2 à 5 mots), et le nombre de lignes de réponse nécessaires (3 à 14).
 ${NOSRC}
 
 COURS :
@@ -2367,7 +2367,6 @@ document.addEventListener("change", async ev => {
 
 /* Contrôle dicté par le professeur (ou lu sur la photo d'un ancien contrôle) : l'IA met au propre sans rien inventer */
 function dictPrompt(texte, mat, niveau, langue, photo){
-  const qcm = !prefs().q.justif;
   return `Tu es l'assistant d'un professeur de ${mat}${niveau ? " (classe de " + niveau + ")" : ""}. ${photo ? "Le professeur a photographié un de ses anciens contrôles ; voici la transcription de la feuille, avec parfois ses réponses ajoutées." : "Le professeur a dicté (ou écrit) son contrôle : les questions, les réponses attendues et parfois les points."}
 Le texte peut venir d'une dictée vocale : ponctuation absente, mots mal reconnus (surtout les termes en hébreu ou techniques), hésitations, répétitions, corrections orales (« non pardon… »).
 
@@ -2381,7 +2380,7 @@ Ta mission : mettre ce contrôle au propre, SANS RIEN INVENTER sur le fond.
 - Si une question n'a pas de réponse, rédige un corrigé-type court et signale-le dans "remarques" (ex. « Q3 : corrigé proposé par l'IA, à vérifier »).
 - Points : ceux du professeur. S'il n'en donne pas, répartis 20 points selon la difficulté. Si son total n'est pas 20, garde ses points et signale-le.
 - Critères de notation : reprends ce que le professeur a dit (ex. « j'accepte deux sur trois ») ; sinon propose des critères simples dont la somme fait les points.
-${qcm ? `- Si le professeur donne des propositions à cocher, fais-en un QCM : "type":"qcm", et dans la version "choix" (les propositions, sans lettre) et "bonnes" (indices des bonnes réponses, à partir de 0).` : `- Si le professeur donne des propositions, écris-les dans l'énoncé (A, B, C…) et demande de justifier le choix.`}
+- Si le professeur donne des propositions à cocher, fais-en un QCM : "type":"qcm", et dans la version "choix" (les propositions, sans lettre) et "bonnes" (indices des bonnes réponses, à partir de 0). S'il demande en plus de justifier le choix, garde une question rédigée, avec les propositions (A, B, C…) dans l'énoncé.
 - Pour chaque question : la notion évaluée, 1 ou 2 erreurs types probables, et un nombre de lignes de réponse adapté (2 à 15).
 - "remarques" : liste courte de ce que le professeur doit vérifier (vide si tout est clair).
 ${langueRule(langue)}

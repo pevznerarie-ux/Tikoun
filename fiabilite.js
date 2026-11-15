@@ -183,7 +183,7 @@ function verifier(qs, o){
 }
 
 /* ---------- Plan d'un contrôle (proposé par l'IA, approuvé par le professeur avant la rédaction) ---------- */
-const TYPES_Q = ["cours", "application", "probleme", "texte", "traduction", "qcm"], COMPS_Q = ["connaitre", "comprendre", "raisonner", "lire", "ecrire"];
+const TYPES_Q = ["cours", "application", "probleme", "texte", "traduction", "qcm", "choix"], COMPS_Q = ["connaitre", "comprendre", "raisonner", "lire", "ecrire"];
 const sansAccent = x => str(x).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
 function plan(raw, o){
   o = o || {}; const types = Array.isArray(o.types) && o.types.length ? o.types.filter(t => TYPES_Q.includes(t)) : TYPES_Q;

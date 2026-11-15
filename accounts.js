@@ -45,12 +45,12 @@ function vAuth(){
     ${S.forgot ? `<p class="banner">${S.forgot.mail ? "Si un compte existe avec cet e-mail, tu vas recevoir un lien pour choisir un nouveau mot de passe. Pense à regarder dans les indésirables." : "Ta demande est transmise à l'équipe Mastery, qui va réinitialiser ton mot de passe et te répondre par e-mail."}${S.forgot.contact ? ` Une question : <a href="mailto:${esc(S.forgot.contact)}">${esc(S.forgot.contact)}</a>` : ""}</p>`
       : `<div class="field"><label for="fg-mail">E-mail</label><input id="fg-mail" type="email" autocomplete="username" value="${esc(S.fgMail || "")}"></div><button class="btn primary auth-go" id="fg-go">Recevoir un lien</button>`}
     <div class="status" id="au-st"></div>
-    <p class="small auth-note"><button class="btn ghost sm" id="fg-back">← Retour à la connexion</button></p></section></div>`;
+    <p class="small auth-note"><button class="btn ghost sm" id="fg-back">← Retour à la connexion</button></p></section>${MADEBY}</div>`;
   if (S.auth === "reset") return `<div class="auth"><section class="auth-card">
     <div class="auth-h"><h2>Nouveau mot de passe</h2><p>Choisis ton nouveau mot de passe Mastery.</p></div>
     <div class="field"><label for="npw-pw">Nouveau mot de passe (8 caractères minimum)</label><input id="npw-pw" type="password" autocomplete="new-password"></div>
     <div class="field"><label for="npw-pw2">Confirmer</label><input id="npw-pw2" type="password" autocomplete="new-password"></div>
-    <button class="btn primary auth-go" id="npw-go">Enregistrer et me connecter</button><div class="status" id="au-st"></div></section></div>`;
+    <button class="btn primary auth-go" id="npw-go">Enregistrer et me connecter</button><div class="status" id="au-st"></div></section>${MADEBY}</div>`;
   if (S.auth === "change") return `<div class="head"><div><h2>Choisis ton mot de passe</h2><p>Bienvenue ${esc(S.me?.nom || "")} : remplace le mot de passe provisoire.</p></div></div>
   <section class="panel grid" style="max-width:440px">
     <div class="field"><label for="ch-pw">Nouveau mot de passe (8 caractères minimum)</label><input id="ch-pw" type="password" autocomplete="new-password"></div>
@@ -82,7 +82,7 @@ function vAuth(){
     <p class="small auth-note"><button class="btn ghost sm" id="pw-forgot">Mot de passe oublié ?</button></p>
     ${window.TIKOUN_CONFIG?.signup ? `<div class="auth-alt"><span class="small muted">Pas encore de compte ?</span><button class="btn" id="rg-open">Créer mon compte professeur</button></div>` : ""}
   </section>
-  <p class="small muted auth-foot"><a href="/">← Retour au site</a> · <a href="?lang=fr">Français</a> · <a href="?lang=en">English</a> · <a href="?lang=pt">Português</a></p></div>`;
+  <p class="small muted auth-foot"><a href="/">← Retour au site</a> · <a href="?lang=fr">Français</a> · <a href="?lang=en">English</a> · <a href="?lang=pt">Português</a></p>${MADEBY}</div>`;
 }
 const KEEP = ["rg-nom","rg-mail","rg-pw","me-nom","ec-nom","ec-ville"]; let kept = {}; S.form = {};
 document.addEventListener("change", async ev => { if (ev.target.id === "rg-cgu") S.regCgu = ev.target.checked;
@@ -159,10 +159,9 @@ function vCompte(){
     <div class="row"><button class="btn primary" id="mp-save">Enregistrer</button></div></section>`,
     ia:() => `  <section class="panel grid" style="max-width:640px"><h3>Questions</h3>
     <p class="small muted" style="margin:0">Le style des questions que l'IA te propose. Le niveau de la classe est toujours pris en compte, et tu peux tout modifier contrôle par contrôle.</p>
-    <div class="form-row"><div class="field"><label for="qp-fmt">Format</label><select id="qp-fmt">${selOpts(["redige","mixte","qcm"], Q.format, x => ({redige:"Réponses rédigées", mixte:"Rédigé et questions à choix", qcm:"Surtout des questions à choix"}[x]))}</select></div>
+    <div class="form-row"><div class="field"><label for="qp-fmt">Format</label><select id="qp-fmt">${selOpts(["redige","mixte","qcm"], Q.format, x => ({redige:"Réponses rédigées", mixte:"Rédigé et QCM", qcm:"Surtout des QCM"}[x]))}</select></div>
       <div class="field"><label for="qp-prof">Profondeur</label><select id="qp-prof">${selOpts(["simple","standard","exigeant"], Q.profondeur, x => ({simple:"Simple : appliquer le cours", standard:"Standard : comprendre et expliquer", exigeant:"Exigeant : raisonner et argumenter"}[x]))}</select></div></div>
     <div class="field"><label for="qp-long">Longueur des réponses</label><select id="qp-long">${selOpts(["courte","moyenne","developpee"], Q.longueur, x => ({courte:"Courtes (3 à 5 lignes)", moyenne:"Moyennes (5 à 8 lignes)", developpee:"Développées (8 à 14 lignes)"}[x]))}</select></div>
-    <label class="row small" style="gap:6px"><input type="checkbox" id="qp-just"${Q.justif ? " checked" : ""}> <span>Questions à choix : toujours laisser un cadre pour justifier la réponse (corrigé par l'IA)</span></label>
     <div class="row"><button class="btn primary" id="qp-save">Enregistrer</button></div></section>
   <section class="panel grid" style="max-width:640px" id="ton-pref"><h3>Ton des commentaires</h3>
     <p class="small muted" style="margin:0">La façon dont l'IA s'adresse aux élèves dans les commentaires de correction et des quiz, et le ton des appréciations de bulletin.</p>
@@ -247,7 +246,7 @@ document.addEventListener("click", async ev => {
       await savePrefs({police:+$("#mp-pol").value, lh:+$("#mp-lh").value, reglure:$("#mp-reg").value, consignes:$("#mp-cons").value.trim(), bareme:$("#mp-bar").checked}); render(); toast("Enregistré"); return; }
     if (t.id === "ap-save"){ const P = prefs().periodes || {}, md = id => ($("#" + id)?.value || "").slice(5, 10);
       await savePrefs({periodes:{...PREF_DEF.periodes, ...P, mode:$("#ap-mode").value, ...($("#ap-t2") ? {t2:md("ap-t2") || P.t2, t3:md("ap-t3") || P.t3} : {s2:md("ap-s2") || P.s2})}}); render(); toast("Enregistré"); return; }
-    if (t.id === "qp-save"){ await savePrefs({q:{format:$("#qp-fmt").value, profondeur:$("#qp-prof").value, longueur:$("#qp-long").value, justif:$("#qp-just").checked}}); S.params._pref = false; render(); toast("Enregistré"); return; }
+    if (t.id === "qp-save"){ await savePrefs({q:{format:$("#qp-fmt").value, profondeur:$("#qp-prof").value, longueur:$("#qp-long").value}}); S.params._pref = false; render(); toast("Enregistré"); return; }
     if (t.id === "me-save"){ const body = {nom:$("#me-nom").value}, e = ecoleVal();
       if (e.nom && e.ville && (e.nom !== S.me.ecole?.nom || e.ville !== S.me.ecole?.ville)) body.ecole = e;
       else if (e.nom || e.ville){ if (!e.nom || !e.ville) return toast("Indique le nom de l'école et sa ville."); }
@@ -306,6 +305,8 @@ function quotaHtml(){
 const essaiCtrl = () => { const n = CFG().trialCtrl || 1; return n > 1 ? `${n} contrôles par mois` : "1 contrôle par mois"; };
 const copiesCtrl = () => S.me?.quota?.par || CFG().copiesCtrl || 35;
 const tailleTxt = () => `Un contrôle couvre jusqu'à ${copiesCtrl()} élèves : au-delà, il compte pour un de plus par tranche de ${copiesCtrl()}.`;
+/* Signature : Mastery est conçu par Les Institutions Sinaï */
+const MADEBY = `<div class="madeby"><span>Made by</span><img src="/logo-sinai.png" alt="Les Institutions Sinaï" width="119" height="34"></div>`;
 const TIER_TXT = {decouverte:"1 classe · 2 contrôles par mois", essentiel:"Jusqu'à 3 classes · 6 contrôles par mois · exercices en ligne", complet:"Jusqu'à 6 classes · 12 contrôles par mois · exercices en ligne"};
 function abonnementPanel(){
   const a = S.me?.acces || {}, P = CFG().prix || {};

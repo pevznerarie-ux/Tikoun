@@ -472,6 +472,9 @@ input[type=checkbox],input[type=radio]{accent-color:var(--blue)}
 .auth-h{text-align:center;display:grid;gap:6px;margin-bottom:4px}.auth-h h2{font-size:26px;font-weight:700;letter-spacing:-.03em}.auth-h p{color:var(--muted);font-size:14.5px}
 .auth-go{width:100%;padding:12px 16px;font-size:15px}
 .auth-note{text-align:center;margin:0}
+.madeby{display:flex;align-items:center;justify-content:center;gap:10px;font-size:13px;color:var(--muted);margin-top:4px}.madeby img{height:34px;width:auto;display:block}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .madeby img{background:#F2F4F8;border-radius:8px;padding:5px 8px;height:44px}}
+:root[data-theme="dark"] .madeby img{background:#F2F4F8;border-radius:8px;padding:5px 8px;height:44px}
 .auth-alt{display:grid;gap:8px;justify-items:center;border-top:1px solid var(--line);padding-top:16px}.auth-alt .btn{width:100%}
 .auth-foot{text-align:center}.view .auth-foot a{color:var(--muted);text-decoration:none}.view .auth-foot a:hover{color:var(--ink)}
 .auth-card>.status:empty{display:none}
@@ -771,7 +774,7 @@ function verifier(qs, o){
 }
 
 /* ---------- Plan d'un contrôle (proposé par l'IA, approuvé par le professeur avant la rédaction) ---------- */
-const TYPES_Q = ["cours", "application", "probleme", "texte", "traduction", "qcm"], COMPS_Q = ["connaitre", "comprendre", "raisonner", "lire", "ecrire"];
+const TYPES_Q = ["cours", "application", "probleme", "texte", "traduction", "qcm", "choix"], COMPS_Q = ["connaitre", "comprendre", "raisonner", "lire", "ecrire"];
 const sansAccent = x => str(x).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
 function plan(raw, o){
   o = o || {}; const types = Array.isArray(o.types) && o.types.length ? o.types.filter(t => TYPES_Q.includes(t)) : TYPES_Q;
@@ -872,8 +875,8 @@ function applyPrefParams(){ const Q = prefs().q;
   S.params.types = Q.format === "redige" ? ["cours","application"] : Q.format === "qcm" ? ["qcm","application"] : ["cours","application","qcm"];
   S.params._pref = true; }
 function questionRule(p){ const Q = prefs().q, L = {courte:"3 a 5", moyenne:"5 a 8", developpee:"8 a 14"}[Q.longueur] || "5 a 8";
-  return `Respostas esperadas: cerca de ${L} linhas por questão (exceto múltipla escolha).` + ((p.types || []).includes("qcm") && Q.justif
-    ? `\nQuestions à choix : n'utilise pas le type "qcm". Écris les propositions (A, B, C…) dans l'énoncé, demande à l'élève d'indiquer son choix ET de le justifier, et prévois des lignes de réponse ; le corrigé et les critères notent le choix et la justification. Le contrôle contient au moins une question à choix de ce genre.` : ""); }
+  return `Respostas esperadas: cerca de ${L} linhas por questão (exceto múltipla escolha).` + ((p.types || []).includes("choix")
+    ? `\nQuestões de escolha com justificativa: escreva as alternativas (A, B, C…) no enunciado, peça ao aluno para indicar a escolha E justificá-la, e deixe linhas de resposta; o gabarito e os critérios avaliam a escolha e a justificativa. São questões dissertativas: elas não têm o tipo "qcm". A prova contém pelo menos uma.` : ""); }
 function headerFrom(aff){
   const e = S.me?.ecole, ec = e?.nom ? e.nom + (e.ville ? " · " + e.ville : "") : "", nom = S.me?.nom || "";
   if (aff === "ecole") return ec || nom; if (aff === "nom") return nom || ec; return [ec, nom].filter(Boolean).join(" · ");
@@ -1428,7 +1431,7 @@ function wizParams(){
   if (!p.classeId && store.classes[0]) p.classeId = (store.classes.find(c => c.niveau === p.niveau) || store.classes[0]).id;
   if (p.kind !== "controle") p.kind = "controle";
   const EXO = p.kind === "exercices";
-  const T = [["cours","Questões teóricas"],["application","Exercícios de aplicação"],["probleme","Problema / redação"],["texte","Leitura / interpretação de texto"],["traduction","Tradução"],["qcm", prefs().q.justif ? "Questões de escolha com justificativa" : "Múltipla escolha (corrigida sem IA, grátis)"]];
+  const T = [["cours","Questões teóricas"],["application","Exercícios de aplicação"],["probleme","Problema / redação"],["texte","Leitura / interpretação de texto"],["traduction","Tradução"],["qcm","Múltipla escolha (corrigida sem IA, grátis)"],["choix","Questões de escolha com justificativa"]];
   return `
   <section class="panel grid">
     <div class="row between"><div><div class="label">Aulas</div><b>${esc(co?.titre || "?")}</b> <span class="muted small">· ${esc(co?.matiere)} · ${esc(co?.niveau)}</span></div><button class="btn sm" id="back1">Trocar de aula</button></div>
@@ -1441,7 +1444,7 @@ function wizParams(){
       <div class="field"><label for="p-dif">Dificuldade</label><select id="p-dif" data-p="difficulte">${selOpts(["facile","moyen","exigeant"], p.difficulte)}</select></div>
     </div>
     ${(() => { const cl = classe(p.classeId), nv = nivOf(cl); return cl && nv && p.niveau && nv !== p.niveau ? `<p class="banner">Atenção: o nível escolhido (${esc(p.niveau)}) não corresponde à turma ${esc(cl.nom)}. <button class="btn sm" id="p-niv-cl" data-niv="${esc(nv)}">Usar ${esc(nv)}</button></p>` : ""; })()}
-    <div class="field"><label>Tipos de questões</label><div class="row">${T.map(([k, l]) => `<label class="row small" style="gap:6px"><input type="checkbox" data-type="${k}"${p.types.includes(k) ? " checked" : ""}> ${l}</label>`).join("")}</div>${prefs().q.justif ? `<p class="small muted" style="margin:6px 0 0">Questões de escolha: as opções ficam no enunciado, com um espaço para justificar (corrigido pela IA). Para múltipla escolha de marcar, corrigida sem IA, desmarque “sempre deixar um espaço para justificar” em Minha conta.</p>` : ""}</div>
+    <div class="field"><label>Tipos de questões</label><div class="row">${T.map(([k, l]) => `<label class="row small" style="gap:6px"><input type="checkbox" data-type="${k}"${p.types.includes(k) ? " checked" : ""}> ${l}</label>`).join("")}</div></div>
     <div class="field"><label>Competências a avaliar com prioridade (opcional)</label><div class="row">${Object.entries(COMPS).map(([k, l]) => `<label class="row small" style="gap:6px"><input type="checkbox" data-pcomp="${k}"${(p.comps || []).includes(k) ? " checked" : ""}> ${l}</label>`).join("")}</div></div>
     <label class="row small" style="gap:6px"><input type="checkbox" id="p-diff"${p.differencie ? " checked" : ""}> Folhas diferenciadas: cada questão em 3 níveis (básico, padrão, aprofundado), conforme o nível de cada aluno</label>
     ${sujetsField(sujetsOf(co, S.params.sujets), "p")}
@@ -1461,10 +1464,10 @@ const aVoir = c => [...(c.remarques || []).map(String), ...(Array.isArray(c.veri
 /* ---------- Plan du contrôle ----------
    Avant la rédaction, l'IA propose une ligne par question (notion, type, compétence, points). Le professeur modifie, retire ou ajoute
    des lignes, puis lance la rédaction : l'IA suit le plan, et les points du plan sont ceux du contrôle. */
-const PLAN_T = {cours:"Questão teórica", application:"Exercício de aplicação", probleme:"Problema / redação", texte:"Leitura de texto", traduction:"Tradução", qcm:"QCM"};
+const PLAN_T = {cours:"Questão teórica", application:"Exercício de aplicação", probleme:"Problema / redação", texte:"Leitura de texto", traduction:"Tradução", qcm:"QCM", choix:"Escolha justificada"};
 const planTotal = () => (S.plan?.items || []).reduce((a, x) => a + (+x.points || 0), 0);
 function planPrompt(co, p, n){
-  const T = {cours:"questões teóricas", application:"exercícios de aplicação", probleme:"problema ou redação", texte:"leitura / interpretação de texto", traduction:"traduction", qcm:"QCM"};
+  const T = {cours:"questões teóricas", application:"exercícios de aplicação", probleme:"problema ou redação", texte:"leitura / interpretação de texto", traduction:"traduction", qcm:"QCM", choix:"questões de escolha com justificativa"};
   return `Você é um professor experiente de ${p.matiere} no Brasil. Antes de redigir uma prova para uma turma de ${p.niveau}, proponha o PLANO dela a partir do conteúdo abaixo: ${n} linhas, uma por questão, sem redigir as questões.
 
 Duração: ${p.duree} minutos · Dificuldade: ${p.difficulte} · Tipos: ${(p.types || []).map(t => T[t]).join(", ") || "variados"}
@@ -2621,7 +2624,7 @@ function sujetsField(list, k){
     <div class="row"><button class="btn sm" data-sujdetect="${k}">↻ Detectar os temas da aula (IA)</button><span class="small muted">Deixe vazio para um só tema.</span><span class="status" id="${k}-suj-st"></span></div></div>`;
 }
 function genPrompt(co, p, n, extra){
-  const T = {cours:"questões teóricas", application:"exercícios de aplicação", probleme:"problema ou redação", texte:"leitura / interpretação de texto", traduction:"traduction", qcm:"QCM"};
+  const T = {cours:"questões teóricas", application:"exercícios de aplicação", probleme:"problema ou redação", texte:"leitura / interpretação de texto", traduction:"traduction", qcm:"QCM", choix:"questões de escolha com justificativa"};
   return `Você é um professor experiente de ${p.matiere} no Brasil. Prepare ${n === 1 ? "UMA questão" : "uma prova"} para uma turma do ${p.niveau}, a partir da aula abaixo.${isPrim(p.niveau) ? "\nEnsino fundamental I (alunos de 6 a 11 anos): instruções muito curtas e concretas, uma só tarefa por questão, vocabulário simples, respostas de poucas palavras ou de uma frase (2 a 4 linhas de quadro)." : ""}
 
 Duração: ${p.duree} minutos · Dificuldade: ${p.difficulte} · Tipos: ${(p.types || []).map(t => T[t]).join(", ") || "variados"}${(p.types || []).length > 1 && n > 1 ? " (cada tipo pedido aparece pelo menos uma vez, se o número de questões permitir)" : ""}
@@ -2637,7 +2640,7 @@ Para cada questão, escreva 3 versões da mesma questão, sobre o mesmo conteúd
 - "standard": nível esperado da turma;
 - "approfondi": mais exigente (justificativa, caso geral, extensão).
 Cada versão tem seu enunciado, seu gabarito detalhado e critérios de pontuação cuja soma dá os pontos da questão.
-${(p.types || []).includes("qcm") && !prefs().q.justif ? `Inclus au moins un QCM (corrigé automatiquement, sans IA) : pour lui "type":"qcm", et dans chaque version "choix" (3 à 5 propositions courtes, sans lettre) et "bonnes" (indices des bonnes réponses, à partir de 0) ; "lignes" inutile.\n` : ""}Adicione para cada questão: o conteúdo avaliado, 2 a 4 erros típicos frequentes (rótulos de 2 a 5 palavras) e o número de linhas de resposta necessárias (3 a 14).
+${(p.types || []).includes("qcm") ? `Inclus au moins un QCM (corrigé automatiquement, sans IA) : pour lui "type":"qcm", et dans chaque version "choix" (3 à 5 propositions courtes, sans lettre) et "bonnes" (indices des bonnes réponses, à partir de 0) ; "lignes" inutile.\n` : ""}Adicione para cada questão: o conteúdo avaliado, 2 a 4 erros típicos frequentes (rótulos de 2 a 5 palavras) e o número de linhas de resposta necessárias (3 a 14).
 ${NOSRC}
 
 AULA:
@@ -3155,7 +3158,6 @@ document.addEventListener("change", async ev => {
 
 /* Contrôle dicté par le professeur (ou lu sur la photo d'un ancien contrôle) : l'IA met au propre sans rien inventer */
 function dictPrompt(texte, mat, niveau, langue, photo){
-  const qcm = !prefs().q.justif;
   return `Você é o assistente de um professor de ${mat}${niveau ? " (turma do " + niveau + ")" : ""}. ${photo ? "O professor fotografou uma de suas provas antigas; aqui está a transcrição da folha, às vezes com as respostas acrescentadas." : "O professor ditou (ou escreveu) a prova: as questões, as respostas esperadas e às vezes os pontos."}
 O texto pode vir de um ditado por voz: pontuação ausente, palavras mal reconhecidas (sobretudo termos em hebraico ou técnicos), hesitações, repetições, correções faladas (“não, desculpa…”).
 
@@ -3169,7 +3171,7 @@ Sua tarefa: organizar esta prova SEM INVENTAR NADA no conteúdo.
 - Se uma questão não tiver resposta, escreva uma resposta-modelo curta e sinalize em "remarques" (ex.: “Q3: resposta proposta pela IA, verificar”).
 - Pontos: os do professor. Se ele não der, distribua 20 pontos conforme a dificuldade. Se o total dele não for 20, mantenha os pontos e sinalize.
 - Critérios de correção: use o que o professor disse (ex.: “aceito dois de três”); senão, proponha critérios simples cuja soma dá os pontos.
-${qcm ? `- Se o professor der opções para marcar, transforme em múltipla escolha: "type":"qcm" e, na versão, "choix" (as opções, sem letra) e "bonnes" (índices das respostas certas, a partir de 0).` : `- Se o professor der opções, escreva-as no enunciado (A, B, C…) e peça para justificar a escolha.`}
+- Se o professor der opções para marcar, transforme em múltipla escolha: "type":"qcm" e, na versão, "choix" (as opções, sem letra) e "bonnes" (índices das respostas certas, a partir de 0). Se ele também pedir para justificar a escolha, mantenha uma questão dissertativa, com as alternativas (A, B, C…) no enunciado.
 - Para cada questão: o conceito avaliado, 1 ou 2 erros típicos prováveis e um número adequado de linhas de resposta (2 a 15).
 - "remarques": uma lista curta do que o professor deve verificar (vazia se tudo estiver claro).
 ${langueRule(langue)}
@@ -3721,12 +3723,12 @@ function vAuth(){
     ${S.forgot ? `<p class="banner">${S.forgot.mail ? "Se existir uma conta com este e-mail, você vai receber um link para escolher uma nova senha. Confira também o spam." : "Seu pedido foi enviado à equipe Mastery, que vai redefinir sua senha e responder por e-mail."}${S.forgot.contact ? ` Dúvidas: <a href="mailto:${esc(S.forgot.contact)}">${esc(S.forgot.contact)}</a>` : ""}</p>`
       : `<div class="field"><label for="fg-mail">E-mail</label><input id="fg-mail" type="email" autocomplete="username" value="${esc(S.fgMail || "")}"></div><button class="btn primary auth-go" id="fg-go">Receber um link</button>`}
     <div class="status" id="au-st"></div>
-    <p class="small auth-note"><button class="btn ghost sm" id="fg-back">← Voltar para o login</button></p></section></div>`;
+    <p class="small auth-note"><button class="btn ghost sm" id="fg-back">← Voltar para o login</button></p></section>${MADEBY}</div>`;
   if (S.auth === "reset") return `<div class="auth"><section class="auth-card">
     <div class="auth-h"><h2>Nova senha</h2><p>Escolha sua nova senha do Mastery.</p></div>
     <div class="field"><label for="npw-pw">Nova senha (mínimo de 8 caracteres)</label><input id="npw-pw" type="password" autocomplete="new-password"></div>
     <div class="field"><label for="npw-pw2">Confirmar</label><input id="npw-pw2" type="password" autocomplete="new-password"></div>
-    <button class="btn primary auth-go" id="npw-go">Salvar e entrar</button><div class="status" id="au-st"></div></section></div>`;
+    <button class="btn primary auth-go" id="npw-go">Salvar e entrar</button><div class="status" id="au-st"></div></section>${MADEBY}</div>`;
   if (S.auth === "change") return `<div class="head"><div><h2>Escolha sua senha</h2><p>Bem-vindo(a) ${esc(S.me?.nom || "")} : substitua a senha provisória.</p></div></div>
   <section class="panel grid" style="max-width:440px">
     <div class="field"><label for="ch-pw">Nova senha (mínimo de 8 caracteres)</label><input id="ch-pw" type="password" autocomplete="new-password"></div>
@@ -3758,7 +3760,7 @@ function vAuth(){
     <p class="small auth-note"><button class="btn ghost sm" id="pw-forgot">Esqueceu a senha?</button></p>
     ${window.TIKOUN_CONFIG?.signup ? `<div class="auth-alt"><span class="small muted">Ainda não tem conta?</span><button class="btn" id="rg-open">Criar minha conta de professor</button></div>` : ""}
   </section>
-  <p class="small muted auth-foot"><a href="/">← Voltar ao site</a> · <a href="?lang=fr">Francês</a> · <a href="?lang=en">English</a> · <a href="?lang=pt">Português</a></p></div>`;
+  <p class="small muted auth-foot"><a href="/">← Voltar ao site</a> · <a href="?lang=fr">Francês</a> · <a href="?lang=en">English</a> · <a href="?lang=pt">Português</a></p>${MADEBY}</div>`;
 }
 const KEEP = ["rg-nom","rg-mail","rg-pw","me-nom","ec-nom","ec-ville"]; let kept = {}; S.form = {};
 document.addEventListener("change", async ev => { if (ev.target.id === "rg-cgu") S.regCgu = ev.target.checked;
@@ -3804,7 +3806,7 @@ function vCompte(){
     <div class="field"><label for="mc-new">Nova senha (mínimo de 8 caracteres)</label><input id="mc-new" type="password" autocomplete="new-password"></div>
     <div class="row"><button class="btn primary" id="mc-go">Salvar</button></div><div class="status" id="mc-st"></div></section>
   ${vReglages()}
-  <section class="panel grid" style="max-width:640px"><h3>Supprimer mon compte</h3>
+  <section class="panel grid" style="max-width:640px"><h3>Excluir minha conta</h3>
     <p class="small muted" style="margin:0">Apaga definitivamente sua conta e tudo o que é seu: avaliações, provas digitalizadas, notas, aulas, exercícios e imagens. Exporte suas notas antes, se precisar delas.</p>
     <div class="field"><label for="del-pw">Senha atual</label><input id="del-pw" type="password" autocomplete="current-password"></div>
     <div class="row"><button class="btn" id="del-me" style="color:var(--pen);border-color:var(--pen)">Excluir definitivamente minha conta</button></div><div class="status" id="del-st"></div></section>`,
@@ -3838,7 +3840,6 @@ function vCompte(){
     <div class="form-row"><div class="field"><label for="qp-fmt">Formato</label><select id="qp-fmt">${selOpts(["redige","mixte","qcm"], Q.format, x => ({redige:"Respostas dissertativas", mixte:"Dissertativas e múltipla escolha", qcm:"Principalmente múltipla escolha"}[x]))}</select></div>
       <div class="field"><label for="qp-prof">Profundidade</label><select id="qp-prof">${selOpts(["simple","standard","exigeant"], Q.profondeur, x => ({simple:"Simples: aplicar a matéria", standard:"Padrão: compreender e explicar", exigeant:"Exigente: raciocinar e argumentar"}[x]))}</select></div></div>
     <div class="field"><label for="qp-long">Tamanho das respostas</label><select id="qp-long">${selOpts(["courte","moyenne","developpee"], Q.longueur, x => ({courte:"Curtas (3 a 5 linhas)", moyenne:"Médias (5 a 8 linhas)", developpee:"Desenvolvidas (8 a 14 linhas)"}[x]))}</select></div>
-    <label class="row small" style="gap:6px"><input type="checkbox" id="qp-just"${Q.justif ? " checked" : ""}> <span>Questões de múltipla escolha: sempre deixar um espaço para justificar a resposta (corrigido pela IA)</span></label>
     <div class="row"><button class="btn primary" id="qp-save">Salvar</button></div></section>
   <section class="panel grid" style="max-width:640px" id="ton-pref"><h3>Tom dos comentários</h3>
     <p class="small muted" style="margin:0">Como a IA se dirige aos alunos nos comentários de correção e dos quizzes, e o tom dos comentários de boletim.</p>
@@ -3923,7 +3924,7 @@ document.addEventListener("click", async ev => {
       await savePrefs({police:+$("#mp-pol").value, lh:+$("#mp-lh").value, reglure:$("#mp-reg").value, consignes:$("#mp-cons").value.trim(), bareme:$("#mp-bar").checked}); render(); toast("Salvo"); return; }
     if (t.id === "ap-save"){ const P = prefs().periodes || {}, md = id => ($("#" + id)?.value || "").slice(5, 10);
       await savePrefs({periodes:{...PREF_DEF.periodes, ...P, mode:$("#ap-mode").value, ...($("#ap-t2") ? {t2:md("ap-t2") || P.t2, t3:md("ap-t3") || P.t3} : {s2:md("ap-s2") || P.s2})}}); render(); toast("Salvo"); return; }
-    if (t.id === "qp-save"){ await savePrefs({q:{format:$("#qp-fmt").value, profondeur:$("#qp-prof").value, longueur:$("#qp-long").value, justif:$("#qp-just").checked}}); S.params._pref = false; render(); toast("Salvo"); return; }
+    if (t.id === "qp-save"){ await savePrefs({q:{format:$("#qp-fmt").value, profondeur:$("#qp-prof").value, longueur:$("#qp-long").value}}); S.params._pref = false; render(); toast("Salvo"); return; }
     if (t.id === "me-save"){ const body = {nom:$("#me-nom").value}, e = ecoleVal();
       if (e.nom && e.ville && (e.nom !== S.me.ecole?.nom || e.ville !== S.me.ecole?.ville)) body.ecole = e;
       else if (e.nom || e.ville){ if (!e.nom || !e.ville) return toast("Informe o nome da escola e a cidade."); }
@@ -3982,6 +3983,8 @@ function quotaHtml(){
 const essaiCtrl = () => { const n = CFG().trialCtrl || 1; return n > 1 ? `${n} provas por mês` : "1 prova por mês"; };
 const copiesCtrl = () => S.me?.quota?.par || CFG().copiesCtrl || 35;
 const tailleTxt = () => `Uma prova cobre até ${copiesCtrl()} alunos: acima disso, conta como mais uma a cada grupo de ${copiesCtrl()}.`;
+/* Signature : Mastery est conçu par Les Institutions Sinaï */
+const MADEBY = `<div class="madeby"><span>Made by</span><img src="/logo-sinai.png" alt="Les Institutions Sinaï" width="119" height="34"></div>`;
 const TIER_TXT = {decouverte:"1 turma · 2 provas por mês", essentiel:"Até 3 turmas · 6 provas por mês · exercícios online", complet:"Até 6 turmas · 12 provas por mês · exercícios online"};
 function abonnementPanel(){
   const a = S.me?.acces || {}, P = CFG().prix || {};
@@ -4790,22 +4793,32 @@ function quizSuivi(){
 /* ---------- Codes élèves (Classes) ---------- */
 const CODE_ALPHA = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const newCode = () => { let s = ""; for (const b of crypto.getRandomValues(new Uint8Array(8))) s += CODE_ALPHA[b % CODE_ALPHA.length]; return s; };
+/* Comptes créés par les élèves de la classe affichée (e-mail masqué) : chargés à part, le professeur ne les a pas dans ses données */
+async function loadComptes(id, force){
+  if (!force && S.comptesCl?.id === id) return; S.comptesCl = {id, map:S.comptesCl?.id === id ? S.comptesCl.map : {}};
+  try { const j = await api("/api/classes/" + id + "/comptes"); if (S.comptesCl?.id === id){ S.comptesCl.map = j.comptes || {}; scheduleRender(); } } catch(e){ console.warn(e); }
+}
+const codesRows = cl => [["Turma", "Nome", "Nome", "Código", "Link de acesso", "Conta criada"],
+  ...(cl.eleves || []).filter(e => e.code).map(e => [cl.nom, e.nom, e.prenom, e.code, location.origin + "/eleve?c=" + e.code, S.comptesCl?.id === cl.id && S.comptesCl.map[e.id] ? "oui" : "non"])];
 function codesPanel(cl){
   if (!cl || !window.TIKOUN_CONFIG?.accounts) return "";
   const n = (cl.eleves || []).filter(e => e.code).length, tot = (cl.eleves || []).length;
-  return `<section class="panel grid" style="gap:10px"><div class="row between"><div><h3>Códigos dos alunos</h3><p class="small muted">Espaço do aluno (resultados publicados, recuperações, exercícios on-line): cada aluno entra em <b>${esc(location.origin)}/eleve</b> com seu código pessoal e sobrenome (sem e-mail).</p></div>
-    <div class="row"><button class="btn sm" id="codes-gen"${n < tot ? "" : " disabled"}>${n < tot ? "Gerar os códigos que faltam" : "Códigos atualizados"}</button>${n ? `<button class="btn sm primary" id="codes-print">Imprimir os cartões</button>` : ""}</div></div>
-    ${n ? `<div class="row">${(cl.eleves || []).map(e => `<span class="chip">${esc(e.prenom)} ${esc((e.nom || "").slice(0, 1))}. · <b class="num">${esc(e.code || "—")}</b>${e.code ? ` <button class="btn sm ghost" style="padding:0 4px" data-recode="${esc(e.id)}" title="Novo código">↻</button>` : ""}</span>`).join("")}</div>` : ""}</section>`;
+  if (n) loadComptes(cl.id); const K = S.comptesCl?.id === cl.id ? S.comptesCl.map : {}, nk = (cl.eleves || []).filter(e => K[e.id]).length;
+  return `<section class="panel grid" style="gap:10px"><div class="row between"><div><h3>Códigos dos alunos</h3><p class="small muted">Espaço do aluno (resultados publicados, recuperações, exercícios on-line): cada aluno entra em <b>${esc(location.origin)}/eleve</b> com o código pessoal e o sobrenome. Depois, ele pode criar a conta, com e-mail e senha.</p></div>
+    <div class="row"><button class="btn sm" id="codes-gen"${n < tot ? "" : " disabled"}>${n < tot ? "Gerar os códigos que faltam" : "Códigos atualizados"}</button>${n ? `<button class="btn sm" id="codes-csv">Exportar códigos (CSV)</button><button class="btn sm primary" id="codes-print">Imprimir os cartões</button>` : ""}</div></div>
+    ${n ? `<div class="row">${(cl.eleves || []).map(e => `<span class="chip">${esc(e.prenom)} ${esc((e.nom || "").slice(0, 1))}. · <b class="num">${esc(e.code || "—")}</b>${e.code ? ` <button class="btn sm ghost" style="padding:0 4px" data-recode="${esc(e.id)}" title="Novo código">↻</button>` : ""}${K[e.id] ? ` <button class="btn sm ghost" style="padding:0 4px;color:var(--ok)" data-ecompte="${esc(e.id)}" title="Conta criada (${esc(K[e.id].email)}) : cliquer pour le remettre à zéro">conta ✓</button>` : ""}</span>`).join("")}</div>
+      <label class="row small" style="gap:6px"><input type="checkbox" id="codes-comptes"${cl.sansCompte ? "" : " checked"}> <span>Os alunos desta turma podem criar uma conta (e-mail e senha)</span></label>
+      <p class="small muted" style="margin:0">${nk} conta(s) criada(s) de ${n}. Um aluno perdeu a senha? Clique em “conta ✓” para reiniciar a conta: ele a cria de novo com o código.</p>` : ""}</section>`;
 }
 function printCards(cl){
   const url = location.origin + "/eleve?c=";
   const card = e => { let svg = ""; try { const qr = qrcode(0, "M"); qr.addData(url + e.code); qr.make(); svg = qr.createSvgTag({cellSize:3, margin:0}); } catch(err){}
-    return `<div class="c"><div class="h"><b>Mastery</b><span>${esc(cl.nom)}</span></div><div class="n">${esc(e.prenom)} ${esc(e.nom)}</div><div class="b"><div>${svg}</div><div><div class="l">Seu código</div><div class="k">${esc(e.code)}</div><div class="u">${esc(location.host)}/eleve · code + nom de famille</div></div></div></div>`; };
+    return `<div class="c"><div class="h"><b>Mastery</b><span>${esc(cl.nom)}</span></div><div class="n">${esc(e.prenom)} ${esc(e.nom)}</div><div class="b"><div>${svg}</div><div><div class="l">Seu código</div><div class="k">${esc(e.code)}</div><div class="u">${esc(location.host)}/eleve · code + nom de famille</div></div></div><div class="m">Com este código, crie sua conta: e-mail e senha.</div></div>`; };
   const w = window.open("", "_blank"); if (!w) return toast("Permita pop-ups para imprimir os cartões.");
   w.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Cartões dos alunos · ${esc(cl.nom)}</title><style>
     body{font-family:Inter,Arial,sans-serif;margin:0;padding:10mm;color:#15233F}.g{display:grid;grid-template-columns:1fr 1fr;gap:6mm}
     .c{border:1px solid #cfc8b8;border-radius:4mm;padding:5mm;break-inside:avoid;display:grid;gap:3mm}.h{display:flex;justify-content:space-between;font-size:11pt}.h b{font-family:Georgia,serif}
-    .n{font-size:14pt;font-weight:700}.b{display:flex;gap:5mm;align-items:center}.b svg{width:28mm;height:28mm}.l{font-size:9pt;color:#6b6758;text-transform:uppercase;letter-spacing:.1em}.k{font-size:22pt;font-weight:700;letter-spacing:.12em;font-family:monospace}.u{font-size:9pt;color:#6b6758}
+    .n{font-size:14pt;font-weight:700}.b{display:flex;gap:5mm;align-items:center}.b svg{width:28mm;height:28mm}.l{font-size:9pt;color:#6b6758;text-transform:uppercase;letter-spacing:.1em}.k{font-size:22pt;font-weight:700;letter-spacing:.12em;font-family:monospace}.u{font-size:9pt;color:#6b6758}.m{font-size:8.5pt;color:#6b6758;border-top:1px solid #e3ddd0;padding-top:2mm}
     @media print{body{padding:6mm}}</style></head><body><div class="g">${(cl.eleves || []).filter(e => e.code).map(card).join("")}</div><script>setTimeout(()=>print(),300)<\/script></body></html>`);
   w.document.close();
 }
@@ -4855,11 +4868,19 @@ Responda somente em JSON: {"notes":[{"k":0,"juste":true,"commentaire":"…"}]}`,
     }
     if (t.id === "codes-gen" || d.recode){ const cl = classe(S.classeSel) || store.classes[0]; if (!cl) return; const c = structuredClone(cl); delete c.id;
       c.eleves = (c.eleves || []).map(e => (d.recode ? e.id === d.recode : !e.code) ? {...e, code:newCode()} : e); await write("classes/" + cl.id, c); toast(d.recode ? "Novo código gerado (o antigo não funciona mais)." : "Códigos gerados."); return; }
+    if (t.id === "codes-csv"){ const cl = classe(S.classeSel) || store.classes[0]; if (!cl) return;
+      const csv = "\ufeff" + codesRows(cl).map(r => r.map(x => { x = String(x ?? ""); if (/^[=+\-@\t\r]/.test(x)) x = "'" + x; return `"${x.replace(/"/g, '""')}"`; }).join(";")).join("\n");
+      if (typeof DL === "undefined" || !DL) return toast("Download indisponível nesta visualização.");
+      try { await DL.save({filename:`Códigos dos alunos - ${cl.nom}.csv`.replace(/[\\/:*?"<>|]/g, "-"), data:csv}); } catch(e){ if (e?.code !== "declined") toast("Não foi possível baixar."); } return; }
+    if (d.ecompte){ const cl = classe(S.classeSel) || store.classes[0], e = cl?.eleves?.find(x => x.id === d.ecompte); if (!e) return;
+      if (!confirm(`Reiniciar a conta de ${e.prenom} ${e.nom} ?\n\nO e-mail e a senha serão apagados. As notas e o código não mudam: o aluno poderá recriar a conta com o código.`)) return;
+      await api("/api/classes/" + cl.id + "/comptes/" + e.id, {method:"DELETE"}); toast("Conta reiniciada."); await loadComptes(cl.id, true); return render(); }
     if (t.id === "codes-print"){ const cl = classe(S.classeSel) || store.classes[0]; if (cl) printCards(cl); return; }
   } catch(e){ console.error(e); toast(e?.message || "Erreur."); }
 });
 document.addEventListener("change", async ev => {
   const el = ev.target, d = el.dataset;
+  if (el.id === "codes-comptes"){ const cl = classe(S.classeSel) || store.classes[0]; if (!cl) return; await write("classes/" + cl.id, {sansCompte:!el.checked}, "update"); toast(el.checked ? "Contas de alunos permitidas para esta turma." : "Contas de alunos desativadas para esta turma."); return; }
   if (d.qn){ S.qn[d.qn] = el.value; if (d.qn === "coursId") S.qn.classeId = ""; if (["coursId","classeId"].includes(d.qn)) render(); return; }
   if (d.qtype){ const s = new Set(S.qn.types); el.checked ? s.add(d.qtype) : s.delete(d.qtype); S.qn.types = [...s]; return; }
   const q = S.view === "quiz" ? quizOf(S.qz.id) : null; if (!q) return;

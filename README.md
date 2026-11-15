@@ -48,6 +48,8 @@ Les sources sont à la racine du dépôt ; les pages publiées (`index*.html`, `
 
 - Application : `head.html` (styles, balisage), `app.js`, `standalone.js`, `cloud.js`, `nav.js`, `accounts.js`, `more.js`, `quiz.js`, `training.js`, `devices.js`.
 - Espace élève : `eleve.html` · page d'accueil : `landing.html` · pages légales : `cgu*.html`, `confidentialite*.html`, `mentions-legales*.html`.
+- Comptes élèves : l'élève entre avec le code de sa carte et son nom de famille, puis peut créer un compte (e-mail et mot de passe) ; un compte réunit plusieurs codes (une classe par professeur). Mot de passe oublié par e-mail (`RESEND_API_KEY` + `MAIL_FROM`) ; sans service d'e-mail, le professeur remet le compte à zéro dans Classes. Les comptes sont rangés à part (`comptes-eleves.json`) : hors de l'export du professeur, e-mail masqué côté professeur, désactivables par classe.
+- Signature « Made by Les Institutions Sinaï » (`logo-sinai.png`) : site public, écrans de connexion, espace élève, e-mails.
 - Traductions : `en.json`, `pt.json` (clé = texte français exact), appliquées par `i18n.js`.
 - Serveur : `server.js` (comptes, données, IA, paiement), `engine_head.js` + `engine_main.js` (analyse des dépôts sur le serveur).
 - Partagé par le serveur et l'application : `fiabilite.js` (niveau de doute d'une réponse, journal de validation, vérification d'un contrôle généré, plan). Fonctions pures, incluses dans la page par `build.py`.

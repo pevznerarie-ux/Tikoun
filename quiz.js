@@ -190,22 +190,32 @@ function quizSuivi(){
 /* ---------- Codes élèves (Classes) ---------- */
 const CODE_ALPHA = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const newCode = () => { let s = ""; for (const b of crypto.getRandomValues(new Uint8Array(8))) s += CODE_ALPHA[b % CODE_ALPHA.length]; return s; };
+/* Comptes créés par les élèves de la classe affichée (e-mail masqué) : chargés à part, le professeur ne les a pas dans ses données */
+async function loadComptes(id, force){
+  if (!force && S.comptesCl?.id === id) return; S.comptesCl = {id, map:S.comptesCl?.id === id ? S.comptesCl.map : {}};
+  try { const j = await api("/api/classes/" + id + "/comptes"); if (S.comptesCl?.id === id){ S.comptesCl.map = j.comptes || {}; scheduleRender(); } } catch(e){ console.warn(e); }
+}
+const codesRows = cl => [["Classe", "Nom", "Prénom", "Code", "Lien de connexion", "Compte créé"],
+  ...(cl.eleves || []).filter(e => e.code).map(e => [cl.nom, e.nom, e.prenom, e.code, location.origin + "/eleve?c=" + e.code, S.comptesCl?.id === cl.id && S.comptesCl.map[e.id] ? "oui" : "non"])];
 function codesPanel(cl){
   if (!cl || !window.TIKOUN_CONFIG?.accounts) return "";
   const n = (cl.eleves || []).filter(e => e.code).length, tot = (cl.eleves || []).length;
-  return `<section class="panel grid" style="gap:10px"><div class="row between"><div><h3>Codes élèves</h3><p class="small muted">Espace élève (résultats publiés, rattrapages, exercices en ligne) : chaque élève se connecte sur <b>${esc(location.origin)}/eleve</b> avec son code personnel et son nom de famille (sans e-mail).</p></div>
-    <div class="row"><button class="btn sm" id="codes-gen"${n < tot ? "" : " disabled"}>${n < tot ? "Générer les codes manquants" : "Codes à jour"}</button>${n ? `<button class="btn sm primary" id="codes-print">Imprimer les cartes</button>` : ""}</div></div>
-    ${n ? `<div class="row">${(cl.eleves || []).map(e => `<span class="chip">${esc(e.prenom)} ${esc((e.nom || "").slice(0, 1))}. · <b class="num">${esc(e.code || "—")}</b>${e.code ? ` <button class="btn sm ghost" style="padding:0 4px" data-recode="${esc(e.id)}" title="Nouveau code">↻</button>` : ""}</span>`).join("")}</div>` : ""}</section>`;
+  if (n) loadComptes(cl.id); const K = S.comptesCl?.id === cl.id ? S.comptesCl.map : {}, nk = (cl.eleves || []).filter(e => K[e.id]).length;
+  return `<section class="panel grid" style="gap:10px"><div class="row between"><div><h3>Codes élèves</h3><p class="small muted">Espace élève (résultats publiés, rattrapages, exercices en ligne) : chaque élève se connecte sur <b>${esc(location.origin)}/eleve</b> avec son code personnel et son nom de famille. Il peut ensuite créer son compte, avec son e-mail et son mot de passe.</p></div>
+    <div class="row"><button class="btn sm" id="codes-gen"${n < tot ? "" : " disabled"}>${n < tot ? "Générer les codes manquants" : "Codes à jour"}</button>${n ? `<button class="btn sm" id="codes-csv">Exporter les codes (CSV)</button><button class="btn sm primary" id="codes-print">Imprimer les cartes</button>` : ""}</div></div>
+    ${n ? `<div class="row">${(cl.eleves || []).map(e => `<span class="chip">${esc(e.prenom)} ${esc((e.nom || "").slice(0, 1))}. · <b class="num">${esc(e.code || "—")}</b>${e.code ? ` <button class="btn sm ghost" style="padding:0 4px" data-recode="${esc(e.id)}" title="Nouveau code">↻</button>` : ""}${K[e.id] ? ` <button class="btn sm ghost" style="padding:0 4px;color:var(--ok)" data-ecompte="${esc(e.id)}" title="Compte créé (${esc(K[e.id].email)}) : cliquer pour le remettre à zéro">compte ✓</button>` : ""}</span>`).join("")}</div>
+      <label class="row small" style="gap:6px"><input type="checkbox" id="codes-comptes"${cl.sansCompte ? "" : " checked"}> <span>Les élèves de cette classe peuvent créer un compte (e-mail et mot de passe)</span></label>
+      <p class="small muted" style="margin:0">${nk} compte(s) créé(s) sur ${n}. Un élève a perdu son mot de passe ? Clique sur « compte ✓ » pour remettre son compte à zéro : il le recrée avec son code.</p>` : ""}</section>`;
 }
 function printCards(cl){
   const url = location.origin + "/eleve?c=";
   const card = e => { let svg = ""; try { const qr = qrcode(0, "M"); qr.addData(url + e.code); qr.make(); svg = qr.createSvgTag({cellSize:3, margin:0}); } catch(err){}
-    return `<div class="c"><div class="h"><b>Mastery</b><span>${esc(cl.nom)}</span></div><div class="n">${esc(e.prenom)} ${esc(e.nom)}</div><div class="b"><div>${svg}</div><div><div class="l">Ton code</div><div class="k">${esc(e.code)}</div><div class="u">${esc(location.host)}/eleve · code + nom de famille</div></div></div></div>`; };
+    return `<div class="c"><div class="h"><b>Mastery</b><span>${esc(cl.nom)}</span></div><div class="n">${esc(e.prenom)} ${esc(e.nom)}</div><div class="b"><div>${svg}</div><div><div class="l">Ton code</div><div class="k">${esc(e.code)}</div><div class="u">${esc(location.host)}/eleve · code + nom de famille</div></div></div><div class="m">Avec ce code, crée ton compte : e-mail et mot de passe.</div></div>`; };
   const w = window.open("", "_blank"); if (!w) return toast("Autorise les fenêtres pour imprimer les cartes.");
   w.document.write(`<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>Cartes élèves · ${esc(cl.nom)}</title><style>
     body{font-family:Inter,Arial,sans-serif;margin:0;padding:10mm;color:#15233F}.g{display:grid;grid-template-columns:1fr 1fr;gap:6mm}
     .c{border:1px solid #cfc8b8;border-radius:4mm;padding:5mm;break-inside:avoid;display:grid;gap:3mm}.h{display:flex;justify-content:space-between;font-size:11pt}.h b{font-family:Georgia,serif}
-    .n{font-size:14pt;font-weight:700}.b{display:flex;gap:5mm;align-items:center}.b svg{width:28mm;height:28mm}.l{font-size:9pt;color:#6b6758;text-transform:uppercase;letter-spacing:.1em}.k{font-size:22pt;font-weight:700;letter-spacing:.12em;font-family:monospace}.u{font-size:9pt;color:#6b6758}
+    .n{font-size:14pt;font-weight:700}.b{display:flex;gap:5mm;align-items:center}.b svg{width:28mm;height:28mm}.l{font-size:9pt;color:#6b6758;text-transform:uppercase;letter-spacing:.1em}.k{font-size:22pt;font-weight:700;letter-spacing:.12em;font-family:monospace}.u{font-size:9pt;color:#6b6758}.m{font-size:8.5pt;color:#6b6758;border-top:1px solid #e3ddd0;padding-top:2mm}
     @media print{body{padding:6mm}}</style></head><body><div class="g">${(cl.eleves || []).filter(e => e.code).map(card).join("")}</div><script>setTimeout(()=>print(),300)<\/script></body></html>`);
   w.document.close();
 }
@@ -255,11 +265,19 @@ Réponds uniquement en JSON : {"notes":[{"k":0,"juste":true,"commentaire":"…"}
     }
     if (t.id === "codes-gen" || d.recode){ const cl = classe(S.classeSel) || store.classes[0]; if (!cl) return; const c = structuredClone(cl); delete c.id;
       c.eleves = (c.eleves || []).map(e => (d.recode ? e.id === d.recode : !e.code) ? {...e, code:newCode()} : e); await write("classes/" + cl.id, c); toast(d.recode ? "Nouveau code généré (l'ancien ne marche plus)." : "Codes générés."); return; }
+    if (t.id === "codes-csv"){ const cl = classe(S.classeSel) || store.classes[0]; if (!cl) return;
+      const csv = "\ufeff" + codesRows(cl).map(r => r.map(x => { x = String(x ?? ""); if (/^[=+\-@\t\r]/.test(x)) x = "'" + x; return `"${x.replace(/"/g, '""')}"`; }).join(";")).join("\n");
+      if (typeof DL === "undefined" || !DL) return toast("Téléchargement indisponible dans cette vue.");
+      try { await DL.save({filename:`Codes élèves - ${cl.nom}.csv`.replace(/[\\/:*?"<>|]/g, "-"), data:csv}); } catch(e){ if (e?.code !== "declined") toast("Téléchargement impossible."); } return; }
+    if (d.ecompte){ const cl = classe(S.classeSel) || store.classes[0], e = cl?.eleves?.find(x => x.id === d.ecompte); if (!e) return;
+      if (!confirm(`Remettre à zéro le compte de ${e.prenom} ${e.nom} ?\n\nSon e-mail et son mot de passe seront effacés. Ses notes et son code ne changent pas : il pourra recréer son compte avec son code.`)) return;
+      await api("/api/classes/" + cl.id + "/comptes/" + e.id, {method:"DELETE"}); toast("Compte remis à zéro."); await loadComptes(cl.id, true); return render(); }
     if (t.id === "codes-print"){ const cl = classe(S.classeSel) || store.classes[0]; if (cl) printCards(cl); return; }
   } catch(e){ console.error(e); toast(e?.message || "Erreur."); }
 });
 document.addEventListener("change", async ev => {
   const el = ev.target, d = el.dataset;
+  if (el.id === "codes-comptes"){ const cl = classe(S.classeSel) || store.classes[0]; if (!cl) return; await write("classes/" + cl.id, {sansCompte:!el.checked}, "update"); toast(el.checked ? "Comptes élèves autorisés pour cette classe." : "Comptes élèves désactivés pour cette classe."); return; }
   if (d.qn){ S.qn[d.qn] = el.value; if (d.qn === "coursId") S.qn.classeId = ""; if (["coursId","classeId"].includes(d.qn)) render(); return; }
   if (d.qtype){ const s = new Set(S.qn.types); el.checked ? s.add(d.qtype) : s.delete(d.qtype); S.qn.types = [...s]; return; }
   const q = S.view === "quiz" ? quizOf(S.qz.id) : null; if (!q) return;

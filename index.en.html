@@ -472,6 +472,9 @@ input[type=checkbox],input[type=radio]{accent-color:var(--blue)}
 .auth-h{text-align:center;display:grid;gap:6px;margin-bottom:4px}.auth-h h2{font-size:26px;font-weight:700;letter-spacing:-.03em}.auth-h p{color:var(--muted);font-size:14.5px}
 .auth-go{width:100%;padding:12px 16px;font-size:15px}
 .auth-note{text-align:center;margin:0}
+.madeby{display:flex;align-items:center;justify-content:center;gap:10px;font-size:13px;color:var(--muted);margin-top:4px}.madeby img{height:34px;width:auto;display:block}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .madeby img{background:#F2F4F8;border-radius:8px;padding:5px 8px;height:44px}}
+:root[data-theme="dark"] .madeby img{background:#F2F4F8;border-radius:8px;padding:5px 8px;height:44px}
 .auth-alt{display:grid;gap:8px;justify-items:center;border-top:1px solid var(--line);padding-top:16px}.auth-alt .btn{width:100%}
 .auth-foot{text-align:center}.view .auth-foot a{color:var(--muted);text-decoration:none}.view .auth-foot a:hover{color:var(--ink)}
 .auth-card>.status:empty{display:none}
@@ -771,7 +774,7 @@ function verifier(qs, o){
 }
 
 /* ---------- Plan d'un contrôle (proposé par l'IA, approuvé par le professeur avant la rédaction) ---------- */
-const TYPES_Q = ["cours", "application", "probleme", "texte", "traduction", "qcm"], COMPS_Q = ["connaitre", "comprendre", "raisonner", "lire", "ecrire"];
+const TYPES_Q = ["cours", "application", "probleme", "texte", "traduction", "qcm", "choix"], COMPS_Q = ["connaitre", "comprendre", "raisonner", "lire", "ecrire"];
 const sansAccent = x => str(x).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
 function plan(raw, o){
   o = o || {}; const types = Array.isArray(o.types) && o.types.length ? o.types.filter(t => TYPES_Q.includes(t)) : TYPES_Q;
@@ -872,8 +875,8 @@ function applyPrefParams(){ const Q = prefs().q;
   S.params.types = Q.format === "redige" ? ["cours","application"] : Q.format === "qcm" ? ["qcm","application"] : ["cours","application","qcm"];
   S.params._pref = true; }
 function questionRule(p){ const Q = prefs().q, L = {courte:"3 to 5", moyenne:"5 to 8", developpee:"8 to 14"}[Q.longueur] || "5 to 8";
-  return `Expected answers: about ${L} lines per question (except multiple choice).` + ((p.types || []).includes("qcm") && Q.justif
-    ? `\nQuestions à choix : n'utilise pas le type "qcm". Écris les propositions (A, B, C…) dans l'énoncé, demande à l'élève d'indiquer son choix ET de le justifier, et prévois des lignes de réponse ; le corrigé et les critères notent le choix et la justification. Le contrôle contient au moins une question à choix de ce genre.` : ""); }
+  return `Expected answers: about ${L} lines per question (except multiple choice).` + ((p.types || []).includes("choix")
+    ? `\nChoice questions with justification: write the options (A, B, C…) in the question, ask the student to give their choice AND justify it, and provide answer lines; the answer key and criteria grade both the choice and the justification. These are written questions: they do not have the type "qcm". The test contains at least one.` : ""); }
 function headerFrom(aff){
   const e = S.me?.ecole, ec = e?.nom ? e.nom + (e.ville ? " · " + e.ville : "") : "", nom = S.me?.nom || "";
   if (aff === "ecole") return ec || nom; if (aff === "nom") return nom || ec; return [ec, nom].filter(Boolean).join(" · ");
@@ -1428,7 +1431,7 @@ function wizParams(){
   if (!p.classeId && store.classes[0]) p.classeId = (store.classes.find(c => c.niveau === p.niveau) || store.classes[0]).id;
   if (p.kind !== "controle") p.kind = "controle";
   const EXO = p.kind === "exercices";
-  const T = [["cours","Lesson questions"],["application","Application exercises"],["probleme","Problem / essay"],["texte","Reading / text analysis"],["traduction","Translation"],["qcm", prefs().q.justif ? "Choice questions with justification" : "MCQ (graded without AI, free)"]];
+  const T = [["cours","Lesson questions"],["application","Application exercises"],["probleme","Problem / essay"],["texte","Reading / text analysis"],["traduction","Translation"],["qcm","MCQ (graded without AI, free)"],["choix","Choice questions with justification"]];
   return `
   <section class="panel grid">
     <div class="row between"><div><div class="label">Lessons</div><b>${esc(co?.titre || "?")}</b> <span class="muted small">· ${esc(co?.matiere)} · ${esc(co?.niveau)}</span></div><button class="btn sm" id="back1">Change lesson</button></div>
@@ -1441,7 +1444,7 @@ function wizParams(){
       <div class="field"><label for="p-dif">Difficulty</label><select id="p-dif" data-p="difficulte">${selOpts(["facile","moyen","exigeant"], p.difficulte)}</select></div>
     </div>
     ${(() => { const cl = classe(p.classeId), nv = nivOf(cl); return cl && nv && p.niveau && nv !== p.niveau ? `<p class="banner">Warning: the selected level (${esc(p.niveau)}) doesn't match the class ${esc(cl.nom)}. <button class="btn sm" id="p-niv-cl" data-niv="${esc(nv)}">Use ${esc(nv)}</button></p>` : ""; })()}
-    <div class="field"><label>Question types</label><div class="row">${T.map(([k, l]) => `<label class="row small" style="gap:6px"><input type="checkbox" data-type="${k}"${p.types.includes(k) ? " checked" : ""}> ${l}</label>`).join("")}</div>${prefs().q.justif ? `<p class="small muted" style="margin:6px 0 0">Choice questions: options are written in the question, with a box to justify (graded by AI). For real tick-box multiple choice graded without AI, untick “always leave a box to justify” in My account.</p>` : ""}</div>
+    <div class="field"><label>Question types</label><div class="row">${T.map(([k, l]) => `<label class="row small" style="gap:6px"><input type="checkbox" data-type="${k}"${p.types.includes(k) ? " checked" : ""}> ${l}</label>`).join("")}</div></div>
     <div class="field"><label>Skills to assess first (optional)</label><div class="row">${Object.entries(COMPS).map(([k, l]) => `<label class="row small" style="gap:6px"><input type="checkbox" data-pcomp="${k}"${(p.comps || []).includes(k) ? " checked" : ""}> ${l}</label>`).join("")}</div></div>
     <label class="row small" style="gap:6px"><input type="checkbox" id="p-diff"${p.differencie ? " checked" : ""}> Differentiated sheets: each question in 3 levels (foundational, standard, advanced), based on each student's level</label>
     ${sujetsField(sujetsOf(co, S.params.sujets), "p")}
@@ -1461,10 +1464,10 @@ const aVoir = c => [...(c.remarques || []).map(String), ...(Array.isArray(c.veri
 /* ---------- Plan du contrôle ----------
    Avant la rédaction, l'IA propose une ligne par question (notion, type, compétence, points). Le professeur modifie, retire ou ajoute
    des lignes, puis lance la rédaction : l'IA suit le plan, et les points du plan sont ceux du contrôle. */
-const PLAN_T = {cours:"Lesson question", application:"Application exercise", probleme:"Problem / essay", texte:"Text reading", traduction:"Translation", qcm:"QCM"};
+const PLAN_T = {cours:"Lesson question", application:"Application exercise", probleme:"Problem / essay", texte:"Text reading", traduction:"Translation", qcm:"QCM", choix:"Justified choice"};
 const planTotal = () => (S.plan?.items || []).reduce((a, x) => a + (+x.points || 0), 0);
 function planPrompt(co, p, n){
-  const T = {cours:"lesson questions", application:"application exercises", probleme:"problem or essay", texte:"reading / text analysis", traduction:"traduction", qcm:"QCM"};
+  const T = {cours:"lesson questions", application:"application exercises", probleme:"problem or essay", texte:"reading / text analysis", traduction:"traduction", qcm:"QCM", choix:"choice questions with justification"};
   return `You are an experienced teacher of ${p.matiere} in the US. Before writing a test for a class of ${p.niveau}, propose its PLAN from the lesson below: ${n} lines, one per question, without writing the questions.
 
 Duration: ${p.duree} minutes · Difficulty: ${p.difficulte} · Types: ${(p.types || []).map(t => T[t]).join(", ") || "varied"}
@@ -2621,7 +2624,7 @@ function sujetsField(list, k){
     <div class="row"><button class="btn sm" data-sujdetect="${k}">↻ Detect the lesson topics (AI)</button><span class="small muted">Leave empty for a single topic.</span><span class="status" id="${k}-suj-st"></span></div></div>`;
 }
 function genPrompt(co, p, n, extra){
-  const T = {cours:"lesson questions", application:"application exercises", probleme:"problem or essay", texte:"reading / text analysis", traduction:"traduction", qcm:"QCM"};
+  const T = {cours:"lesson questions", application:"application exercises", probleme:"problem or essay", texte:"reading / text analysis", traduction:"traduction", qcm:"QCM", choix:"choice questions with justification"};
   return `You are an experienced teacher of ${p.matiere} in the US. Prepare ${n === 1 ? "ONE question" : "a test"} for a class of ${p.niveau}, based on the lesson below.${isPrim(p.niveau) ? "\nElementary school (students aged 6 to 11): very short, concrete instructions, one task per question, simple vocabulary, answers of a few words or one sentence (2 to 4 lines of answer box)." : ""}
 
 Duration: ${p.duree} minutes · Difficulty: ${p.difficulte} · Types: ${(p.types || []).map(t => T[t]).join(", ") || "varied"}${(p.types || []).length > 1 && n > 1 ? " (each requested type appears at least once if the number of questions allows)" : ""}
@@ -2637,7 +2640,7 @@ For each question, write 3 versions of the same question, covering the same skil
 - "standard" (Standard): the level expected of the class;
 - "approfondi" (Advanced): more demanding (justification, general case, extension).
 Each version has its own prompt, a detailed model answer, and grading criteria whose points add up to the question's total.
-${(p.types || []).includes("qcm") && !prefs().q.justif ? `Inclus au moins un QCM (corrigé automatiquement, sans IA) : pour lui "type":"qcm", et dans chaque version "choix" (3 à 5 propositions courtes, sans lettre) et "bonnes" (indices des bonnes réponses, à partir de 0) ; "lignes" inutile.\n` : ""}For each question, add: the skill being assessed, 2 to 4 common error types (2- to 5-word labels), and the number of answer lines needed (3 to 14).
+${(p.types || []).includes("qcm") ? `Inclus au moins un QCM (corrigé automatiquement, sans IA) : pour lui "type":"qcm", et dans chaque version "choix" (3 à 5 propositions courtes, sans lettre) et "bonnes" (indices des bonnes réponses, à partir de 0) ; "lignes" inutile.\n` : ""}For each question, add: the skill being assessed, 2 to 4 common error types (2- to 5-word labels), and the number of answer lines needed (3 to 14).
 ${NOSRC}
 
 LESSON:
@@ -3155,7 +3158,6 @@ document.addEventListener("change", async ev => {
 
 /* Contrôle dicté par le professeur (ou lu sur la photo d'un ancien contrôle) : l'IA met au propre sans rien inventer */
 function dictPrompt(texte, mat, niveau, langue, photo){
-  const qcm = !prefs().q.justif;
   return `You are the assistant of a teacher of ${mat}${niveau ? " (grade " + niveau + ")" : ""}. ${photo ? "The teacher photographed one of their old tests; here is the transcription of the sheet, sometimes with their answers added." : "The teacher dictated (or typed) their test: the questions, the expected answers and sometimes the points."}
 The text may come from voice dictation: missing punctuation, misrecognized words (especially Hebrew or technical terms), hesitations, repetitions, spoken corrections (“no sorry…”).
 
@@ -3169,7 +3171,7 @@ Your task: tidy up this test WITHOUT MAKING UP ANY CONTENT.
 - If a question has no answer, write a short model answer and flag it in "remarques" (e.g. “Q3: model answer suggested by the AI, please check”).
 - Points: the teacher's. If none are given, spread 20 points by difficulty. If their total isn't 20, keep their points and flag it.
 - Grading criteria: use what the teacher said (e.g. “I accept two out of three”); otherwise suggest simple criteria adding up to the points.
-${qcm ? `- If the teacher gives options to tick, make it a multiple-choice question: "type":"qcm", and in the version "choix" (the options, without letters) and "bonnes" (indices of the correct answers, starting at 0).` : `- If the teacher gives options, write them in the question (A, B, C…) and ask the student to justify their choice.`}
+- If the teacher gives options to tick, make it a multiple-choice question: "type":"qcm", and in the version "choix" (the options, without letters) and "bonnes" (indices of the correct answers, starting at 0). If they also ask the student to justify the choice, keep a written question, with the options (A, B, C…) in the question.
 - For each question: the concept assessed, 1 or 2 likely typical mistakes, and a suitable number of answer lines (2 to 15).
 - "remarques": a short list of what the teacher should check (empty if everything is clear).
 ${langueRule(langue)}
@@ -3411,7 +3413,7 @@ async function cloudBlob(id){ const {data, error} = await SB.storage.from("tikou
 function vLogin(){
   return `<div class="head"><div><h2>Sign in</h2><p>Access is limited to the school's teachers. Your account is created by the administrator.</p></div></div>
   <section class="panel grid" style="max-width:420px">
-    <div class="field"><label for="lg-mail">E-mail</label><input id="lg-mail" type="email" autocomplete="username"></div>
+    <div class="field"><label for="lg-mail">Email</label><input id="lg-mail" type="email" autocomplete="username"></div>
     <div class="field"><label for="lg-pw">Password</label><input id="lg-pw" type="password" autocomplete="current-password"></div>
     <div class="row"><button class="btn primary" id="lg-go">Sign in</button><button class="btn" id="lg-link">Receive a link by email</button></div>
     <div class="status" id="lg-st"></div>
@@ -3713,20 +3715,20 @@ function vAuth(){
   <section class="panel grid" style="max-width:440px">
     <div class="field"><label for="su-code">School code</label><input id="su-code" type="password"></div>
     <div class="field"><label for="su-nom">Display name</label><input id="su-nom" placeholder="e.g. Administration · A. Pevzner"></div>
-    <div class="field"><label for="su-mail">E-mail</label><input id="su-mail" type="email" autocomplete="username"></div>
+    <div class="field"><label for="su-mail">Email</label><input id="su-mail" type="email" autocomplete="username"></div>
     <div class="field"><label for="su-pw">Password (8 characters minimum)</label><input id="su-pw" type="password" autocomplete="new-password"></div>
     <div class="row"><button class="btn primary" id="su-go">Create account</button></div><div class="status" id="au-st"></div></section>`;
   if (S.auth === "forgot") return `<div class="auth"><section class="auth-card">
     <div class="auth-h"><h2>Forgot password</h2><p>Enter your account email.</p></div>
     ${S.forgot ? `<p class="banner">${S.forgot.mail ? "If an account exists with this email, you'll receive a link to choose a new password. Check your spam folder too." : "Your request has been sent to the Mastery team, who will reset your password and reply by email."}${S.forgot.contact ? ` Questions: <a href="mailto:${esc(S.forgot.contact)}">${esc(S.forgot.contact)}</a>` : ""}</p>`
-      : `<div class="field"><label for="fg-mail">E-mail</label><input id="fg-mail" type="email" autocomplete="username" value="${esc(S.fgMail || "")}"></div><button class="btn primary auth-go" id="fg-go">Send me a link</button>`}
+      : `<div class="field"><label for="fg-mail">Email</label><input id="fg-mail" type="email" autocomplete="username" value="${esc(S.fgMail || "")}"></div><button class="btn primary auth-go" id="fg-go">Send me a link</button>`}
     <div class="status" id="au-st"></div>
-    <p class="small auth-note"><button class="btn ghost sm" id="fg-back">← Back to sign in</button></p></section></div>`;
+    <p class="small auth-note"><button class="btn ghost sm" id="fg-back">← Back to sign in</button></p></section>${MADEBY}</div>`;
   if (S.auth === "reset") return `<div class="auth"><section class="auth-card">
     <div class="auth-h"><h2>New password</h2><p>Choose your new Mastery password.</p></div>
     <div class="field"><label for="npw-pw">New password (8 characters minimum)</label><input id="npw-pw" type="password" autocomplete="new-password"></div>
     <div class="field"><label for="npw-pw2">Confirm</label><input id="npw-pw2" type="password" autocomplete="new-password"></div>
-    <button class="btn primary auth-go" id="npw-go">Save and sign in</button><div class="status" id="au-st"></div></section></div>`;
+    <button class="btn primary auth-go" id="npw-go">Save and sign in</button><div class="status" id="au-st"></div></section>${MADEBY}</div>`;
   if (S.auth === "change") return `<div class="head"><div><h2>Choose your password</h2><p>Welcome ${esc(S.me?.nom || "")} : replace the temporary password.</p></div></div>
   <section class="panel grid" style="max-width:440px">
     <div class="field"><label for="ch-pw">New password (8 characters minimum)</label><input id="ch-pw" type="password" autocomplete="new-password"></div>
@@ -3740,7 +3742,7 @@ function vAuth(){
   if (S.auth === "register") return `<div class="head"><div><h2>Create my teacher account</h2><p>Your space is private: other teachers can't see your classes, students or tests. Your school's leadership can see them if you join your school in Mastery, and the Mastery team can for support and registration approval. <a href="/confidentialite" target="_blank" rel="noopener" style="color:var(--gold)">Learn more</a></p></div></div>
   <section class="panel grid" style="max-width:560px">
     <div class="field"><label for="rg-nom">Your name (shown on sheets if you choose)</label><input id="rg-nom" placeholder="e.g. Mr. Cohen" value="${esc(S.form["rg-nom"] || "")}"></div>
-    <div class="field"><label for="rg-mail">E-mail</label><input id="rg-mail" type="email" autocomplete="username" value="${esc(S.form["rg-mail"] || "")}"></div>
+    <div class="field"><label for="rg-mail">Email</label><input id="rg-mail" type="email" autocomplete="username" value="${esc(S.form["rg-mail"] || "")}"></div>
     <div class="field"><label for="rg-pw">Password (8 characters minimum)</label><input id="rg-pw" type="password" autocomplete="new-password" value="${esc(S.form["rg-pw"] || "")}"></div>
     <h3 style="margin-top:6px">Your school</h3>
     ${ecoleWidget()}
@@ -3752,13 +3754,13 @@ function vAuth(){
     <div class="row"><button class="btn primary" id="rg-go">Send my registration request</button><button class="btn ghost" id="rg-back">I already have an account</button></div><div class="status" id="au-st"></div></section>`;
   return `<div class="auth"><section class="auth-card">
     <div class="auth-h"><h2>Sign in</h2><p>Create, print, and grade your tests with AI.</p></div>
-    <div class="field"><label for="lg-mail2">E-mail</label><input id="lg-mail2" type="email" autocomplete="username" placeholder="firstname.lastname@school.edu"></div>
+    <div class="field"><label for="lg-mail2">Email</label><input id="lg-mail2" type="email" autocomplete="username" placeholder="firstname.lastname@school.edu"></div>
     <div class="field"><label for="lg-pw2">Password</label><input id="lg-pw2" type="password" autocomplete="current-password"></div>
     <button class="btn primary auth-go" id="lg-go2">Sign in</button><div class="status" id="au-st"></div>
     <p class="small auth-note"><button class="btn ghost sm" id="pw-forgot">Forgot your password?</button></p>
     ${window.TIKOUN_CONFIG?.signup ? `<div class="auth-alt"><span class="small muted">Don't have an account yet?</span><button class="btn" id="rg-open">Create my teacher account</button></div>` : ""}
   </section>
-  <p class="small muted auth-foot"><a href="/">← Back to website</a> · <a href="?lang=fr">French</a> · <a href="?lang=en">English</a> · <a href="?lang=pt">Português</a></p></div>`;
+  <p class="small muted auth-foot"><a href="/">← Back to website</a> · <a href="?lang=fr">French</a> · <a href="?lang=en">English</a> · <a href="?lang=pt">Português</a></p>${MADEBY}</div>`;
 }
 const KEEP = ["rg-nom","rg-mail","rg-pw","me-nom","ec-nom","ec-ville"]; let kept = {}; S.form = {};
 document.addEventListener("change", async ev => { if (ev.target.id === "rg-cgu") S.regCgu = ev.target.checked;
@@ -3804,7 +3806,7 @@ function vCompte(){
     <div class="field"><label for="mc-new">New password (8 characters minimum)</label><input id="mc-new" type="password" autocomplete="new-password"></div>
     <div class="row"><button class="btn primary" id="mc-go">Save</button></div><div class="status" id="mc-st"></div></section>
   ${vReglages()}
-  <section class="panel grid" style="max-width:640px"><h3>Supprimer mon compte</h3>
+  <section class="panel grid" style="max-width:640px"><h3>Delete my account</h3>
     <p class="small muted" style="margin:0">Permanently erases your account and everything you own: tests, scanned papers, grades, lessons, practice and images. Export your grades first if you need them.</p>
     <div class="field"><label for="del-pw">Current password</label><input id="del-pw" type="password" autocomplete="current-password"></div>
     <div class="row"><button class="btn" id="del-me" style="color:var(--pen);border-color:var(--pen)">Permanently delete my account</button></div><div class="status" id="del-st"></div></section>`,
@@ -3838,7 +3840,6 @@ function vCompte(){
     <div class="form-row"><div class="field"><label for="qp-fmt">Format</label><select id="qp-fmt">${selOpts(["redige","mixte","qcm"], Q.format, x => ({redige:"Written answers", mixte:"Written and multiple choice", qcm:"Mostly multiple choice"}[x]))}</select></div>
       <div class="field"><label for="qp-prof">Depth</label><select id="qp-prof">${selOpts(["simple","standard","exigeant"], Q.profondeur, x => ({simple:"Simple: apply the lesson", standard:"Standard: understand and explain", exigeant:"Demanding: reason and argue"}[x]))}</select></div></div>
     <div class="field"><label for="qp-long">Answer length</label><select id="qp-long">${selOpts(["courte","moyenne","developpee"], Q.longueur, x => ({courte:"Short (3 to 5 lines)", moyenne:"Medium (5 to 8 lines)", developpee:"Developed (8 to 14 lines)"}[x]))}</select></div>
-    <label class="row small" style="gap:6px"><input type="checkbox" id="qp-just"${Q.justif ? " checked" : ""}> <span>Multiple-choice questions: always leave a box to justify the answer (graded by AI)</span></label>
     <div class="row"><button class="btn primary" id="qp-save">Save</button></div></section>
   <section class="panel grid" style="max-width:640px" id="ton-pref"><h3>Comment tone</h3>
     <p class="small muted" style="margin:0">How the AI addresses students in grading and quiz comments, and the tone of report card comments.</p>
@@ -3875,7 +3876,7 @@ function vComptes(){
       <div class="row"><button class="btn sm primary" data-uval="${u.id}">Submit</button><button class="btn sm ghost" data-uref="${u.id}">Decline</button></div></div>`).join("")}</div></section>` : "";
   return `<div class="head"><div><h2>Teacher accounts</h2><p>Teachers who register themselves have a private space. Those you create here share your classes.</p></div></div>
   ${pendHtml}
-  <section class="panel"><div class="tbl-wrap"><table><thead><tr><th>Name</th><th>E-mail</th><th>School</th><th>Role</th><th>Access</th><th>Plan</th><th>Practice add-on</th><th class="c">Tests</th><th></th></tr></thead><tbody>
+  <section class="panel"><div class="tbl-wrap"><table><thead><tr><th>Name</th><th>Email</th><th>School</th><th>Role</th><th>Access</th><th>Plan</th><th>Practice add-on</th><th class="c">Tests</th><th></th></tr></thead><tbody>
   ${ok.map(u => `<tr><td><b>${esc(u.nom)}</b>${u.statut === "refuse" ? ' <span class="chip bad">declined</span>' : u.actif ? "" : ' <span class="chip bad">disabled</span>'}${u.resetDemande ? ' <span class="chip warn">Forgot password</span>' : ""}</td><td>${esc(u.email)}</td>
     <td>${u.ecole ? `<div class="small"><b>${esc(u.ecole.nom)}</b> ${ecBadge(u.ecole)}<div class="muted">${esc([u.ecole.cp, u.ecole.ville].filter(Boolean).join(" "))}${u.ecole.uai ? " · school ID " + esc(u.ecole.uai) : ""}</div></div>` : `<span class="muted small">—</span>`}</td>
     <td><select data-urole="${u.id}" style="width:auto" aria-label="Role">${selOpts(["prof","admin"], u.role, x => x === "admin" ? "Administrator" : "Teacher")}</select></td>
@@ -3887,7 +3888,7 @@ function vComptes(){
   </tbody></table></div><div class="status" id="us-st"></div></section>
   <section class="panel grid" style="max-width:640px"><h3>Add a teacher</h3>
     <div class="form-row"><div class="field"><label for="nu-nom">Name</label><input id="nu-nom" placeholder="e.g. Mr. Cohen (math)"></div>
-      <div class="field"><label for="nu-mail">E-mail</label><input id="nu-mail" type="email"></div></div>
+      <div class="field"><label for="nu-mail">Email</label><input id="nu-mail" type="email"></div></div>
     <div class="form-row"><div class="field"><label for="nu-pw">Temporary password</label><input id="nu-pw" value="${genPw()}"></div>
       <div class="field"><label for="nu-role">Role</label><select id="nu-role">${selOpts(["prof","admin"], "prof", x => x === "admin" ? "Administrator" : "Teacher")}</select></div></div>
     <div class="form-row"><div class="field"><label for="nu-plan">Plan</label><select id="nu-plan">${selOpts(["decouverte","essentiel","complet"], "complet", x => PLAN[x])}</select></div>
@@ -3923,7 +3924,7 @@ document.addEventListener("click", async ev => {
       await savePrefs({police:+$("#mp-pol").value, lh:+$("#mp-lh").value, reglure:$("#mp-reg").value, consignes:$("#mp-cons").value.trim(), bareme:$("#mp-bar").checked}); render(); toast("Saved"); return; }
     if (t.id === "ap-save"){ const P = prefs().periodes || {}, md = id => ($("#" + id)?.value || "").slice(5, 10);
       await savePrefs({periodes:{...PREF_DEF.periodes, ...P, mode:$("#ap-mode").value, ...($("#ap-t2") ? {t2:md("ap-t2") || P.t2, t3:md("ap-t3") || P.t3} : {s2:md("ap-s2") || P.s2})}}); render(); toast("Saved"); return; }
-    if (t.id === "qp-save"){ await savePrefs({q:{format:$("#qp-fmt").value, profondeur:$("#qp-prof").value, longueur:$("#qp-long").value, justif:$("#qp-just").checked}}); S.params._pref = false; render(); toast("Saved"); return; }
+    if (t.id === "qp-save"){ await savePrefs({q:{format:$("#qp-fmt").value, profondeur:$("#qp-prof").value, longueur:$("#qp-long").value}}); S.params._pref = false; render(); toast("Saved"); return; }
     if (t.id === "me-save"){ const body = {nom:$("#me-nom").value}, e = ecoleVal();
       if (e.nom && e.ville && (e.nom !== S.me.ecole?.nom || e.ville !== S.me.ecole?.ville)) body.ecole = e;
       else if (e.nom || e.ville){ if (!e.nom || !e.ville) return toast("Enter the school's name and city."); }
@@ -3982,6 +3983,8 @@ function quotaHtml(){
 const essaiCtrl = () => { const n = CFG().trialCtrl || 1; return n > 1 ? `${n} tests per month` : "1 test per month"; };
 const copiesCtrl = () => S.me?.quota?.par || CFG().copiesCtrl || 35;
 const tailleTxt = () => `One test covers up to ${copiesCtrl()} students: beyond that, it counts as one more for each additional group of ${copiesCtrl()}.`;
+/* Signature : Mastery est conçu par Les Institutions Sinaï */
+const MADEBY = `<div class="madeby"><span>Made by</span><img src="/logo-sinai.png" alt="Les Institutions Sinaï" width="119" height="34"></div>`;
 const TIER_TXT = {decouverte:"1 class · 2 tests per month", essentiel:"Up to 3 classes · 6 tests per month · online practice", complet:"Up to 6 classes · 12 tests per month · online practice"};
 function abonnementPanel(){
   const a = S.me?.acces || {}, P = CFG().prix || {};
@@ -4790,22 +4793,32 @@ function quizSuivi(){
 /* ---------- Codes élèves (Classes) ---------- */
 const CODE_ALPHA = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const newCode = () => { let s = ""; for (const b of crypto.getRandomValues(new Uint8Array(8))) s += CODE_ALPHA[b % CODE_ALPHA.length]; return s; };
+/* Comptes créés par les élèves de la classe affichée (e-mail masqué) : chargés à part, le professeur ne les a pas dans ses données */
+async function loadComptes(id, force){
+  if (!force && S.comptesCl?.id === id) return; S.comptesCl = {id, map:S.comptesCl?.id === id ? S.comptesCl.map : {}};
+  try { const j = await api("/api/classes/" + id + "/comptes"); if (S.comptesCl?.id === id){ S.comptesCl.map = j.comptes || {}; scheduleRender(); } } catch(e){ console.warn(e); }
+}
+const codesRows = cl => [["Class", "Name", "First name", "Code", "Sign-in link", "Account created"],
+  ...(cl.eleves || []).filter(e => e.code).map(e => [cl.nom, e.nom, e.prenom, e.code, location.origin + "/eleve?c=" + e.code, S.comptesCl?.id === cl.id && S.comptesCl.map[e.id] ? "oui" : "non"])];
 function codesPanel(cl){
   if (!cl || !window.TIKOUN_CONFIG?.accounts) return "";
   const n = (cl.eleves || []).filter(e => e.code).length, tot = (cl.eleves || []).length;
-  return `<section class="panel grid" style="gap:10px"><div class="row between"><div><h3>Student codes</h3><p class="small muted">Student space (published results, retakes, online practice): each student signs in at <b>${esc(location.origin)}/eleve</b> with their personal code and last name (no email).</p></div>
-    <div class="row"><button class="btn sm" id="codes-gen"${n < tot ? "" : " disabled"}>${n < tot ? "Generate missing codes" : "Codes up to date"}</button>${n ? `<button class="btn sm primary" id="codes-print">Print the cards</button>` : ""}</div></div>
-    ${n ? `<div class="row">${(cl.eleves || []).map(e => `<span class="chip">${esc(e.prenom)} ${esc((e.nom || "").slice(0, 1))}. · <b class="num">${esc(e.code || "—")}</b>${e.code ? ` <button class="btn sm ghost" style="padding:0 4px" data-recode="${esc(e.id)}" title="New code">↻</button>` : ""}</span>`).join("")}</div>` : ""}</section>`;
+  if (n) loadComptes(cl.id); const K = S.comptesCl?.id === cl.id ? S.comptesCl.map : {}, nk = (cl.eleves || []).filter(e => K[e.id]).length;
+  return `<section class="panel grid" style="gap:10px"><div class="row between"><div><h3>Student codes</h3><p class="small muted">Student space (published results, retakes, online practice): each student signs in at <b>${esc(location.origin)}/eleve</b> with their personal code and last name. They can then create their account, with their email and password.</p></div>
+    <div class="row"><button class="btn sm" id="codes-gen"${n < tot ? "" : " disabled"}>${n < tot ? "Generate missing codes" : "Codes up to date"}</button>${n ? `<button class="btn sm" id="codes-csv">Export codes (CSV)</button><button class="btn sm primary" id="codes-print">Print the cards</button>` : ""}</div></div>
+    ${n ? `<div class="row">${(cl.eleves || []).map(e => `<span class="chip">${esc(e.prenom)} ${esc((e.nom || "").slice(0, 1))}. · <b class="num">${esc(e.code || "—")}</b>${e.code ? ` <button class="btn sm ghost" style="padding:0 4px" data-recode="${esc(e.id)}" title="New code">↻</button>` : ""}${K[e.id] ? ` <button class="btn sm ghost" style="padding:0 4px;color:var(--ok)" data-ecompte="${esc(e.id)}" title="Account created (${esc(K[e.id].email)}) : cliquer pour le remettre à zéro">account ✓</button>` : ""}</span>`).join("")}</div>
+      <label class="row small" style="gap:6px"><input type="checkbox" id="codes-comptes"${cl.sansCompte ? "" : " checked"}> <span>Students in this class can create an account (email and password)</span></label>
+      <p class="small muted" style="margin:0">${nk} account(s) created out of ${n}. Has a student lost their password? Click “account ✓” to reset their account: they create it again with their code.</p>` : ""}</section>`;
 }
 function printCards(cl){
   const url = location.origin + "/eleve?c=";
   const card = e => { let svg = ""; try { const qr = qrcode(0, "M"); qr.addData(url + e.code); qr.make(); svg = qr.createSvgTag({cellSize:3, margin:0}); } catch(err){}
-    return `<div class="c"><div class="h"><b>Mastery</b><span>${esc(cl.nom)}</span></div><div class="n">${esc(e.prenom)} ${esc(e.nom)}</div><div class="b"><div>${svg}</div><div><div class="l">Your code</div><div class="k">${esc(e.code)}</div><div class="u">${esc(location.host)}/eleve · code + nom de famille</div></div></div></div>`; };
+    return `<div class="c"><div class="h"><b>Mastery</b><span>${esc(cl.nom)}</span></div><div class="n">${esc(e.prenom)} ${esc(e.nom)}</div><div class="b"><div>${svg}</div><div><div class="l">Your code</div><div class="k">${esc(e.code)}</div><div class="u">${esc(location.host)}/eleve · code + nom de famille</div></div></div><div class="m">With this code, create your account: email and password.</div></div>`; };
   const w = window.open("", "_blank"); if (!w) return toast("Allow pop-ups to print the cards.");
   w.document.write(`<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Student cards · ${esc(cl.nom)}</title><style>
     body{font-family:Inter,Arial,sans-serif;margin:0;padding:10mm;color:#15233F}.g{display:grid;grid-template-columns:1fr 1fr;gap:6mm}
     .c{border:1px solid #cfc8b8;border-radius:4mm;padding:5mm;break-inside:avoid;display:grid;gap:3mm}.h{display:flex;justify-content:space-between;font-size:11pt}.h b{font-family:Georgia,serif}
-    .n{font-size:14pt;font-weight:700}.b{display:flex;gap:5mm;align-items:center}.b svg{width:28mm;height:28mm}.l{font-size:9pt;color:#6b6758;text-transform:uppercase;letter-spacing:.1em}.k{font-size:22pt;font-weight:700;letter-spacing:.12em;font-family:monospace}.u{font-size:9pt;color:#6b6758}
+    .n{font-size:14pt;font-weight:700}.b{display:flex;gap:5mm;align-items:center}.b svg{width:28mm;height:28mm}.l{font-size:9pt;color:#6b6758;text-transform:uppercase;letter-spacing:.1em}.k{font-size:22pt;font-weight:700;letter-spacing:.12em;font-family:monospace}.u{font-size:9pt;color:#6b6758}.m{font-size:8.5pt;color:#6b6758;border-top:1px solid #e3ddd0;padding-top:2mm}
     @media print{body{padding:6mm}}</style></head><body><div class="g">${(cl.eleves || []).filter(e => e.code).map(card).join("")}</div><script>setTimeout(()=>print(),300)<\/script></body></html>`);
   w.document.close();
 }
@@ -4855,11 +4868,19 @@ Reply in JSON only: {"notes":[{"k":0,"juste":true,"commentaire":"…"}]}`, {feat
     }
     if (t.id === "codes-gen" || d.recode){ const cl = classe(S.classeSel) || store.classes[0]; if (!cl) return; const c = structuredClone(cl); delete c.id;
       c.eleves = (c.eleves || []).map(e => (d.recode ? e.id === d.recode : !e.code) ? {...e, code:newCode()} : e); await write("classes/" + cl.id, c); toast(d.recode ? "New code generated (the old one no longer works)." : "Codes generated."); return; }
+    if (t.id === "codes-csv"){ const cl = classe(S.classeSel) || store.classes[0]; if (!cl) return;
+      const csv = "\ufeff" + codesRows(cl).map(r => r.map(x => { x = String(x ?? ""); if (/^[=+\-@\t\r]/.test(x)) x = "'" + x; return `"${x.replace(/"/g, '""')}"`; }).join(";")).join("\n");
+      if (typeof DL === "undefined" || !DL) return toast("Download unavailable in this view.");
+      try { await DL.save({filename:`Student codes - ${cl.nom}.csv`.replace(/[\\/:*?"<>|]/g, "-"), data:csv}); } catch(e){ if (e?.code !== "declined") toast("Download failed."); } return; }
+    if (d.ecompte){ const cl = classe(S.classeSel) || store.classes[0], e = cl?.eleves?.find(x => x.id === d.ecompte); if (!e) return;
+      if (!confirm(`Reset the account of ${e.prenom} ${e.nom} ?\n\nTheir email and password will be erased. Their scores and code stay the same: they can create the account again with their code.`)) return;
+      await api("/api/classes/" + cl.id + "/comptes/" + e.id, {method:"DELETE"}); toast("Account reset."); await loadComptes(cl.id, true); return render(); }
     if (t.id === "codes-print"){ const cl = classe(S.classeSel) || store.classes[0]; if (cl) printCards(cl); return; }
   } catch(e){ console.error(e); toast(e?.message || "Erreur."); }
 });
 document.addEventListener("change", async ev => {
   const el = ev.target, d = el.dataset;
+  if (el.id === "codes-comptes"){ const cl = classe(S.classeSel) || store.classes[0]; if (!cl) return; await write("classes/" + cl.id, {sansCompte:!el.checked}, "update"); toast(el.checked ? "Student accounts allowed for this class." : "Student accounts turned off for this class."); return; }
   if (d.qn){ S.qn[d.qn] = el.value; if (d.qn === "coursId") S.qn.classeId = ""; if (["coursId","classeId"].includes(d.qn)) render(); return; }
   if (d.qtype){ const s = new Set(S.qn.types); el.checked ? s.add(d.qtype) : s.delete(d.qtype); S.qn.types = [...s]; return; }
   const q = S.view === "quiz" ? quizOf(S.qz.id) : null; if (!q) return;
