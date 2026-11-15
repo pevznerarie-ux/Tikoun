@@ -390,7 +390,7 @@ function fixHebrewText(t){
 /* Logo à l'ouverture de l'application, retiré dès que la première vue est prête (au moins 0,7 s, au plus 6 s) */
 const SPLASH_T0 = Date.now();
 function hideSplash(){ const sp = document.getElementById("splash"); if (!sp || sp.dataset.out) return; sp.dataset.out = 1;
-  setTimeout(() => { sp.classList.add("out"); setTimeout(() => sp.remove(), 500); }, Math.max(0, 700 - (Date.now() - SPLASH_T0))); }
+  setTimeout(() => { sp.classList.add("out"); setTimeout(() => sp.remove(), 500); }, Math.max(0, 1600 - (Date.now() - SPLASH_T0))); }
 setTimeout(hideSplash, 6000);
 /* ================= Render loop (keeps focus while data arrives) ================= */
 let rq = false, skipped = false;
