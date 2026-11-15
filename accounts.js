@@ -310,7 +310,7 @@ const essaiCtrl = () => { const n = CFG().trialCtrl || 1; return n > 1 ? `${n} c
 const copiesCtrl = () => S.me?.quota?.par || CFG().copiesCtrl || 35;
 const tailleTxt = () => `Un contrôle couvre jusqu'à ${copiesCtrl()} élèves : au-delà, il compte pour un de plus par tranche de ${copiesCtrl()}.`;
 /* Signature : Mastery est conçu par Les Institutions Sinaï */
-const MADEBY = `<div class="madeby"><span>Made by</span><img src="/logo-sinai.png" alt="Les Institutions Sinaï" width="119" height="34"></div>`;
+const MADEBY = `<p class="madeby">Made by Les Institutions Sinaï</p>`;
 const TIER_TXT = {decouverte:"1 classe · 2 contrôles par mois", essentiel:"Jusqu'à 3 classes · 6 contrôles par mois · exercices en ligne", complet:"Jusqu'à 6 classes · 12 contrôles par mois · exercices en ligne"};
 function abonnementPanel(){
   const a = S.me?.acces || {}, P = CFG().prix || {};
