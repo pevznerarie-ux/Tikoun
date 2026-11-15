@@ -1252,6 +1252,11 @@ function vHome(){
   ${done.length ? foldSec("corriges", "Corrigidas", done.length, done.map(line).join("")) : ""}`;
 }
 
+/* Forfait : un contrôle couvre q.par élèves ; au-delà, il compte pour un de plus par tranche (les rattrapages ne comptent pas) */
+function grosCtrl(c, n){
+  const q = S.me?.quota; if (!q || q.illimite || !q.par || c.type === "rattrapage" || n <= q.par) return "";
+  return `<p class="banner">Esta turma tem ${n} alunos: esta prova conta como ${Math.ceil(n / q.par)} no seu plano (${q.par} alunos por prova).</p>`;
+}
 function quotaHome(){
   const q = S.me?.quota; if (!q || q.illimite || typeof quotaHtml !== "function") return "";
   const left = Math.max(0, q.ctrl - q.used), msg = left === 0 ? "Você usou todas as provas do seu plano neste mês." : q.used / q.ctrl >= .5 ? (left > 1 ? `Restam ${left} provas neste mês.` : "Resta 1 prova neste mês.") : "";
@@ -1546,6 +1551,7 @@ function vEdit(){
     <h3>Impressão</h3>
     <p class="muted small">Um PDF para a turma toda: uma folha por aluno, com o nome e o QR code dele em cada página. O nível não aparece escrito na folha, fica apenas no QR code.</p>
     ${scanned ? `<p class="banner">Algumas provas já foram escaneadas. Reimprimir mantém os escaneamentos e as notas existentes, mas um layout diferente pode deslocar as questões entre as páginas.</p>` : ""}
+    ${grosCtrl(c, studs.length)}
     <div class="row"><button class="btn primary" id="print">${printed ? "Reimprimir" : "Gerar"} as folhas · ${studs.length} aluno(s)</button>
       <button class="btn" id="print1">Folha do aluno exibido</button></div>
     <div class="status" id="pr-st"></div>
@@ -3741,7 +3747,7 @@ function vAuth(){
     <div class="field"><label>Cabeçalho das suas provas e exercícios</label>${affRadios(S.regAff)}</div>
     <h3 style="margin-top:6px">Seu plano <span class="chip ok" style="vertical-align:middle">${CFG().billing ? "1 mês grátis" : "Beta gratuito"}</span></h3>
     <div class="tiers">${["decouverte", "essentiel", "complet"].map(k => `<label class="tier${(S.regPlan || "essentiel") === k ? " sel" : ""}" style="cursor:pointer"><span class="row" style="gap:8px"><input type="radio" name="plan" style="width:auto;margin:0" data-plan="${k}"${(S.regPlan || "essentiel") === k ? " checked" : ""}><b>${PLAN[k]}</b></span>${CFG().billing && CFG().prix?.[k] ? `<div class="tier-p">${esc(CFG().prix[k])}</div>` : ""}<span class="small muted">${TIER_TXT[k]}</span></label>`).join("")}</div>
-    <p class="small muted" style="margin:0">${CFG().billing ? "Você começa com um mês de teste grátis no plano Completo, sem cartão de crédito: você escolhe o seu plano no fim do teste. Sua inscrição será aprovada pela equipe Mastery." : "Durante o beta, todos os planos são gratuitos: nenhum pagamento é pedido. Sua inscrição será validada pela equipe Mastery."}</p>
+    <p class="small muted" style="margin:0">${CFG().billing ? `Você começa com um mês de teste grátis, sem cartão de crédito: todas as funções ficam abertas, com ${essaiCtrl()}. Você escolhe o seu plano no fim do teste. Sua inscrição será aprovada pela equipe Mastery.` : "Durante o beta, todos os planos são gratuitos: nenhum pagamento é pedido. Sua inscrição será validada pela equipe Mastery."}</p>
     <label class="small" style="display:flex;gap:8px;align-items:flex-start;cursor:pointer"><input type="checkbox" id="rg-cgu" style="width:auto;margin-top:3px" ${S.regCgu ? "checked" : ""}><span>Aceito os <a href="/cgu" target="_blank" rel="noopener" style="color:var(--gold)">termos de uso</a> e a <a href="/confidentialite" target="_blank" rel="noopener" style="color:var(--gold)">política de privacidade</a>. Comprometo-me a informar as famílias sobre o uso do Mastery nas minhas turmas.</span></label>
     <div class="row"><button class="btn primary" id="rg-go">Enviar meu pedido de cadastro</button><button class="btn ghost" id="rg-back">Já tenho uma conta</button></div><div class="status" id="au-st"></div></section>`;
   return `<div class="auth"><section class="auth-card">
@@ -3972,6 +3978,10 @@ function quotaHtml(){
     <div class="qbar"><i style="width:${Math.round(r * 100)}%" class="${r >= 1 ? "full" : r >= .5 ? "half" : ""}"></i></div>
     ${q.classes != null ? `<div class="small muted">Turmas: ${(store.allClasses || store.classes).filter(c => c.createdBy === S.me?.id).length} / ${q.classes}</div>` : `<div class="small muted">2 provas por mês por turma.</div>`}</div>`;
 }
+/* Gratuit (essai, mois offerts) : nombre de contrôles par mois. Taille d'un contrôle : au-delà, il compte pour un de plus par tranche. */
+const essaiCtrl = () => { const n = CFG().trialCtrl || 1; return n > 1 ? `${n} provas por mês` : "1 prova por mês"; };
+const copiesCtrl = () => S.me?.quota?.par || CFG().copiesCtrl || 35;
+const tailleTxt = () => `Uma prova cobre até ${copiesCtrl()} alunos: acima disso, conta como mais uma a cada grupo de ${copiesCtrl()}.`;
 const TIER_TXT = {decouverte:"1 turma · 2 provas por mês", essentiel:"Até 3 turmas · 6 provas por mês · exercícios online", complet:"Até 6 turmas · 12 provas por mês · exercícios online"};
 function abonnementPanel(){
   const a = S.me?.acces || {}, P = CFG().prix || {};
@@ -3986,10 +3996,10 @@ function abonnementPanel(){
   const card = k => `<div class="tier${k === "essentiel" ? " best" : ""}"><b>${PLAN[k]}</b><div class="tier-p">${esc(P[k] || "")}</div><div class="small muted">${TIER_TXT[k]}</div>
     <div class="grid" style="gap:6px;margin-top:auto"><button class="btn sm ${k === "essentiel" ? "primary" : ""}" data-buy="${k}" data-per="mois">Mensal</button><button class="btn sm ghost" data-buy="${k}" data-per="an">Anual · ${esc(P[k + "An"] || "")}</button></div></div>`;
   return `<section class="panel grid" style="max-width:760px"><h3>Minha assinatura ${a.mode === "essai" ? `<span class="chip ok" style="vertical-align:middle">Teste grátis · ${joursRest(a.fin)} ${JRS}</span>` : `<span class="chip bad" style="vertical-align:middle">Teste encerrado</span>`}</h3>
-    <p class="small muted" style="margin:0">${a.mode === "essai" ? `Durante o teste, o plano Completo fica aberto até ${frDate(a.fin.slice(0, 10))}. Se você assinar agora, o primeiro pagamento só acontece no fim do teste.` : "Seus dados estão guardados. Escolha um plano para continuar criando, digitalizando e corrigindo."}</p>
-    ${a.mode === "essai" ? quotaHtml() : ""}
+    <p class="small muted" style="margin:0">${a.mode === "essai" ? `Durante o teste, todas as funções ficam abertas até ${frDate(a.fin.slice(0, 10))}, com ${essaiCtrl()}. Se você assinar agora, o primeiro pagamento só acontece no fim do teste.` : "Seus dados estão guardados. Escolha um plano para continuar criando, digitalizando e corrigindo."}</p>
+    ${a.mode === "essai" ? quotaHtml() + (extra ? `<div class="row">${extra}</div>` : "") : ""}
     <div class="tiers">${["decouverte", "essentiel", "complet"].map(card).join("")}</div>
-    <p class="small muted" style="margin:0">Uma prova conta quando as folhas são impressas; reimpressões e recuperações não contam. Anual: 2 meses grátis. Pagamento seguro pela Stripe, cancele quando quiser.</p><div class="status" id="bil-st"></div></section>`;
+    <p class="small muted" style="margin:0">Uma prova conta quando as folhas são impressas; reimpressões e recuperações não contam. ${tailleTxt()} Anual: 2 meses grátis. Pagamento seguro pela Stripe, cancele quando quiser.</p><div class="status" id="bil-st"></div></section>`;
 }
 function parrainagePanel(){
   if (!S.me?.ref) return ""; const link = location.origin + "/?ref=" + S.me.ref, st = S.me.parrainage || {};

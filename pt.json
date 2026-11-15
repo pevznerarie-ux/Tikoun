@@ -2255,5 +2255,20 @@
  "Notation de l'IA": "Notas da IA",
  "Notation enregistrée": "Critério de nota salvo",
  "Note par pas de 0,5, comme un professeur juste et bienveillant qui cherche ce que l'élève a compris. Un critère est acquis dès que l'idée attendue est là, même dite avec d'autres mots, brièvement, maladroitement ou avec des fautes : ne retire rien pour la formulation, l'orthographe, la longueur ou un détail du corrigé-type qui manque. Si l'élève montre qu'il a compris l'idée principale de la question, il a au moins les trois quarts des points ; s'il n'en a saisi qu'une partie, environ la moitié.": "Nota em passos de 0,5, como um professor justo e benevolente que procura o que o aluno entendeu. Um critério está cumprido assim que a ideia esperada aparece, mesmo dita com outras palavras, de forma breve, desajeitada ou com erros: não desconte nada pela formulação, pela ortografia, pelo tamanho ou por um detalhe do gabarito que falte. Se o aluno mostra que entendeu a ideia principal da questão, recebe pelo menos três quartos dos pontos; se entendeu só uma parte, cerca de metade.",
- "Sévérité": "Rigor"
+ "Sévérité": "Rigor",
+ ", avec": ", com",
+ ". Tu choisiras ton forfait à la fin de l'essai. Ton inscription sera validée par l'équipe Mastery.": ". Você escolhe o seu plano no fim do teste. Sua inscrição será aprovada pela equipe Mastery.",
+ "1 contrôle par mois": "1 prova por mês",
+ "Annuel : 2 mois offerts. Paiement sécurisé par Stripe, résiliable à tout moment.": "Anual: 2 meses grátis. Pagamento seguro pela Stripe, cancele quando quiser.",
+ "Cette classe a": "Esta turma tem",
+ "Pendant l'essai, toutes les fonctions sont ouvertes jusqu'au": "Durante o teste, todas as funções ficam abertas até",
+ "Tu commences par un mois d'essai gratuit, sans carte bancaire : toutes les fonctions sont ouvertes, avec": "Você começa com um mês de teste grátis, sem cartão de crédito: todas as funções ficam abertas, com",
+ "Un contrôle compte quand ses feuilles sont imprimées ; réimpressions et rattrapages ne comptent pas.": "Uma prova conta quando as folhas são impressas; reimpressões e recuperações não contam.",
+ "Un contrôle couvre jusqu'à": "Uma prova cobre até",
+ "contrôles par mois": "provas por mês",
+ "copies par contrôle).": "alunos por prova).",
+ "dans ton forfait (": "no seu plano (",
+ "élèves : au-delà, il compte pour un de plus par tranche de": "alunos: acima disso, conta como mais uma a cada grupo de",
+ "élèves : ce contrôle compte pour": "alunos: esta prova conta como",
+ "Pendant le mois d'essai, toutes les fonctions sont ouvertes, sans carte bancaire, avec un contrôle inclus. Un contrôle compte quand ses feuilles sont imprimées, jusqu'à 35 élèves ; réimpressions et rattrapages ne comptent pas. Résiliable à tout moment.": "Durante o mês de teste, todas as funções ficam abertas, sem cartão, com uma prova incluída. Uma prova conta quando as folhas são impressas, para até 35 alunos; reimpressões e recuperações não contam. Cancele quando quiser."
 }

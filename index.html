@@ -1252,6 +1252,11 @@ function vHome(){
   ${done.length ? foldSec("corriges", "Corrigés", done.length, done.map(line).join("")) : ""}`;
 }
 
+/* Forfait : un contrôle couvre q.par élèves ; au-delà, il compte pour un de plus par tranche (les rattrapages ne comptent pas) */
+function grosCtrl(c, n){
+  const q = S.me?.quota; if (!q || q.illimite || !q.par || c.type === "rattrapage" || n <= q.par) return "";
+  return `<p class="banner">Cette classe a ${n} élèves : ce contrôle compte pour ${Math.ceil(n / q.par)} dans ton forfait (${q.par} copies par contrôle).</p>`;
+}
 function quotaHome(){
   const q = S.me?.quota; if (!q || q.illimite || typeof quotaHtml !== "function") return "";
   const left = Math.max(0, q.ctrl - q.used), msg = left === 0 ? "Tu as utilisé tous les contrôles de ton forfait ce mois-ci." : q.used / q.ctrl >= .5 ? (left > 1 ? `Il te reste ${left} contrôles ce mois-ci.` : "Il te reste 1 contrôle ce mois-ci.") : "";
@@ -1546,6 +1551,7 @@ function vEdit(){
     <h3>Impression</h3>
     <p class="muted small">Un PDF pour toute la classe : une feuille par élève, avec son nom et son QR code sur chaque page. Le niveau n'est pas écrit sur la feuille, il est seulement contenu dans le QR code.</p>
     ${scanned ? `<p class="banner">Des copies ont déjà été scannées. Réimprimer garde les scans et les notes existants, mais une mise en page différente peut décaler les questions par page.</p>` : ""}
+    ${grosCtrl(c, studs.length)}
     <div class="row"><button class="btn primary" id="print">${printed ? "Réimprimer" : "Générer"} les feuilles · ${studs.length} élève(s)</button>
       <button class="btn" id="print1">Feuille de l'élève affiché</button></div>
     <div class="status" id="pr-st"></div>
@@ -3741,7 +3747,7 @@ function vAuth(){
     <div class="field"><label>En-tête de tes contrôles et exercices</label>${affRadios(S.regAff)}</div>
     <h3 style="margin-top:6px">Ton forfait <span class="chip ok" style="vertical-align:middle">${CFG().billing ? "1 mois gratuit" : "Bêta gratuite"}</span></h3>
     <div class="tiers">${["decouverte", "essentiel", "complet"].map(k => `<label class="tier${(S.regPlan || "essentiel") === k ? " sel" : ""}" style="cursor:pointer"><span class="row" style="gap:8px"><input type="radio" name="plan" style="width:auto;margin:0" data-plan="${k}"${(S.regPlan || "essentiel") === k ? " checked" : ""}><b>${PLAN[k]}</b></span>${CFG().billing && CFG().prix?.[k] ? `<div class="tier-p">${esc(CFG().prix[k])}</div>` : ""}<span class="small muted">${TIER_TXT[k]}</span></label>`).join("")}</div>
-    <p class="small muted" style="margin:0">${CFG().billing ? "Tu commences par un mois d'essai gratuit sur le forfait Complet, sans carte bancaire : tu choisiras ton forfait à la fin de l'essai. Ton inscription sera validée par l'équipe Mastery." : "Pendant la bêta, tous les forfaits sont gratuits : aucun paiement n'est demandé. Ton inscription sera validée par l'équipe Mastery."}</p>
+    <p class="small muted" style="margin:0">${CFG().billing ? `Tu commences par un mois d'essai gratuit, sans carte bancaire : toutes les fonctions sont ouvertes, avec ${essaiCtrl()}. Tu choisiras ton forfait à la fin de l'essai. Ton inscription sera validée par l'équipe Mastery.` : "Pendant la bêta, tous les forfaits sont gratuits : aucun paiement n'est demandé. Ton inscription sera validée par l'équipe Mastery."}</p>
     <label class="small" style="display:flex;gap:8px;align-items:flex-start;cursor:pointer"><input type="checkbox" id="rg-cgu" style="width:auto;margin-top:3px" ${S.regCgu ? "checked" : ""}><span>J'accepte les <a href="/cgu" target="_blank" rel="noopener" style="color:var(--gold)">conditions d'utilisation</a> et la <a href="/confidentialite" target="_blank" rel="noopener" style="color:var(--gold)">politique de confidentialité</a>. Je m'engage à informer les familles de l'utilisation de Mastery pour mes classes.</span></label>
     <div class="row"><button class="btn primary" id="rg-go">Envoyer ma demande d'inscription</button><button class="btn ghost" id="rg-back">J'ai déjà un compte</button></div><div class="status" id="au-st"></div></section>`;
   return `<div class="auth"><section class="auth-card">
@@ -3972,6 +3978,10 @@ function quotaHtml(){
     <div class="qbar"><i style="width:${Math.round(r * 100)}%" class="${r >= 1 ? "full" : r >= .5 ? "half" : ""}"></i></div>
     ${q.classes != null ? `<div class="small muted">Classes : ${(store.allClasses || store.classes).filter(c => c.createdBy === S.me?.id).length} / ${q.classes}</div>` : `<div class="small muted">2 contrôles par mois et par classe.</div>`}</div>`;
 }
+/* Gratuit (essai, mois offerts) : nombre de contrôles par mois. Taille d'un contrôle : au-delà, il compte pour un de plus par tranche. */
+const essaiCtrl = () => { const n = CFG().trialCtrl || 1; return n > 1 ? `${n} contrôles par mois` : "1 contrôle par mois"; };
+const copiesCtrl = () => S.me?.quota?.par || CFG().copiesCtrl || 35;
+const tailleTxt = () => `Un contrôle couvre jusqu'à ${copiesCtrl()} élèves : au-delà, il compte pour un de plus par tranche de ${copiesCtrl()}.`;
 const TIER_TXT = {decouverte:"1 classe · 2 contrôles par mois", essentiel:"Jusqu'à 3 classes · 6 contrôles par mois · exercices en ligne", complet:"Jusqu'à 6 classes · 12 contrôles par mois · exercices en ligne"};
 function abonnementPanel(){
   const a = S.me?.acces || {}, P = CFG().prix || {};
@@ -3986,10 +3996,10 @@ function abonnementPanel(){
   const card = k => `<div class="tier${k === "essentiel" ? " best" : ""}"><b>${PLAN[k]}</b><div class="tier-p">${esc(P[k] || "")}</div><div class="small muted">${TIER_TXT[k]}</div>
     <div class="grid" style="gap:6px;margin-top:auto"><button class="btn sm ${k === "essentiel" ? "primary" : ""}" data-buy="${k}" data-per="mois">Mensuel</button><button class="btn sm ghost" data-buy="${k}" data-per="an">Annuel · ${esc(P[k + "An"] || "")}</button></div></div>`;
   return `<section class="panel grid" style="max-width:760px"><h3>Mon abonnement ${a.mode === "essai" ? `<span class="chip ok" style="vertical-align:middle">Essai gratuit · ${joursRest(a.fin)} ${JRS}</span>` : `<span class="chip bad" style="vertical-align:middle">Essai terminé</span>`}</h3>
-    <p class="small muted" style="margin:0">${a.mode === "essai" ? `Pendant l'essai, le forfait Complet est ouvert jusqu'au ${frDate(a.fin.slice(0, 10))}. Si tu t'abonnes maintenant, le premier paiement n'a lieu qu'à la fin de l'essai.` : "Tes données sont conservées. Choisis un forfait pour continuer à créer, scanner et corriger."}</p>
-    ${a.mode === "essai" ? quotaHtml() : ""}
+    <p class="small muted" style="margin:0">${a.mode === "essai" ? `Pendant l'essai, toutes les fonctions sont ouvertes jusqu'au ${frDate(a.fin.slice(0, 10))}, avec ${essaiCtrl()}. Si tu t'abonnes maintenant, le premier paiement n'a lieu qu'à la fin de l'essai.` : "Tes données sont conservées. Choisis un forfait pour continuer à créer, scanner et corriger."}</p>
+    ${a.mode === "essai" ? quotaHtml() + (extra ? `<div class="row">${extra}</div>` : "") : ""}
     <div class="tiers">${["decouverte", "essentiel", "complet"].map(card).join("")}</div>
-    <p class="small muted" style="margin:0">Un contrôle compte quand ses feuilles sont imprimées ; réimpressions et rattrapages ne comptent pas. Annuel : 2 mois offerts. Paiement sécurisé par Stripe, résiliable à tout moment.</p><div class="status" id="bil-st"></div></section>`;
+    <p class="small muted" style="margin:0">Un contrôle compte quand ses feuilles sont imprimées ; réimpressions et rattrapages ne comptent pas. ${tailleTxt()} Annuel : 2 mois offerts. Paiement sécurisé par Stripe, résiliable à tout moment.</p><div class="status" id="bil-st"></div></section>`;
 }
 function parrainagePanel(){
   if (!S.me?.ref) return ""; const link = location.origin + "/?ref=" + S.me.ref, st = S.me.parrainage || {};

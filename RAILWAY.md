@@ -159,6 +159,8 @@ Pour ouvrir le paiement :
 | `STRIPE_PRICE_ECOLE` | `price_…` (par élève et par an) |
 | les mêmes avec `_BRL` à la fin | prix en reais, utilisés sur le site en portugais |
 | `TRIAL_DAYS` | facultatif, 30 par défaut |
+| `TRIAL_CTRL` | facultatif : contrôles par mois pendant l'essai gratuit et les mois offerts, 1 par défaut |
+| `COPIES_PAR_CONTROLE` | facultatif : élèves couverts par un contrôle du forfait, 35 par défaut (au-delà, un contrôle de plus par tranche) |
 | `ECOLE_MIN_ELEVES` | facultatif, 100 par défaut |
 | `AI_BUDGET_PER_CTRL` | facultatif : plafond IA en dollars par contrôle du forfait, 3 par défaut |
 | `AI_BUDGET_USER_MONTH` | facultatif : plafond IA mensuel des comptes sans quota, 60 $ par défaut |

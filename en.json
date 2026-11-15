@@ -2253,5 +2253,20 @@
  "Notation de l'IA": "AI grading",
  "Notation enregistrée": "Grading saved",
  "Note par pas de 0,5, comme un professeur juste et bienveillant qui cherche ce que l'élève a compris. Un critère est acquis dès que l'idée attendue est là, même dite avec d'autres mots, brièvement, maladroitement ou avec des fautes : ne retire rien pour la formulation, l'orthographe, la longueur ou un détail du corrigé-type qui manque. Si l'élève montre qu'il a compris l'idée principale de la question, il a au moins les trois quarts des points ; s'il n'en a saisi qu'une partie, environ la moitié.": "Score in steps of 0.5, like a fair and kind teacher looking for what the student understood. A criterion is met as soon as the expected idea is there, even in other words, briefly, clumsily, or with mistakes: take nothing off for wording, spelling, length, or a missing detail of the answer key. If the student shows they understood the main idea of the question, they get at least three quarters of the points; if they grasped only part of it, about half.",
- "Sévérité": "Strictness"
+ "Sévérité": "Strictness",
+ ", avec": ", with",
+ ". Tu choisiras ton forfait à la fin de l'essai. Ton inscription sera validée par l'équipe Mastery.": ". You'll choose your plan when the trial ends. Your registration will be approved by the Mastery team.",
+ "1 contrôle par mois": "1 test per month",
+ "Annuel : 2 mois offerts. Paiement sécurisé par Stripe, résiliable à tout moment.": "Yearly: 2 months free. Secure payment by Stripe, cancel anytime.",
+ "Cette classe a": "This class has",
+ "Pendant l'essai, toutes les fonctions sont ouvertes jusqu'au": "During the trial, all features are open until",
+ "Tu commences par un mois d'essai gratuit, sans carte bancaire : toutes les fonctions sont ouvertes, avec": "You start with a free one-month trial, no credit card needed: all features are open, with",
+ "Un contrôle compte quand ses feuilles sont imprimées ; réimpressions et rattrapages ne comptent pas.": "A test counts when its sheets are printed; reprints and make-up sheets don't count.",
+ "Un contrôle couvre jusqu'à": "One test covers up to",
+ "contrôles par mois": "tests per month",
+ "copies par contrôle).": "papers per test).",
+ "dans ton forfait (": "in your plan (",
+ "élèves : au-delà, il compte pour un de plus par tranche de": "students: beyond that, it counts as one more for each additional group of",
+ "élèves : ce contrôle compte pour": "students: this test counts as",
+ "Pendant le mois d'essai, toutes les fonctions sont ouvertes, sans carte bancaire, avec un contrôle inclus. Un contrôle compte quand ses feuilles sont imprimées, jusqu'à 35 élèves ; réimpressions et rattrapages ne comptent pas. Résiliable à tout moment.": "During the trial month, all features are open, no credit card needed, with one test included. A test counts when its sheets are printed, for up to 35 students; reprints and make-up sheets don't count. Cancel anytime."
 }

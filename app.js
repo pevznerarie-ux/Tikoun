@@ -464,6 +464,11 @@ function vHome(){
   ${done.length ? foldSec("corriges", "Corrigés", done.length, done.map(line).join("")) : ""}`;
 }
 
+/* Forfait : un contrôle couvre q.par élèves ; au-delà, il compte pour un de plus par tranche (les rattrapages ne comptent pas) */
+function grosCtrl(c, n){
+  const q = S.me?.quota; if (!q || q.illimite || !q.par || c.type === "rattrapage" || n <= q.par) return "";
+  return `<p class="banner">Cette classe a ${n} élèves : ce contrôle compte pour ${Math.ceil(n / q.par)} dans ton forfait (${q.par} copies par contrôle).</p>`;
+}
 function quotaHome(){
   const q = S.me?.quota; if (!q || q.illimite || typeof quotaHtml !== "function") return "";
   const left = Math.max(0, q.ctrl - q.used), msg = left === 0 ? "Tu as utilisé tous les contrôles de ton forfait ce mois-ci." : q.used / q.ctrl >= .5 ? (left > 1 ? `Il te reste ${left} contrôles ce mois-ci.` : "Il te reste 1 contrôle ce mois-ci.") : "";
@@ -758,6 +763,7 @@ function vEdit(){
     <h3>Impression</h3>
     <p class="muted small">Un PDF pour toute la classe : une feuille par élève, avec son nom et son QR code sur chaque page. Le niveau n'est pas écrit sur la feuille, il est seulement contenu dans le QR code.</p>
     ${scanned ? `<p class="banner">Des copies ont déjà été scannées. Réimprimer garde les scans et les notes existants, mais une mise en page différente peut décaler les questions par page.</p>` : ""}
+    ${grosCtrl(c, studs.length)}
     <div class="row"><button class="btn primary" id="print">${printed ? "Réimprimer" : "Générer"} les feuilles · ${studs.length} élève(s)</button>
       <button class="btn" id="print1">Feuille de l'élève affiché</button></div>
     <div class="status" id="pr-st"></div>
