@@ -4,6 +4,7 @@
 "use strict";
 const {createCanvas} = require("@napi-rs/canvas");
 const jsQR = require("jsqr");
+const FIAB = require("./fiabilite.js");
 const window = {jsQR};
 const document = {createElement: () => createCanvas(1, 1)};
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));

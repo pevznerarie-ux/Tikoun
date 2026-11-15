@@ -16,7 +16,9 @@
 //   ADMIN_RESET_PASSWORD : mot de passe oublié, réinitialise le compte ADMIN_EMAIL (une fois par valeur)
 //   SIGNUP            : "off" pour fermer l'inscription libre des professeurs (ouverte par défaut)
 //   MODEL_QUICK, MODEL_DEFAULT, MODEL_COMPLEX : modèles (défaut économique)
+//   AI_REREAD         : "0" pour ne pas relire automatiquement les réponses douteuses ; AI_REREAD_MAX : relectures par page (défaut 3)
 const http = require("http"), fs = require("fs"), path = require("path"), crypto = require("crypto"), zlib = require("zlib");
+const FIAB = require("./fiabilite.js");   // doutes sur une correction, journal de validation, vérification des contrôles générés (testé : npm test)
 const ROOT = __dirname, PORT = process.env.PORT || 3000;
 const TYPES = {".html":"text/html; charset=utf-8", ".js":"text/javascript; charset=utf-8", ".css":"text/css; charset=utf-8", ".json":"application/json",
   ".md":"text/markdown; charset=utf-8", ".png":"image/png", ".jpg":"image/jpeg", ".svg":"image/svg+xml", ".ico":"image/x-icon", ".webmanifest":"application/manifest+json", ".txt":"text/plain; charset=utf-8"};
@@ -82,8 +84,8 @@ const ipOf = req => { const real = String(req.headers["x-real-ip"] || "").trim()
 /* ---------- Stockage (Volume Railway) ---------- */
 const DATA = env("DATA_DIR") || env("RAILWAY_VOLUME_MOUNT_PATH") || path.join(ROOT, "data");
 const PERSISTENT = !!(env("DATA_DIR") || env("RAILWAY_VOLUME_MOUNT_PATH"));
-const DOCDIR = path.join(DATA, "docs"), FILEDIR = path.join(DATA, "files");
-fs.mkdirSync(DOCDIR, {recursive:true}); fs.mkdirSync(FILEDIR, {recursive:true});
+const DOCDIR = path.join(DATA, "docs"), FILEDIR = path.join(DATA, "files"), JDIR = path.join(DATA, "journal");
+fs.mkdirSync(DOCDIR, {recursive:true}); fs.mkdirSync(FILEDIR, {recursive:true}); fs.mkdirSync(JDIR, {recursive:true});
 const writeAtomic = (f, obj) => { const tmp = f + ".tmp"; fs.writeFileSync(tmp, JSON.stringify(obj)); fs.renameSync(tmp, f); };
 const readJ = (f, d, critical) => {
   let raw; try { raw = fs.readFileSync(f, "utf8"); } catch(e){ return d; }
@@ -101,9 +103,20 @@ for (const f of fs.readdirSync(DOCDIR)) if (f.endsWith(".json")){ try { DOCS.set
 const EPOCH = Date.now().toString(36) + crypto.randomBytes(3).toString("hex"); let SEQ = 0; const LOG = [];
 const PATH_OK = p => /^[A-Za-z0-9_\-.~:@+]{1,200}(\/[A-Za-z0-9_\-.~:@+]{1,200}){1,15}$/.test(p) && !p.split("/").some(x => x === "." || x === "..");
 const docFile = p => path.join(DOCDIR, encodeURIComponent(p) + ".json");
+/* Journal de validation : un fichier par contrôle, une ligne par événement (qui a validé ou changé quelle note, quand, note proposée
+   par l'IA et note retenue). Écrit seulement quand un professeur enregistre ; supprimé avec les feuilles du contrôle. */
+const journalFile = cid => path.join(JDIR, encodeURIComponent(cid) + ".jsonl");
+function journalise(dp, avant, apres, u){
+  try { const ev = FIAB.journal(avant, apres, u.id, new Date().toISOString()); if (ev.length) fs.appendFileSync(journalFile(dp.split("/")[1]), ev.map(e => JSON.stringify(e)).join("\n") + "\n"); }
+  catch(e){ console.warn("Journal de validation :", e.message); }
+}
+function journalOf(cid){
+  let raw = ""; try { raw = fs.readFileSync(journalFile(cid), "utf8"); } catch(e){ return []; }
+  return raw.split("\n").filter(Boolean).map(l => { try { return JSON.parse(l); } catch(e){ return null; } }).filter(Boolean);
+}
 function persist(p, data){
   const esp = (data || DOCS.get(p))?.espace || null, own = (data || DOCS.get(p))?.owner || null;
-  if (data == null){ DOCS.delete(p); fs.rmSync(docFile(p), {force:true}); } else { DOCS.set(p, data); writeAtomic(docFile(p), data); }
+  if (data == null){ DOCS.delete(p); fs.rmSync(docFile(p), {force:true}); if (p.startsWith("feuilles/")) fs.rmSync(journalFile(p.slice(9)), {force:true}); } else { DOCS.set(p, data); writeAtomic(docFile(p), data); }
   LOG.push({seq:++SEQ, path:p, esp, own}); if (LOG.length > 20000) LOG.splice(0, LOG.length - 20000);
 }
 const isObj = x => x && typeof x === "object" && !Array.isArray(x);
@@ -566,10 +579,18 @@ async function storage(req, res, url, p, u){
       if (req.method === "PUT"){
         const own = cur?.owner || (col === "feuilles" ? ownerOf(dp) : null) || u.id;
         const esp = espaceFor(dp, u);
+        if (col === "feuilles" && cur) journalise(dp, cur, body, u);
         persist(dp, OWNED.includes(col) ? {...body, owner:own, espace:esp} : {...body, espace:esp, ...(cur?.createdBy || !cur ? {createdBy:cur?.createdBy || u.id} : {})});
         return sendJ(res, 200, {seq:SEQ});
       }
-      if (req.method === "PATCH"){ if (!cur) return sendJ(res, 404, {error:{message:"Document introuvable"}}); const {owner, espace, ...rest} = body; persist(dp, merge(cur, rest)); return sendJ(res, 200, {seq:SEQ}); }
+      if (req.method === "PATCH"){ if (!cur) return sendJ(res, 404, {error:{message:"Document introuvable"}}); const {owner, espace, ...rest} = body, next = merge(cur, rest);
+        if (col === "feuilles") journalise(dp, cur, next, u);
+        persist(dp, next); return sendJ(res, 200, {seq:SEQ}); }
+    }
+    if (p === "/api/journal" && req.method === "GET"){
+      const cid = url.searchParams.get("ctrl") || "", doc = PATH_OK("feuilles/" + cid) ? DOCS.get("feuilles/" + cid) : null;
+      if (!doc || !visible(u, doc)) return sendJ(res, 404, {error:{message:"Document introuvable"}});
+      const noms = {}; return sendJ(res, 200, {events:journalOf(cid).map(e => ({...e, nom:noms[e.par] ?? (noms[e.par] = USERS.find(x => x.id === e.par)?.nom || "")}))});
     }
     if (p === "/api/files" && req.method === "POST"){
       if (!access(u).ok) return sendJ(res, 402, {error:{message:NO_ACCESS, code:"no_access"}});
@@ -860,6 +881,37 @@ function looseJSON(t){
   return null;
 }
 function markF(t, fautes){ let out = t; for (const f of (Array.isArray(fautes) ? fautes : []).map(String).filter(x => x.trim()).slice(0, 8)){ const i = out.indexOf(f); if (i >= 0 && !out.slice(0, i).endsWith("⟦")) out = out.slice(0, i) + "⟦" + f + "⟧" + out.slice(i + f.length); } return out; }
+/* Réponse rédigée lue par l'IA → réponse enregistrée, avec le détail par critère et le niveau de doute (fiabilite.js) */
+function reponseIA(q, r, T){
+  const tr = String(r.transcription ?? ""), vide = isNoAns(tr);
+  const ans = {transcription:tr, transcriptionIA:tr, annot:r.annotee != null ? String(r.annotee) : markF(tr, r.fautes), lisible:r.lisible !== false, noteIA:clampN(halfN(Number(r.note) || 0), 0, +q.points), note:null,
+    commentaire:String(r.commentaire ?? ""), erreurs:(Array.isArray(r.erreurs) ? r.erreurs : []).map(String).slice(0, 4), acquis:(Array.isArray(r.acquis) ? r.acquis : []).map(String).slice(0, 4), valide:false};
+  if (vide){ ans.noteIA = 0; ans.commentaire = T.vide || "Pas de réponse : revois cette notion."; ans.erreurs = [T.videTag || "pas de réponse"]; ans.acquis = []; }
+  return FIAB.completer(ans, r, q, {vide});
+}
+/* Réponses « à vérifier d'abord » : seconde lecture, indépendante, du seul cadre de la question (image du cadre + consigne de relecture
+   préparée par l'application). Deux lectures concordantes : le doute retombe. Deux lectures différentes : le professeur voit les deux. */
+async function relireDouteux(u, j, answers){
+  const tpl = String(j.relire || ""); if (!tpl || env("AI_REREAD") === "0") return 0;
+  const c = DOCS.get("controles/" + j.ctrlId), cp = DOCS.get("feuilles/" + j.ctrlId)?.copies?.[j.eleveId]; if (!isObj(c)) return 0;
+  if (cp?.validee) return 0;                                    // copie déjà validée : rien ne sera modifié, inutile de relire
+  const libre = q => { const old = cp?.answers?.[q.id]; return !old?.valide && old?.note == null; };   // le professeur n'a pas déjà tranché
+  const todo = (j.qs || []).filter(q => q.type !== "qcm" && q.crop && answers[q.id]?.doute?.n === 2 && libre(q) && fs.existsSync(path.join(FILEDIR, q.crop + ".jpg"))).slice(0, clampN(+env("AI_REREAD_MAX") || 3, 1, 12));
+  let n = 0;
+  await Promise.all(todo.map(async q => {
+    try {
+      const i = (c.questions || []).findIndex(x => x.id === q.id), Q = c.questions?.[i]; if (!Q) return;
+      const lvl = cp?.version?.[q.id] || "standard", v = (Q.v?.[lvl]?.enonce ? Q.v[lvl] : Q.v?.standard) || {};
+      const prompt = FIAB.remplir(tpl, {ID:q.id, N:i + 1, PTS:q.points, ENONCE:v.enonce || "", CORRIGE:v.corrige || "—", CRITERES:v.criteres || "—", ERREURS:(Q.erreurs || []).join(" | ") || "—"});
+      const tier = tierOk(j.tier), txt = await claude(u, [{type:"image", source:{type:"base64", media_type:"image/jpeg", data:fs.readFileSync(path.join(FILEDIR, q.crop + ".jpg")).toString("base64")}}, {type:"text", text:prompt}], tier, Math.min(8000, MAXTOK[tier]));
+      const r = looseJSON(txt); if (!isObj(r) || typeof r.transcription !== "string") return;
+      const seconde = reponseIA(q, r, j.txt || {}); seconde.crop = q.crop;
+      answers[q.id] = FIAB.fusion(answers[q.id], seconde); n++;
+    } catch(e){ console.warn("Relecture", j.id, q.id, e.message); }
+  }));
+  if (n) console.log(`IA (relecture) · ${u.id} · ${n} réponse(s) douteuse(s) relue(s)`);
+  return n;
+}
 function jobAnswers(j, res){
   const T = j.txt || {}, arr = Array.isArray(res?.reponses) ? res.reponses : Array.isArray(res) ? res : [], answers = {}, missing = [];
   for (const q of j.qs || []){
@@ -871,10 +923,8 @@ function jobAnswers(j, res){
       ans = {transcription:(T.coche || "Coché : ") + (got.map(n => L[n]).join(", ") || T.aucune || "aucune case"), annot:(T.coche || "Coché : ") + (got.map(n => good.has(n) ? L[n] : `⟦${L[n]}⟧`).join(", ") || `⟦${T.aucune || "aucune case"}⟧`),
         lisible:r.lisible !== false, noteIA:ok ? +q.points : 0, note:null, commentaire:ok ? (T.bonne || "Bonne réponse.") : (T.etait || "La bonne réponse était : ") + [...good].sort().map(n => L[n]).join(", ") + ".",
         erreurs:ok ? [] : [T.qcmFaux || "réponse QCM incorrecte"], acquis:ok ? [q.notion || "QCM"] : [], valide:false, auto:true}; }
-    else { const tr = String(r.transcription ?? "");
-      ans = {transcription:tr, transcriptionIA:tr, annot:r.annotee != null ? String(r.annotee) : markF(tr, r.fautes), lisible:r.lisible !== false, noteIA:clampN(halfN(Number(r.note) || 0), 0, +q.points), note:null,
-        commentaire:String(r.commentaire ?? ""), erreurs:(r.erreurs || []).map(String).slice(0, 4), acquis:(r.acquis || []).map(String).slice(0, 4), valide:false};
-      if (isNoAns(tr)){ ans.noteIA = 0; ans.commentaire = T.vide || "Pas de réponse : revois cette notion."; ans.erreurs = [T.videTag || "pas de réponse"]; ans.acquis = []; } }
+    else ans = reponseIA(q, r, T);
+    if (q.type === "qcm") FIAB.completer(ans, r, q);
     ans.crop = q.crop || null; answers[q.id] = ans;
   }
   return {answers, missing, lisibleKo:arr.some(r => r && r.lisible === false)};
@@ -909,19 +959,21 @@ async function runJob(j){
   const res = looseJSON((jr?.content || []).filter(b => b.type === "text").map(b => b.text).join(""));
   if (!res){ j.tries = (j.tries || 0) + 1; j.status = j.tries >= 3 ? "erreur" : "attente"; j.msg = "Réponse de l'IA illisible"; return; }
   if (j.status === "annule" || cancelled(j.ctrlId, j.eleveId, j.createdAt)){ j.status = "annule"; j.msg = "Annulée (scan recommencé)"; return; }
-  const dp = "feuilles/" + j.ctrlId, cur = DOCS.get(dp); if (!cur){ j.status = "erreur"; j.msg = "Feuilles du contrôle introuvables"; return; }
-  if (j.status === "annule" || cancelled(j.ctrlId, j.eleveId, j.createdAt)){ j.status = "annule"; j.msg = "Annulée (scan recommencé)"; return; }
+  const dp = "feuilles/" + j.ctrlId; if (!DOCS.get(dp)){ j.status = "erreur"; j.msg = "Feuilles du contrôle introuvables"; return; }
   const jr0 = jobAnswers(j, res);
   if (jr0.missing.length && (j.tries || 0) < 2){ j.tries = (j.tries || 0) + 1; j.status = "attente"; j.msg = "Réponse de l'IA incomplète : nouvel essai"; j.notBefore = Date.now() + 5000; return; }
-  const kt = keepTeacher(cur, j.eleveId, jr0.answers), answers = kt.answers, lisibleKo = jr0.lisibleKo;
+  await relireDouteux(u, j, jr0.answers);
+  const cur = DOCS.get(dp); if (!cur){ j.status = "erreur"; j.msg = "Feuilles du contrôle introuvables"; return; }
+  if (j.status === "annule" || cancelled(j.ctrlId, j.eleveId, j.createdAt)){ j.status = "annule"; j.msg = "Annulée (scan recommencé)"; return; }
+  const kt = keepTeacher(cur, j.eleveId, jr0.answers), answers = kt.answers, lisibleKo = jr0.lisibleKo, aVoir = Object.values(answers).filter(a => a?.doute?.n === 2).length;
   const patch = {copies:{[j.eleveId]:kt.validee ? {answers} : {answers, validee:false}}};
   if (String(res?.alerte || "").trim()) patch.copies[j.eleveId].alertes = {[j.page]:{txt:String(res.alerte).trim().slice(0, 600), at:new Date().toISOString()}};   // écrit inquiétant : signalé au seul professeur
   if (j.bonus) patch.copies[j.eleveId].bonusPages = {[j.page]:{proprete:clampN(+res?.proprete || 0, 0, 1), orthographe:clampN(+res?.orthographe || 0, 0, 1)}};
   persist(dp, merge(cur, patch));
   j.status = jr0.missing.length ? "erreur" : "fait"; j.doneAt = new Date().toISOString();
-  j.msg = kt.validee ? "Copie déjà validée : rien n'a été modifié (« Recommencer le scan » pour la refaire)" : Object.keys(answers).length + " question(s) corrigée(s)" + (lisibleKo ? " · passage peu lisible signalé" : "") + (kt.kept ? " · " + kt.kept + " note(s) du professeur gardée(s)" : "")
+  j.msg = kt.validee ? "Copie déjà validée : rien n'a été modifié (« Recommencer le scan » pour la refaire)" : Object.keys(answers).length + " question(s) corrigée(s)" + (aVoir ? " · " + aVoir + " à vérifier d'abord" : lisibleKo ? " · passage peu lisible signalé" : "") + (kt.kept ? " · " + kt.kept + " note(s) du professeur gardée(s)" : "")
     + (jr0.missing.length ? " · " + jr0.missing.length + " question(s) non lue(s) : recadre-les ou relance" : "");
-  if (!jr0.missing.length){ delete j.prompt; delete j.qs; }
+  if (!jr0.missing.length){ delete j.prompt; delete j.qs; delete j.relire; }
 }
 /* ---------- Génération en arrière-plan (sur le serveur) ----------
    Nouveau contrôle, dictée, régénération, variante, rattrapage : l'application prépare la consigne, puis le serveur fait tout
@@ -992,24 +1044,37 @@ async function runGen(j){
     const add = (Array.isArray(r3?.questions) ? r3.questions : []).map(genQ).slice(0, dup.length);
     dup.forEach((i, m) => { if (add[m]){ add[m].points = qs[i].points; qs[i] = add[m]; } }); }
   if (Array.isArray(j.points)) qs.forEach((q, i) => { if (j.points[i] != null) q.points = +j.points[i]; if (j.lignes?.[i]) q.lignes = +j.lignes[i]; });
-  const dp = j.path, cur = DOCS.get(dp);
+  const dp = j.path;
+  /* Vérification automatique (fiabilite.js) : barème ramené au total demandé, versions absentes complétées, QCM et énoncés contrôlés,
+     sujets couverts. Une question inutilisable est redemandée une fois ; ce qui reste à voir va dans « À vérifier ». */
+  const optV = {total:j.total || 0, n:j.n || 0, sujets:j.sujets || [], differencie:!!(j.mode === "update" ? DOCS.get(dp)?.differencie : j.base?.differencie), pointsFixes:Array.isArray(j.points)};
+  const bad = FIAB.invalides(qs);
+  if (bad.length){
+    try { const garde = qs.filter((q, i) => !bad.includes(i)).map(q => stdOf(q).enonce);
+      const r4 = await genAI(u, j.prompt + `\n\nCORRECTION : les questions n° ${bad.map(i => i + 1).join(", ")} de ta réponse sont inutilisables (énoncé vide, ou QCM sans au moins deux choix différents et une bonne réponse).${garde.length ? `\nQuestions gardées dans la feuille (à ne pas répéter) : ${garde.map(t => "« " + t.slice(0, 200) + " »").join(" / ")}.` : ""}\nRédige UNIQUEMENT ${bad.length} question(s) complète(s) pour les remplacer, chacune sur un angle que la feuille n'utilise pas encore, en respectant toutes les règles ci-dessus. Même format JSON.`, j.tier);
+      const add = (Array.isArray(r4?.questions) ? r4.questions : []).map(genQ).slice(0, bad.length);
+      bad.forEach((i, m) => { if (add[m] && !FIAB.invalides([add[m]]).length){ add[m].points = qs[i].points; qs[i] = add[m]; } }); }
+    catch(e){ console.warn("Génération : question inutilisable non remplacée", j.id, e.message); }
+  }
+  const V = FIAB.verifier(qs, optV);
+  qs = V.qs; const verif = V.verif.slice(0, 20), cur = DOCS.get(dp);
   if (!canWrite(u, dp)) throw new Error("Ce contrôle appartient à un autre professeur");
   const tIA = /rattrapage/i.test(j.titre?.prefixe || "") ? titreIA.replace(/^(feuille de |fiche de )?rattrapage\s*[-:·–]?\s*/i, "") : titreIA;
   const titre = j.titre?.fixe || (tIA ? (j.titre?.prefixe || "") + tIA + (j.titre?.suffixe || "") : "") || j.titre?.defaut || "Contrôle";
   if (j.mode === "update"){ if (!cur) throw new Error("Contrôle introuvable");
-    persist(dp, {...cur, questions:qs, ...(j.titre?.ia && titreIA ? {titre:titreIA} : j.titre?.fixe ? {titre:j.titre.fixe} : {}), ...(manque ? {remarques:[manque]} : {})}); }
+    persist(dp, {...cur, questions:qs, verif, ...(j.titre?.ia && titreIA ? {titre:titreIA} : j.titre?.fixe ? {titre:j.titre.fixe} : {}), ...(manque ? {remarques:[manque]} : {})}); }
   else { const base = isObj(j.base) ? j.base : {};
     const rem = [...(j.remarques && Array.isArray(res?.remarques) ? res.remarques.map(String).filter(Boolean) : []), ...(manque ? [manque] : [])].slice(0, 12);
-    persist(dp, {...base, titre, questions:qs, ...(rem.length || j.remarques ? {remarques:rem} : {}), owner:u.id, espace:espaceFor(dp, u), createdAt:new Date().toISOString()}); }
+    persist(dp, {...base, titre, questions:qs, verif, ...(rem.length || j.remarques ? {remarques:rem} : {}), owner:u.id, espace:espaceFor(dp, u), createdAt:new Date().toISOString()}); }
   j.open = j.openHash || ("#/controle/" + dp.split("/")[1] + "/preparer");
-  j.msg = (j.msgOk || "Prêt") + (j.mode === "update" ? "" : " : « " + titre + " »") + "." + (manque ? " Le cours ne suffit pas pour plus de questions vraiment différentes : regarde « À vérifier »." : "");
+  j.msg = (j.msgOk || "Prêt") + (j.mode === "update" ? "" : " : « " + titre + " »") + "." + (manque ? " Le cours ne suffit pas pour plus de questions vraiment différentes : regarde « À vérifier »." : verif.length ? " Regarde « À vérifier » avant d'imprimer." : "");
 }
 let gensRunning = 0;
 async function pumpGens(){
   while (gensRunning < (+env("AI_GEN_PARALLEL") || 4)){
     const j = GENS.find(x => x.status === "attente"); if (!j) break;
     j.status = "en_cours"; gensRunning++; saveGens();
-    runGen(j).then(() => { j.status = "fait"; j.doneAt = new Date().toISOString(); delete j.prompt; delete j.base; delete j.olds; })
+    runGen(j).then(() => { j.status = "fait"; j.doneAt = new Date().toISOString(); delete j.prompt; delete j.base; delete j.olds; delete j.sujets; })
       .catch(e => { j.status = "erreur"; j.msg = String(e?.message || e).slice(0, 300); console.warn("Génération", j.id, j.msg); })
       .finally(() => { gensRunning--; saveGens(); setTimeout(pumpGens, 50); });
   }
@@ -1030,6 +1095,7 @@ async function genApi(req, res, p, u){
     const j = {id:crypto.randomBytes(8).toString("hex"), user:u.id, status:"attente", createdAt:new Date().toISOString(), label:String(b.label || "Génération").slice(0, 160),
       prompt:String(b.prompt || "").slice(0, 120000), tier:GEN_TIER(), check:!!b.check, n:clampN(+b.n || 0, 0, 12), path:dp, mode:b.mode === "update" ? "update" : "create",
       base:isObj(b.base) ? b.base : null, titre:isObj(b.titre) ? {fixe:String(b.titre.fixe || "").slice(0, 200), prefixe:String(b.titre.prefixe || "").slice(0, 60), suffixe:String(b.titre.suffixe || "").slice(0, 60), defaut:String(b.titre.defaut || "").slice(0, 200), ia:!!b.titre.ia} : null,
+      total:clampN(+b.total || 0, 0, 200), sujets:(Array.isArray(b.sujets) ? b.sujets : []).slice(0, 10).map(x => String(x).slice(0, 160)).filter(x => x.trim()),
       remarques:!!b.remarques, points:Array.isArray(b.points) ? b.points.slice(0, 12).map(Number) : null, lignes:Array.isArray(b.lignes) ? b.lignes.slice(0, 12).map(Number) : null,
       olds:(Array.isArray(b.olds) ? b.olds : []).slice(0, 60).map(o => ({enonce:String(o?.enonce || "").slice(0, 600), corrige:String(o?.corrige || "").slice(0, 400)})).filter(o => o.enonce),
       msgOk:String(b.msgOk || "Prêt").slice(0, 120), openHash:/^#\/[\w\/-]{1,80}$/.test(b.open || "") ? b.open : null};
@@ -1067,7 +1133,7 @@ async function jobsApi(req, res, url, p, u){
     if (JOBS.filter(j => j.user === u.id && (j.status === "attente" || j.status === "en_cours")).length > 400) return sendJ(res, 429, {error:{message:"Trop de pages en attente"}});
     const j = {id:crypto.randomBytes(8).toString("hex"), user:u.id, status:"attente", createdAt:new Date().toISOString(), name:String(b.name || "").slice(0, 120),
       ctrlId:b.ctrlId, eleveId:b.eleveId, page:Math.max(1, +b.page || 1), prompt:String(b.prompt || "").slice(0, 60000), tier:GRADE_TIER(),
-      images:(Array.isArray(b.images) ? b.images : []).filter(x => /^[a-z0-9]{8,40}$/.test(x) && canSeeFile(u, x)).slice(0, 12), bonus:!!b.bonus, txt:isObj(b.txt) ? b.txt : {},
+      images:(Array.isArray(b.images) ? b.images : []).filter(x => /^[a-z0-9]{8,40}$/.test(x) && canSeeFile(u, x)).slice(0, 12), bonus:!!b.bonus, txt:isObj(b.txt) ? b.txt : {}, relire:String(b.relire || "").slice(0, 20000),
       qs:(Array.isArray(b.qs) ? b.qs : []).slice(0, 40).map(q => ({id:String(q.id), points:+q.points || 0, type:q.type === "qcm" ? "qcm" : "", good:Array.isArray(q.good) ? q.good.map(Number) : [], notion:String(q.notion || "").slice(0, 80), crop:/^[a-z0-9]{8,40}$/.test(q.crop || "") ? q.crop : null}))};
     if (!j.images.length || !j.qs.length) return sendJ(res, 400, {error:{message:"Tâche vide"}});
     JOBS.push(j); saveJobs(); setTimeout(pumpJobs, 10); return sendJ(res, 200, {id:j.id});
@@ -1119,7 +1185,7 @@ async function pumpLots(){
     saveAsset:async buf => { const id = crypto.randomBytes(10).toString("hex"); fs.writeFileSync(path.join(FILEDIR, id + ".jpg"), buf); setOwner(id, u); return id; },
     patch:(dp, upd) => { const cid = dp.split("/")[1], eid = Object.keys(upd.copies || {})[0]; if (cancelled(cid, eid, l.createdAt)) return; const cur = DOCS.get(dp); if (cur) persist(dp, merge(cur, upd)); },
     addJob:b => { if (cancelled(b.ctrlId, b.eleveId, l.createdAt)) return null; const j = {id:crypto.randomBytes(8).toString("hex"), user:u.id, status:"attente", createdAt:new Date().toISOString(), name:l.name, lot:l.id,
-      ctrlId:b.ctrlId, eleveId:b.eleveId, page:b.page, prompt:b.prompt, tier:GRADE_TIER(), images:b.images, bonus:b.bonus, txt:b.txt, qs:b.qs}; JOBS.push(j); saveJobs(); setTimeout(pumpJobs, 10); return j.id; },
+      ctrlId:b.ctrlId, eleveId:b.eleveId, page:b.page, prompt:b.prompt, tier:GRADE_TIER(), images:b.images, bonus:b.bonus, txt:b.txt, qs:b.qs, relire:String(b.relire || "").slice(0, 20000)}; JOBS.push(j); saveJobs(); setTimeout(pumpJobs, 10); return j.id; },
     footerAI:async jpg => looseJSON(await claude(u, [{type:"image", source:{type:"base64", media_type:"image/jpeg", data:jpg.toString("base64")}}, {type:"text", text:String(kit.footerPrompt || "")}], "quick", 300)),
     setTotal:n => { l.total = n; saveLots(); },
     pageStart:i => { l.cur = i; clearTimeout(lotsTimer); writeAtomic(LOTS_F, LOTS); },
@@ -1369,7 +1435,8 @@ function autoBackup(){
   try {
     const key = env("BACKUP_KEY"), f = path.join(BAKDIR, "mastery-" + new Date().toISOString().slice(0, 10) + ".json" + (key ? ".enc" : ""));
     if (fs.existsSync(f) || (!USERS.length && !DOCS.size)) return;
-    const data = {mastery:1, at:new Date().toISOString(), users:USERS, docs:Object.fromEntries(DOCS), banque:BANQUE, banqueRegles:REGLES, appareils:DEVICES, inbox:INBOX, etablissements:GROUPES, fichiers:FOWN};
+    const data = {mastery:1, at:new Date().toISOString(), users:USERS, docs:Object.fromEntries(DOCS), banque:BANQUE, banqueRegles:REGLES, appareils:DEVICES, inbox:INBOX, etablissements:GROUPES, fichiers:FOWN,
+      journal:Object.fromEntries(fs.readdirSync(JDIR).filter(x => x.endsWith(".jsonl")).map(x => [x, fs.readFileSync(path.join(JDIR, x), "utf8")]))};
     if (key){ /* AES-256-GCM : sel(16) · iv(12) · tag(16) · données ; clé dérivée de BACKUP_KEY (scrypt) */
       const salt = crypto.randomBytes(16), iv = crypto.randomBytes(12), k = crypto.scryptSync(key, salt, 32), c = crypto.createCipheriv("aes-256-gcm", k, iv);
       const enc = Buffer.concat([c.update(JSON.stringify(data)), c.final()]); fs.writeFileSync(f + ".tmp", Buffer.concat([salt, iv, c.getAuthTag(), enc])); fs.renameSync(f + ".tmp", f); }
@@ -1426,7 +1493,7 @@ const SERVER = http.createServer(async (req, res) => {
       if (p === "/api/banque" || p.startsWith("/api/banque/")) return await banqueApi(req, res, url, p, u);
       if (p === "/api/devices" || p.startsWith("/api/devices/") || p.startsWith("/api/scan/")) return await scanApi(req, res, url, p, u);
       if (p === "/api/etab" || p.startsWith("/api/etab/") || p.startsWith("/api/billing/")){ try { return await billingApi(req, res, url, p, u); } catch(e){ console.warn("Abonnement :", e.message); return sendJ(res, 502, {error:{message:"Paiement indisponible pour le moment : réessaie dans un instant."}}); } }
-      if (p.startsWith("/api/db") || p.startsWith("/api/files") || p === "/api/export") return await storage(req, res, url, p, u);
+      if (p.startsWith("/api/db") || p.startsWith("/api/files") || p === "/api/export" || p === "/api/journal") return await storage(req, res, url, p, u);
       return await accounts(req, res, url, p, u);
     }
     if (req.method !== "GET" && req.method !== "HEAD") return send(res, 405, "Méthode non autorisée");

@@ -4,6 +4,7 @@
 "use strict";
 const {createCanvas} = require("@napi-rs/canvas");
 const jsQR = require("jsqr");
+const FIAB = require("./fiabilite.js");
 const window = {jsQR};
 const document = {createElement: () => createCanvas(1, 1)};
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -206,6 +207,8 @@ function qcmFrom(q, ver, coches, ambigu, T){
     lisible:!ambigu, noteIA:ok ? +q.points : 0, note:null, commentaire:ok ? (T.bonne || "Bonne réponse.") : (T.etait || "La bonne réponse était : ") + [...good].sort().map(j => L[j]).join(", ") + ".",
     erreurs:ok ? [] : [T.qcmFaux || "réponse QCM incorrecte"], acquis:ok ? [q.notion || "QCM"] : [], valide:false, auto:true};
 }
+/* Réponse lue sans IA (QCM, cadre vide) : niveau de doute, et effacement de ce qu'une lecture précédente avait laissé */
+const sansIA = (a, q) => FIAB.completer(a, null, q);
 
 /* Une page : identification, vérification de la page, découpe, puis tâche de correction */
 async function analysePage(cv, ctx, st){
@@ -241,9 +244,9 @@ async function analysePage(cv, ctx, st){
   const aiQ = qids.filter(id => !qcmB.some(b => b.q === id));
   const fixed = {}, crops = {};
   for (const b of qcmB){ const q = c.questions.find(x => x.id === b.q); if (!q) continue; const mk = readMarks(cv, Hm, b);
-    const a = qcmFrom(q, cp.version?.[b.q] || "standard", mk.coches, mk.ambigu, T); a.crop = await ctx.saveAsset(await toJpeg(warpBox(cv, Hm, b))); upd.copies[eid].answers[b.q] = a; }
+    const a = sansIA(qcmFrom(q, cp.version?.[b.q] || "standard", mk.coches, mk.ambigu, T), q); a.crop = await ctx.saveAsset(await toJpeg(warpBox(cv, Hm, b))); upd.copies[eid].answers[b.q] = a; }
   if (Hm) for (const b of boxes) if (b.type !== "qcm" && aiQ.includes(b.q) && inkRatio(cv, Hm, b) < 0.0008)
-    fixed[b.q] = {transcription:"", annot:"", lisible:true, noteIA:0, note:null, commentaire:T.vide0 || "Pas de réponse.", erreurs:[T.videTag || "pas de réponse"], acquis:[], valide:false, auto:true};
+    fixed[b.q] = sansIA({transcription:"", annot:"", lisible:true, noteIA:0, note:null, commentaire:T.vide0 || "Pas de réponse.", erreurs:[T.videTag || "pas de réponse"], acquis:[], valide:false, auto:true}, c.questions.find(x => x.id === b.q) || {});
   const P = ctx.kit.prompts?.[cid]?.[eid]?.[page];
   if (aiQ.length && !P) return {...res, status:"manuel", msg:"kit"};
   let images = [], prompt = "", mode = "";
@@ -265,7 +268,7 @@ async function analysePage(cv, ctx, st){
   if (!toGrade.length) return {...res, status:"fait", job:null, hm:!!Hm};
   const qs = toGrade.map(qid => { const q = c.questions.find(x => x.id === qid); if (!q) return null; const ver = cp.version?.[qid] || "standard";
     return {id:qid, points:+q.points, type:q.type === "qcm" ? "qcm" : "", good:vOf(q, ver).bonnes || [], notion:q.notion || "", crop:crops[qid] || null}; }).filter(Boolean);
-  const job = ctx.addJob({ctrlId:cid, eleveId:eid, page, prompt:prompt + (ctx.kit.jsonOnly || ""), images, qs, bonus:!!((+c.bonus?.proprete || 0) + (+c.bonus?.orthographe || 0)), txt:T});
+  const job = ctx.addJob({ctrlId:cid, eleveId:eid, page, prompt:prompt + (ctx.kit.jsonOnly || ""), images, qs, bonus:!!((+c.bonus?.proprete || 0) + (+c.bonus?.orthographe || 0)), txt:T, relire:ctx.kit.relire?.[cid] || ""});
   return {...res, status:"serveur", job, hm:!!Hm};
 }
 

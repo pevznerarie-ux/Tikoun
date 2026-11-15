@@ -321,6 +321,11 @@ textarea,input{text-align:start}
 .qchips .chip.cur{background:var(--blue);color:var(--on-blue);border-color:var(--blue)}
 .qchips .chip.ok:not(.cur){background:var(--ok-soft,#E6F4EA);color:var(--ok,#1E7B45)}
 .qcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:grid;gap:10px;scroll-margin-top:120px}
+/* Plan du contrôle : une ligne par question (notion, type, compétence, points) */
+.plan-row{display:grid;grid-template-columns:22px minmax(0,1fr) 220px 150px 74px 34px;gap:6px;align-items:center}
+.plan-row .pl-n{color:var(--muted);text-align:right;font-size:13px}
+.plan-row input,.plan-row select{width:100%;min-width:0}
+@media (max-width:760px){.plan-row{grid-template-columns:22px minmax(0,1.3fr) minmax(0,1fr) 64px 34px;padding-bottom:8px;border-bottom:1px solid var(--line)}.plan-row .pl-notion{grid-column:2 / -1}.plan-row .pl-type{grid-column:2}}
 .score .qs{min-width:40px;min-height:36px;border:1px solid var(--line);background:var(--surface);border-radius:8px;font-family:var(--mono);font-weight:700;cursor:pointer;color:var(--ink)}
 .score .qs.on{background:var(--pen);border-color:var(--pen);color:#fff}
 .copy-nav{padding:8px 12px;border-bottom:1px solid var(--line);gap:8px}

@@ -3,7 +3,8 @@ import os
 SRC = 'src/' if os.path.isdir('src') else ''
 OUT = 'dist/' if SRC else ''
 a=open(SRC+'app.js').read(); m=open(SRC+'more.js').read()+'\n'+open(SRC+'quiz.js').read()+'\n'+open(SRC+'training.js').read()+'\n'+open(SRC+'devices.js').read(); sa=open(SRC+'standalone.js').read(); cl=open(SRC+'cloud.js').read(); nv=open(SRC+'nav.js').read(); ac=open(SRC+'accounts.js').read(); h=open(SRC+'head.html').read()
-i=a.index('/* ================= Boot'); js=a[:i]+sa+'\n'+cl+'\n'+nv+'\n'+ac+'\n'+m+'\n'+a[i:]
+fi=open(SRC+'fiabilite.js').read()  # fonctions pures partagées avec le serveur (doutes, journal, vérification des contrôles)
+i=a.index('/* ================= Boot'); js=fi+'\n'+a[:i]+sa+'\n'+cl+'\n'+nv+'\n'+ac+'\n'+m+'\n'+a[i:]
 k=h.index('<div class="top">'); headpart=h[:k].replace('<script src="https://cdn.jsdelivr.net/npm/qrcode-generator','<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.1/dist/umd/supabase.js"></script>\n<script src="config.js"></script>\n<script src="https://cdn.jsdelivr.net/npm/qrcode-generator',1); bodypart=h[k:]
 if OUT: os.makedirs(OUT,exist_ok=True)
 open(OUT+'index.html','w').write('<!doctype html>\n<html lang="fr">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n'

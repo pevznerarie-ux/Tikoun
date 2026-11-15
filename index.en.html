@@ -331,6 +331,11 @@ textarea,input{text-align:start}
 .qchips .chip.cur{background:var(--blue);color:var(--on-blue);border-color:var(--blue)}
 .qchips .chip.ok:not(.cur){background:var(--ok-soft,#E6F4EA);color:var(--ok,#1E7B45)}
 .qcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:grid;gap:10px;scroll-margin-top:120px}
+/* Plan du contrôle : une ligne par question (notion, type, compétence, points) */
+.plan-row{display:grid;grid-template-columns:22px minmax(0,1fr) 220px 150px 74px 34px;gap:6px;align-items:center}
+.plan-row .pl-n{color:var(--muted);text-align:right;font-size:13px}
+.plan-row input,.plan-row select{width:100%;min-width:0}
+@media (max-width:760px){.plan-row{grid-template-columns:22px minmax(0,1.3fr) minmax(0,1fr) 64px 34px;padding-bottom:8px;border-bottom:1px solid var(--line)}.plan-row .pl-notion{grid-column:2 / -1}.plan-row .pl-type{grid-column:2}}
 .score .qs{min-width:40px;min-height:36px;border:1px solid var(--line);background:var(--surface);border-radius:8px;font-family:var(--mono);font-weight:700;cursor:pointer;color:var(--ink)}
 .score .qs.on{background:var(--pen);border-color:var(--pen);color:#fff}
 .copy-nav{padding:8px 12px;border-bottom:1px solid var(--line);gap:8px}
@@ -581,6 +586,190 @@ details[open]>summary::before{transform:rotate(45deg)}
 <main class="wrap"><div id="view"></div></main>
 <div id="sheetStage" aria-hidden="true"></div>
 <script>
+/* Mastery · fiabilité de la correction et des contrôles générés.
+   Fonctions pures, sans accès au disque ni au réseau : le serveur les charge par require, build.py les inclut dans la page.
+   Elles sont couvertes par `npm test` (dossier test/) : toute modification du calcul des doutes, du journal de validation
+   ou du barème doit garder ces tests au vert. Aucun texte affiché ici : seulement des codes, traduits par l'application. */
+(function(root){
+"use strict";
+const half = x => Math.round(x * 2) / 2;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const isObj = x => !!x && typeof x === "object" && !Array.isArray(x);
+const str = x => String(x == null ? "" : x);
+/* Texte ramené à l'essentiel pour comparer : sans accents ni voyelles hébraïques, sans ponctuation, sans casse */
+const norm = t => str(t).toLowerCase().normalize("NFD").replace(/[̀-֑ͯ-ׇ]/g, "").replace(/\$/g, "").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+
+/* ---------- Comparaison de deux lectures ---------- */
+function lev(a, b){
+  a = [...a]; b = [...b]; if (!a.length) return b.length; if (!b.length) return a.length;
+  let prev = Array.from({length:b.length + 1}, (_, j) => j);
+  for (let i = 1; i <= a.length; i++){ const cur = [i];
+    for (let j = 1; j <= b.length; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    prev = cur; }
+  return prev[b.length];
+}
+/* 1 = même texte, 0 = rien de commun (comparaison sur les 1 500 premiers caractères) */
+function proche(a, b){
+  const A = norm(a).slice(0, 1500), B = norm(b).slice(0, 1500); if (!A && !B) return 1;
+  return 1 - lev(A, B) / Math.max([...A].length, [...B].length);
+}
+
+/* ---------- Doute sur une réponse corrigée ----------
+   Niveau 0 : rien à signaler · 1 : à regarder · 2 : à vérifier d'abord (exclue de la validation groupée).
+   Codes : lecture (l'IA a dû deviner) · illisible (passage non lu) · confiance (l'IA se dit peu sûre) · hesite (note entre deux valeurs)
+   · detail (le détail par critère ne donne pas la note) · max_fautes (note maximale malgré des erreurs relevées)
+   · zero (zéro sans erreur relevée) · lectures (deux lectures différentes) · relu (deux lectures concordantes). */
+const ILL = /\[(?:illisible|illegible|ilegível)\]/g;
+function detail(raw, max){
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(isObj).slice(0, 8).map(d => ({c:str(d.critere != null ? d.critere : d.c).trim().slice(0, 140), p:clamp(half(Number(d.points != null ? d.points : d.p) || 0), 0, max)})).filter(d => d.c);
+}
+function doute(a, q, x){
+  x = x || {}; const r = [], P = +(q && q.points) || 0, tr = str(a && a.transcription), note = +(a && a.noteIA) || 0; let n = 0;
+  const add = (lvl, code) => { if (!r.includes(code)) r.push(code); if (lvl > n) n = lvl; };
+  if (!a) return {n:0, r};
+  if (a.lisible === false) add(2, "lecture");
+  if (a.auto) return {n, r};                                   // QCM lu sans IA, cadre vide : seul un cochage ambigu compte
+  const ill = (tr.match(ILL) || []).length;
+  if (ill) add(ill >= 2 || tr.replace(ILL, "").trim().length < 40 ? 2 : 1, "illisible");
+  if (x.vide) return {n, r};                                   // pas de réponse : rien d'autre à vérifier
+  const conf = Number(x.confiance);
+  if (conf === 1) add(2, "confiance"); else if (conf === 2) add(1, "confiance");
+  if (str(a.hesite).trim()) add(1, "hesite");
+  if (Array.isArray(a.detail) && a.detail.length && Math.abs(a.detail.reduce((t, d) => t + (+d.p || 0), 0) - note) >= 0.5) add(2, "detail");
+  if (P > 0 && note >= P && x.fautes > 0) add(1, "max_fautes");
+  if (P > 0 && note === 0 && tr.trim().length >= 25 && !(a.erreurs || []).length && !x.fautes) add(1, "zero");
+  return {n, r};
+}
+/* Ajoute à une réponse construite ce que l'IA a dit de sa propre correction (détail par critère, hésitation) puis le doute.
+   detail, hesite et alt sont toujours écrits, même vides : une nouvelle lecture efface ainsi ce que la précédente avait laissé. */
+function completer(a, r, q, x){
+  r = isObj(r) ? r : {}; const P = +(q && q.points) || 0, lu = !a.auto && !(x && x.vide);
+  a.detail = lu ? detail(r.detail, P) : [];
+  a.hesite = lu ? str(r.hesitation).trim().slice(0, 200) : "";
+  a.alt = null;
+  a.doute = doute(a, q, {confiance:r.confiance, fautes:Array.isArray(r.fautes) ? r.fautes.filter(f => str(f).trim()).length : 0, vide:!!(x && x.vide)});
+  return a;
+}
+/* Doute encore ouvert pour le professeur : dès qu'il pose une note ou valide, la réponse n'est plus « à vérifier » */
+function ouvert(a){
+  if (!a || a.valide || a.note != null) return 0;
+  if (isObj(a.doute)) return +a.doute.n || 0;
+  return a.lisible === false ? 2 : 0;                          // réponses corrigées avant cette version
+}
+/* Seconde lecture d'une réponse douteuse : la relecture (un seul cadre, lu seul) devient la réponse proposée.
+   Mêmes texte et note : le doute retombe à « à regarder ». Sinon les deux lectures sont gardées pour le professeur. */
+function fusion(premiere, seconde){
+  const s = proche(premiere.transcription, seconde.transcription), memeNote = Math.abs((+premiere.noteIA || 0) - (+seconde.noteIA || 0)) < 0.5;
+  const d2 = isObj(seconde.doute) ? seconde.doute : {n:0, r:[]}, out = {...seconde};
+  if (s >= 0.9 && memeNote){ out.doute = {n:d2.n === 2 ? 2 : 1, r:["relu", ...d2.r]}; out.alt = null; }
+  else { out.doute = {n:2, r:["lectures", ...d2.r]}; out.alt = {transcription:str(premiere.transcription), noteIA:+premiere.noteIA || 0, commentaire:str(premiere.commentaire).slice(0, 400)}; }
+  return out;
+}
+/* Gabarit de consigne : remplace {{CLE}} par sa valeur, sans interpréter le texte inséré */
+function remplir(tpl, vars){ return str(tpl).replace(/\{\{([A-Z]+)\}\}/g, (m, k) => Object.prototype.hasOwnProperty.call(vars, k) ? str(vars[k]) : m); }
+
+/* ---------- Journal de validation ----------
+   Compare les copies d'un contrôle avant et après une écriture du professeur et rend les événements à consigner :
+   valide (note proposée par l'IA, note retenue) · garde (le professeur confirme la note proposée) · note (note changée à la main)
+   · rouvre (validation retirée). */
+function journal(avant, apres, par, at){
+  const ev = [], A = (isObj(avant) && isObj(avant.copies)) ? avant.copies : {}, B = (isObj(apres) && isObj(apres.copies)) ? apres.copies : {};
+  let lot = 0; for (const e in B) if (B[e] && B[e].validee && !(A[e] && A[e].validee)) lot++;
+  const noteOf = a => a ? (a.note != null ? a.note : a.noteIA != null ? a.noteIA : null) : null;
+  for (const e in B){ const b = B[e] || {}, a = A[e] || {}, ba = isObj(b.answers) ? b.answers : {}, aa = isObj(a.answers) ? a.answers : {};
+    for (const q in ba){ const y = ba[q] || {}, x = aa[q] || {}, ia = y.noteIA != null ? y.noteIA : null, base = {at, par, e, q};
+      if (y.valide && !x.valide) ev.push({...base, act:"valide", ia, note:noteOf(y), ...(lot > 1 && b.validee && !a.validee ? {lot} : {})});
+      else if (y.note != null && y.note !== x.note) ev.push({...base, act:x.note == null && y.note === noteOf(x) ? "garde" : "note", ia, avant:noteOf(x), note:y.note, ...(x.valide ? {rouvre:true} : {})});
+      else if (x.valide && !y.valide) ev.push({...base, act:"rouvre", ia, note:noteOf(y)});
+    } }
+  return ev;
+}
+
+/* ---------- Barème ----------
+   Ramène une liste de points à un total, par pas de 0,5, en gardant les proportions (méthode des plus forts restes). */
+function repartir(points, total){
+  const pts = (points || []).map(p => Math.max(0.5, half(+p || 0))), sum = pts.reduce((a, b) => a + b, 0), units = Math.round(total * 2);
+  if (!pts.length || !(total > 0) || Math.abs(sum - total) < 1e-9 || units < pts.length) return pts;
+  const exact = pts.map(p => p / sum * units), base = exact.map(x => Math.max(1, Math.floor(x)));
+  let reste = units - base.reduce((a, b) => a + b, 0);
+  const ordre = exact.map((x, i) => ({i, f:x - Math.floor(x)})).sort((a, b) => b.f - a.f || a.i - b.i);
+  for (let k = 0; reste > 0; k++, reste--) base[ordre[k % ordre.length].i]++;
+  for (let k = ordre.length - 1; reste < 0; k = (k - 1 + ordre.length) % ordre.length){ const i = ordre[k].i; if (base[i] > 1){ base[i]--; reste++; } }
+  return base.map(u => u / 2);
+}
+/* Somme des points annoncés dans un texte de critères (« 1 pt pour… ; 2 pts pour… ») ; null si on ne peut pas la lire de façon sûre */
+function sommeCriteres(txt, points){
+  const t = str(txt); if (/(^|[^\p{L}])(par|chaque|chacune?|each|per|por|cada|max|maximum|jusqu|up to|até)([^\p{L}]|$)/iu.test(t)) return null;
+  const vals = [...t.matchAll(/(\d+(?:[.,]\d+)?)\s*(?:pts?|points?|pontos?)(?![\p{L}])/giu)].map(m => parseFloat(m[1].replace(",", ".")));
+  if (vals.length < 2) return null;
+  let s = vals.reduce((a, b) => a + b, 0);
+  if (points > 0 && vals.length >= 3 && vals[0] === points && Math.abs(s - 2 * points) < 0.5) s -= points;   // « sur 4 points : 1 pt…, 3 pts… » : le total est rappelé en tête
+  return s;
+}
+
+/* ---------- Vérification d'un contrôle généré ----------
+   qs : questions au format enregistré ({type, sujet, notion, points, v:{socle, standard, approfondi}}).
+   o : {total, n, sujets, differencie, pointsFixes}. Corrige ce qui peut l'être (barème, versions absentes) et liste le reste.
+   Rend {qs, verif:[{k, …}], invalides:[indices des questions inutilisables, à redemander]}. */
+const GENERIQUE = new Set(["chapitre", "sujet", "partie", "theme", "lecon", "sequence", "unite", "chapter", "part", "topic", "lesson", "capitulo", "parte", "tema", "texte", "text", "texto"]);
+const motsSujet = t => norm(t).split(" ").filter(x => x.length > 3 && !GENERIQUE.has(x));
+const numsSujet = t => (norm(t).match(/\d+/g) || []).join(" ");
+function memeSujet(a, b){
+  const A = norm(a), B = norm(b); if (!A || !B) return false; if (A === B) return true;
+  const ta = new Set(motsSujet(a)), tb = new Set(motsSujet(b));
+  if (!ta.size || !tb.size) return !!numsSujet(a) && numsSujet(a) === numsSujet(b);          // « Chapitre 2 » et « Chap. 2 »
+  return [...ta].filter(x => tb.has(x)).length / Math.min(ta.size, tb.size) >= 0.6;
+}
+/* Question inutilisable telle quelle : "vide" (pas d'énoncé), "qcm" (moins de deux choix différents, ou pas de bonne réponse), sinon "" */
+function defaut(q){
+  const std = isObj(q) && isObj(q.v) ? q.v.standard : null; if (!isObj(std) || !str(std.enonce).trim()) return "vide";
+  if (q.type === "qcm"){ const ch = (Array.isArray(std.choix) ? std.choix : []).map(norm), bonnes = Array.isArray(std.bonnes) ? std.bonnes : [];
+    if (ch.length < 2 || ch.some(x => !x) || new Set(ch).size !== ch.length || !bonnes.length || bonnes.some(b => !(b >= 0 && b < ch.length))) return "qcm"; }
+  return "";
+}
+/* Indices des questions à redemander à l'IA avant la vérification complète */
+const invalides = qs => (Array.isArray(qs) ? qs : []).map((q, i) => defaut(q) ? i : -1).filter(i => i >= 0);
+function verifier(qs, o){
+  o = o || {}; const verif = [], sansCriteres = new Set();
+  qs = (Array.isArray(qs) ? qs : []).filter(isObj);
+  qs.forEach(q => { q.points = o.pointsFixes && +q.points > 0 ? +q.points : Math.max(0.5, half(+q.points || 0)); if (!isObj(q.v)) q.v = {}; });   // les points fixés par le professeur ne sont jamais arrondis
+  const sum = qs.reduce((a, q) => a + q.points, 0);
+  if (!o.pointsFixes && o.total > 0 && qs.length > 1 && Math.abs(sum - o.total) >= 0.25){
+    repartir(qs.map(q => q.points), o.total).forEach((p, i) => { if (p !== qs[i].points){ qs[i].points = p; sansCriteres.add(i); } });
+    verif.push({k:"points", avant:sum, total:o.total});
+  }
+  qs.forEach((q, i) => { const n = i + 1, std = q.v.standard, qcm = q.type === "qcm";
+    const ko = defaut(q); if (ko){ verif.push({k:ko, q:n}); return; }
+    if (!qcm && !str(std.corrige).trim()) verif.push({k:"corrige", q:n});
+    if (o.differencie){ let copie = false;
+      for (const l of ["socle", "approfondi"]) if (!isObj(q.v[l]) || !str(q.v[l].enonce).trim()){ q.v[l] = JSON.parse(JSON.stringify(std)); verif.push({k:"version", q:n, l}); copie = true; }
+      if (!copie && !qcm && norm(q.v.socle.enonce) === norm(std.enonce) && norm(q.v.approfondi.enonce) === norm(std.enonce)) verif.push({k:"memes", q:n}); }
+    if (!qcm && !sansCriteres.has(i)){ const s = sommeCriteres(std.criteres, q.points); if (s != null && Math.abs(s - q.points) >= 0.5) verif.push({k:"criteres", q:n, somme:s, points:q.points}); }
+  });
+  const suj = (Array.isArray(o.sujets) ? o.sujets : []).map(str).filter(x => x.trim());
+  if (suj.length >= 2 && qs.length >= suj.length && qs.some(q => str(q.sujet).trim()))
+    for (const s of suj) if (!qs.some(q => memeSujet(q.sujet, s))) verif.push({k:"sujet", s:s.slice(0, 120)});
+  if (o.n > 0 && qs.length < o.n) verif.push({k:"nombre", n:qs.length, voulu:o.n});
+  return {qs, verif, invalides:invalides(qs)};
+}
+
+/* ---------- Plan d'un contrôle (proposé par l'IA, approuvé par le professeur avant la rédaction) ---------- */
+const TYPES_Q = ["cours", "application", "probleme", "texte", "traduction", "qcm"], COMPS_Q = ["connaitre", "comprendre", "raisonner", "lire", "ecrire"];
+const sansAccent = x => str(x).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+function plan(raw, o){
+  o = o || {}; const types = Array.isArray(o.types) && o.types.length ? o.types.filter(t => TYPES_Q.includes(t)) : TYPES_Q;
+  let items = (Array.isArray(raw) ? raw : []).filter(isObj).map(x => { const t = sansAccent(x.type), c = sansAccent(x.competence != null ? x.competence : x.comp);
+    return {sujet:str(x.sujet).trim().slice(0, 120), notion:str(x.notion).trim().slice(0, 160), type:TYPES_Q.includes(t) ? t : (types[0] || "cours"), comp:COMPS_Q.includes(c) ? c : "", points:Math.max(0.5, half(+x.points || 0))}; }).filter(x => x.notion);
+  if (o.n > 0) items = items.slice(0, o.n);
+  if (o.total > 0 && items.length > 1) repartir(items.map(x => x.points), o.total).forEach((p, i) => { items[i].points = p; });
+  return items;
+}
+
+const API = {half, norm, proche, detail, doute, completer, ouvert, fusion, remplir, journal, repartir, sommeCriteres, invalides, verifier, plan, TYPES_Q, COMPS_Q};
+if (typeof module !== "undefined" && module.exports) module.exports = API; else root.FIAB = API;
+})(typeof globalThis !== "undefined" ? globalThis : this);
+
 "use strict";
 /* ================= Helpers ================= */
 const $ = (s, r = document) => r.querySelector(s);
@@ -1210,6 +1399,7 @@ function matField(cur){ const ens = enseigne(); cur = cur || ens[0] || "Math";
 document.addEventListener("click", ev => { if (ev.target.id === "c-matchg"){ S.coursDraft = {...(S.coursDraft || {}), titre:$("#c-titre")?.value, texte:$("#c-texte")?.value}; S.matChg = true; render(); } });
 function wizParams(){
   if (!S.params._pref) applyPrefParams();
+  if (S.plan && S.plan.coursId !== S.coursId) S.plan = null;
   const co = store.cours.find(c => c.id === S.coursId);
   const p = S.params;
   p.matiere = co?.matiere || p.matiere || enseigne()[0] || "Math";
@@ -1235,7 +1425,58 @@ function wizParams(){
     <label class="row small" style="gap:6px"><input type="checkbox" id="p-diff"${p.differencie ? " checked" : ""}> Differentiated sheets: each question in 3 levels (foundational, standard, advanced), based on each student's level</label>
     ${sujetsField(sujetsOf(co, S.params.sujets), "p")}
     <div class="field"><label for="p-cons">Your instructions to the AI (optional)</label><textarea id="p-cons" data-p="consignes" data-live placeholder="e.g. Emphasize the concept of antecedents. One essay question at the end.">${esc(p.consignes)}</textarea></div>
-    <div class="row"><button class="btn primary" id="gen" ${store.classes.length ? "" : "disabled"}>${EXO ? "Generate exercises (AI)" : "Generate the test (AI)"}</button><button class="btn" id="genBlank" ${store.classes.length ? "" : "disabled"}>Start from a blank test</button><span class="status" id="gen-st"></span></div>
+    <div class="row"><button class="btn primary" id="gen" ${store.classes.length ? "" : "disabled"}>${EXO ? "Generate exercises (AI)" : "Generate the test (AI)"}</button>${EXO || S.plan ? "" : `<button class="btn" id="planAsk" ${store.classes.length ? "" : "disabled"}>See the plan first (AI)</button>`}<button class="btn" id="genBlank" ${store.classes.length ? "" : "disabled"}>Start from a blank test</button><span class="status" id="gen-st">${S.plan ? "" : esc(S.planErr || "")}</span></div>
+  </section>
+  ${EXO ? "" : planPanel()}`;
+}
+
+/* Résultat de la vérification automatique d'un contrôle généré (fiabilite.js), en clair pour le professeur */
+const verifTxt = x => ({points:`Points adjusted automatically: AI suggested ${fmt(x.avant)} points in total, brought to ${fmt(x.total)}. Check the points and criteria of each question.`,
+  vide:`Question ${x.q} : empty question text, write it or delete the question.`, qcm:`Question ${x.q} : incomplete multiple-choice question (it needs at least two different choices and one correct answer).`, corrige:`Question ${x.q} : no answer key.`,
+  version:`Question ${x.q} : ${LVL[x.l] || x.l} version missing, replaced by the standard version.`, memes:`Question ${x.q} : all three levels have the same question text.`,
+  criteres:`Question ${x.q} : the criteria add up to ${fmt(x.somme)} point(s) for a question worth ${fmt(x.points)}.`, sujet:`No question on the topic « ${x.s} ».`, nombre:`${x.n} question(s) written instead of ${x.voulu}.`})[x?.k] || "";
+const aVoir = c => [...(c.remarques || []).map(String), ...(Array.isArray(c.verif) ? c.verif : []).map(verifTxt)].filter(Boolean);
+
+/* ---------- Plan du contrôle ----------
+   Avant la rédaction, l'IA propose une ligne par question (notion, type, compétence, points). Le professeur modifie, retire ou ajoute
+   des lignes, puis lance la rédaction : l'IA suit le plan, et les points du plan sont ceux du contrôle. */
+const PLAN_T = {cours:"Lesson question", application:"Application exercise", probleme:"Problem / essay", texte:"Text reading", traduction:"Translation", qcm:"QCM"};
+const planTotal = () => (S.plan?.items || []).reduce((a, x) => a + (+x.points || 0), 0);
+function planPrompt(co, p, n){
+  const T = {cours:"lesson questions", application:"application exercises", probleme:"problem or essay", texte:"reading / text analysis", traduction:"traduction", qcm:"QCM"};
+  return `You are an experienced teacher of ${p.matiere} in the US. Before writing a test for a class of ${p.niveau}, propose its PLAN from the lesson below: ${n} lines, one per question, without writing the questions.
+
+Duration: ${p.duree} minutes · Difficulty: ${p.difficulte} · Types: ${(p.types || []).map(t => T[t]).join(", ") || "varied"}
+${p.consignes ? "Teacher's instructions: " + p.consignes : ""}
+${langueRule(p.langue)}
+${sujetsRule(sujetsOf(co, p.sujets))}
+${(p.comps || []).length ? "Skills to assess first (at least half of the questions): " + p.comps.map(k => COMPS[k]).join(", ") + "." : ""}
+For each line of the plan: "notion" (what the question assesses, in 3 to 10 words, specific), "type" (only one, from: ${((p.types || []).length ? p.types : Object.keys(T)).join(", ")}), "competence" (only one, from: connaitre, comprendre, raisonner, lire, ecrire), "points" (in steps of 0.5).
+Rules: the plan covers the essential concepts of the lesson without assessing the same thing twice; it goes from the simplest to the most demanding; points follow the importance of the concept and the length of the expected answer; the total is exactly 20 points; the whole test fits in the time allowed.
+${NOSRC}
+
+LESSON:
+"""${(co?.texte || "").slice(0, 60000)}"""
+
+Respond only in JSON: {"plan":[{"sujet":"…","notion":"…","type":"application","competence":"comprendre","points":4}]}`;
+}
+const planRule = items => `\nPLAN SET BY THE TEACHER: write exactly ${items.length} question(s), in this order, one per line of the plan. For each, follow the skill, type, and points given; do not add any question.\n`
+  + items.map((x, i) => `${i + 1}. ${x.sujet ? "[" + x.sujet + "] " : ""}${x.notion} · ${PLAN_T[x.type] || x.type}${x.comp ? " · " + COMPS[x.comp] : ""} · ${fmt(+x.points)} pts`).join("\n") + "\n";
+function planPanel(){
+  const P = S.plan; if (!P) return "";
+  if (P.loading) return `<section class="panel grid"><h3 style="margin:0">Test plan</h3><div class="status"><span class="thinking">AI is preparing the plan (10 to 30 seconds)…</span></div></section>`;
+  const tot = planTotal(), ok = Math.abs(tot - 20) < 1e-9 && P.items.length && P.items.every(x => x.notion.trim());
+  return `<section class="panel grid" id="plan">
+    <div class="row between"><h3 style="margin:0">Test plan</h3><span class="chip ${Math.abs(tot - 20) < 1e-9 ? "ok" : "warn"} num">Total: ${fmt(tot)} / 20</span></div>
+    <p class="small muted" style="margin:0">Edit, remove, or add lines: AI will write exactly these questions, in this order, with these points.</p>
+    ${P.items.map((x, i) => `<div class="plan-row"><span class="pl-n num">${i + 1}</span>
+      <input class="pl-notion" id="pl-n-${i}" data-live data-plan="notion" data-i="${i}" value="${esc(x.notion)}" dir="auto" placeholder="Skill assessed" aria-label="Skill assessed by question ${i + 1}">
+      <select class="pl-type" id="pl-t-${i}" data-plan="type" data-i="${i}" aria-label="Type of question ${i + 1}">${Object.entries(PLAN_T).map(([k, l]) => `<option value="${k}"${x.type === k ? " selected" : ""}>${l}</option>`).join("")}</select>
+      <select class="pl-comp" id="pl-c-${i}" data-plan="comp" data-i="${i}" aria-label="Skill for question ${i + 1}"><option value="">Skill…</option>${Object.entries(COMPS).map(([k, l]) => `<option value="${k}"${x.comp === k ? " selected" : ""}>${l}</option>`).join("")}</select>
+      <input class="pl-pts" id="pl-p-${i}" type="number" inputmode="decimal" min="0.5" max="20" step="0.5" data-plan="points" data-i="${i}" value="${esc(x.points)}" aria-label="Points for question ${i + 1}">
+      <button class="btn sm ghost pl-x" data-plandel="${i}" aria-label="Remove question ${i + 1}" title="Remove">×</button></div>`).join("")}
+    <div class="row"><button class="btn sm" id="planAdd" ${P.items.length >= 10 ? "disabled" : ""}>+ Add a question</button>${Math.abs(tot - 20) < 1e-9 || P.items.length < 2 ? "" : `<button class="btn sm" id="plan20">Bring the total to 20</button>`}</div>
+    <div class="row"><button class="btn primary" id="planGo" ${ok ? "" : "disabled"}>Write the test from this plan (AI)</button><button class="btn" id="planAsk">Redo the plan</button><button class="btn ghost" id="planX">Discard the plan</button><span class="status" id="plan-st"></span></div>
   </section>`;
 }
 
@@ -1261,7 +1502,7 @@ function vEdit(){
     <div class="form-row"><div class="field"><label for="rr-regle">Final score</label><select id="rr-regle">${selOpts(Object.keys(RREGLES), R.regle, x => RREGLES[x])}</select></div>
       ${R.regle === "bonus" ? `<div class="field"><label for="rr-bonus">Maximum bonus</label><select id="rr-bonus">${selOpts(["1","2","3","4","5"], String(R.bonus), x => ptsS(+x))}</select></div>` : ""}
       ${["meilleure", "bonus", "remplace"].includes(R.regle) ? `<div class="field"><label for="rr-plaf">Cap</label><select id="rr-plaf">${selOpts(["10","12","14","16","20"], String(R.plafond), x => x === "20" ? "None" : noteS(+x))}</select></div>` : ""}</div></section>`; })() : ""}
-  ${c.remarques?.length ? `<section class="panel grid" style="border-color:var(--warn)"><div class="row between"><h3 style="margin:0">To check</h3><button class="btn sm" id="remOk">Checked</button></div><ul class="small" style="margin:0;padding-left:18px">${c.remarques.map(x => `<li>${esc(x)}</li>`).join("")}</ul></section>` : ""}
+  ${aVoir(c).length ? `<section class="panel grid" style="border-color:var(--warn)"><div class="row between"><h3 style="margin:0">To check</h3><button class="btn sm" id="remOk">Checked</button></div><ul class="small" style="margin:0;padding-left:18px">${aVoir(c).map(x => `<li>${esc(x)}</li>`).join("")}</ul></section>` : ""}
   <div class="head"><h3>Questions <span class="muted num" style="font-weight:500">· total ${fmt(tot)} pts${(N => N.type === "sur" && tot !== N.sur ? " (scaled to " + N.sur + ")" : "")(notation())}</span></h3>
     <div class="row">${(c.questions || []).some(q => !(q.comps || []).length) ? `<button class="btn sm" id="compAI" title="The AI indicates the skills assessed by each question">Skills (AI)</button>` : ""}${c.type === "exercices" ? (canEx() ? `<button class="btn sm primary" id="regenEx">↻ Regenerate exercises (AI)</button>` : lockChip()) : (!c.type || c.type === "controle") && c.coursId ? `<button class="btn sm primary" id="regenCtrl">↻ Regenerate the test (AI)</button>` + (canEx() ? `<button class="btn sm" data-exfrom="${c.id}">+ Practice quiz on this lesson</button>` : lockChip()) : ""}${(!c.type || c.type === "controle") && c.questions?.length ? `<button class="btn sm" id="variante" title="Same structure, same concepts and same points, new questions">⧉ Variant (AI)</button>` : ""}<button class="btn sm" id="addQ">+ Blank question</button><button class="btn sm" id="addQcm">+ MCQ</button><button class="btn sm" id="addQai">+ Question (AI)</button><button class="btn sm" id="bankOpen">${S.bankOpen ? "Close the question bank" : "+ From the question bank"}</button></div></div>
   ${isCtrl(c) || c.type === "exercices" ? (() => { const co = store.cours.find(x => x.id === c.coursId); return co ? `<details class="panel" style="padding:10px 14px"><summary class="small"><b>Topics covered when regenerating</b> · ${sujetsOf(co, c.gen?.sujets).length || 1} topic(s)</summary>${sujetsField(sujetsOf(co, c.gen?.sujets), "e")}</details>` : ""; })() : ""}
@@ -1784,8 +2025,8 @@ async function processPage(it){
     if (cropMode) for (const b of aiB) crops[b.q] = warpBox(it.cv, Hm, b);
     if (ASSETS){ for (const k in crops){ try { const a = await ASSETS.upload(await toBlob(crops[k], .88)); crops[k].asset = a.id; } catch(e){} } }
     const localAns = qid => { const q = c.questions.find(x => x.id === qid); if (!q) return null; const ver = cp.version?.[qid] || "standard";
-      if (blank.has(qid)) return {transcription:"", annot:"", lisible:true, noteIA:0, note:null, commentaire:"No answer.", erreurs:["no answer"], acquis:[], valide:false, auto:true};
-      if (marks[qid]) return qcmAnswer(q, ver, marks[qid].coches, marks[qid].ambigu); return null; };
+      if (blank.has(qid)) return FIAB.completer({transcription:"", annot:"", lisible:true, noteIA:0, note:null, commentaire:"No answer.", erreurs:["no answer"], acquis:[], valide:false, auto:true}, null, q);
+      if (marks[qid]) return FIAB.completer(qcmAnswer(q, ver, marks[qid].coches, marks[qid].ambigu), null, q); return null; };
     /* Correction confiée au serveur : elle continue même si on quitte la page ou l'application */
     if (aiQ.length && jobsOn()){
       try {
@@ -1800,7 +2041,7 @@ async function processPage(it){
         keepTeacherNotes(cp, upd.copies[it.eleveId]);
         await write("feuilles/" + c.id, upd, "update");
         if (c.statut === "imprime"){ c.statut = "correction"; await saveCtrl(c); }
-        const j = await api("/api/jobs", {method:"POST", body:JSON.stringify({ctrlId:c.id, eleveId:it.eleveId, page:it.page, name:it.name, prompt:gradePrompt(c, cp, aiQ, mode) + JSON_ONLY, images, qs, bonus:!!bonusMax(c), txt:jobTxt()})});
+        const j = await api("/api/jobs", {method:"POST", body:JSON.stringify({ctrlId:c.id, eleveId:it.eleveId, page:it.page, name:it.name, prompt:gradePrompt(c, cp, aiQ, mode) + JSON_ONLY, images, qs, bonus:!!bonusMax(c), txt:jobTxt(), relire:rereadTpl(c)})});
         it.status = "serveur"; it.jobId = j.id; it.msg = "Page ready: grading continues on the server, you can leave the app."; if (it.load) freeCv(it); else it.cv = null;
         watchJobs(); return scheduleRender();
       } catch(e){ console.warn("Server task unavailable, grading here", e); }
@@ -1835,6 +2076,7 @@ async function processPage(it){
       else ans = {transcription:String(r.transcription ?? ""), transcriptionIA:String(r.transcription ?? ""), annot:r.annotee != null ? String(r.annotee) : markFautes(String(r.transcription ?? ""), r.fautes), lisible:r.lisible !== false,
         noteIA:clamp(half(Number(r.note) || 0), 0, +q.points), note:null, commentaire:String(r.commentaire ?? ""), erreurs:(r.erreurs || []).map(String).slice(0, 4), acquis:(r.acquis || []).map(String).slice(0, 4), valide:false};
       if (!ans.auto && isNoAnswer(ans.transcription)){ ans.noteIA = 0; ans.commentaire = "No answer: review this skill."; ans.erreurs = ["no answer"]; ans.acquis = []; }
+      if (!ans.doute) FIAB.completer(ans, r, q, {vide:!ans.auto && isNoAnswer(ans.transcription)});
       ans.crop = crops[qid]?.asset || null;
       upd.copies[it.eleveId].answers[qid] = ans;
     }
@@ -1857,6 +2099,18 @@ Criteria: ${v.criteres || "according to the answer key"}
 Possible common mistakes: ${(q.erreurs || []).join(" | ") || "(aucune)"}`;
 }
 const MATH_RULE = "Math in LaTeX between $…$ (e.g. $\\frac{2}{3}$, $x^2$, $\\sqrt{5}$, $3\\times 4$), everything else in plain text.";
+/* Ce que l'IA dit de sa propre correction : sert à repérer les réponses à vérifier d'abord (fiabilite.js) */
+const GRADE_EXTRA = `For each written answer, also add:
+- "detail": the points awarded criterion by criterion; their sum must be exactly the score.
+- "confiance": 3 if the reading and the score are certain; 2 if a word or half a point is debatable; 1 if you had to guess part of the handwriting, or if the score could change by one point or more.
+- "hesitation": "" in general; if you hesitate between two scores, say so in one short sentence (both scores and the reason).
+`;
+/* Relecture d'un seul cadre : à la demande du professeur (avec la première lecture) ou automatique sur le serveur pour une réponse douteuse (sans elle : lecture indépendante) */
+function relirePrompt(C, bloc, o = {}){
+  return `Read this student's handwritten answer box very carefully (${C.matiere}, ${C.niveau || ""}), then grade it. Image 1 is the box to read.${o.smp || ""}${lectureTips()}\n${bloc}${o.premiere != null ? `\n\nA first reading gave: """${o.premiere}""" (deemed uncertain).` : ""}\nTranscribe line by line, without correcting spelling. ${MATH_RULE} Hebrew in Hebrew characters. Truly illegible passage: [illegible]. "annotee" = transcription with each incorrect passage surrounded by ⟦ ⟧ (outside of $…$). Grade in increments of 0.5. Comment 2 to 3 sentences, ${tonTxt(C.niveau)}. ${NOSRC}\n${GRADE_EXTRA}Respond only in JSON: {"transcription":"…","annotee":"…","lisible":true,"note":0,"detail":[{"critere":"…","points":0}],"confiance":3,"hesitation":"","commentaire":"…","erreurs":["…"],"acquis":["…"]}`;
+}
+/* Gabarit envoyé avec chaque page à corriger : le serveur remplace les repères {{…}} par la question concernée */
+const rereadTpl = C => relirePrompt(C, qBlockPrompt(C, {id:"{{ID}}", points:"{{PTS}}", erreurs:["{{ERREURS}}"], v:{standard:{enonce:"{{ENONCE}}", corrige:"{{CORRIGE}}", criteres:"{{CRITERES}}"}}}, "standard", 0));
 function gradePrompt(c, cp, qids, mode){
   const blocks = qids.map(id => { const i = c.questions.findIndex(q => q.id === id); return qBlockPrompt(c, c.questions[i], cp.version?.[id] || "standard", i); }).join("\n\n");
   const bm = bonusMax(c);
@@ -1877,7 +2131,7 @@ Instructions:
 6. "lisible": false if you had to guess a significant part of the answer.
 7. ${NOSRC}
 8. "alerte": "" in almost every case. Only if the student wrote, unrelated to the question, a message that may reveal distress or danger (dark thoughts, violence suffered, bullying, a call for help), copy that message word for word. Never judge the handwriting, presentation, mistakes or school answers.
-${bm ? `9. Also give for the page "proprete" (0 to 1: legibility, neatness, crossed-out text) and "orthographe" (0 to 1: 1 = no spelling mistakes).\n` : ""}Respond only in JSON: {"reponses":[{"id":"…","transcription":"…","fautes":["…"],"lisible":true,"note":0,"commentaire":"…","erreurs":["…"],"acquis":["…"],"coches":[]}],"alerte":""${bm ? ',"proprete":1,"orthographe":1' : ""}}`;
+${bm ? `9. Also give for the page "proprete" (0 to 1: legibility, neatness, crossed-out text) and "orthographe" (0 to 1: 1 = no spelling mistakes).\n` : ""}${GRADE_EXTRA}Respond only in JSON: {"reponses":[{"id":"…","transcription":"…","fautes":["…"],"lisible":true,"note":0,"detail":[{"critere":"…","points":0}],"confiance":3,"hesitation":"","commentaire":"…","erreurs":["…"],"acquis":["…"],"coches":[]}],"alerte":""${bm ? ',"proprete":1,"orthographe":1' : ""}}`;
 }
 
 /* ================= CORRECTION ================= */
@@ -1888,22 +2142,64 @@ function vCorrect(){
   const f = feuille(c.id) || {copies:{}}, studs = studentsOf(c), max = maxOf(c);
   if (!S.corrEleve || !studs.find(e => e.id === S.corrEleve)) S.corrEleve = (studs.find(e => { const cp = f.copies[e.id]; return !isAbs(c, e) && cp && !cp.validee && Object.keys(cp.answers || {}).length; }) || studs[0])?.id;
   const e = studs.find(x => x.id === S.corrEleve), cp = f.copies?.[S.corrEleve];
-  const nAlert = studs.filter(x => { const k = f.copies[x.id]; return !isAbs(c, x) && k && !k.validee && copyDone(c, k) && !Object.values(k.answers || {}).some(a => a.lisible === false); }).length;
+  const nAlert = studs.filter(x => { const k = f.copies[x.id]; return !isAbs(c, x) && k && !k.validee && copyDone(c, k) && !Object.values(k.answers || {}).some(a => FIAB.ouvert(a) >= 2); }).length;
+  const nVerif = aVerifier(c, f, studs).length;
   return `
   <div class="head"><div><h2>Grading</h2><p>AI proposes; you approve. Passages underlined in red are the ones AI considers incorrect.</p></div>
     <select id="corrSel" style="max-width:440px" aria-label="Test">${selOpts(list, c.id, x => (x.type === "rattrapage" ? "Remediation · " : x.type === "exercices" ? "Practice · " : "") + x.titre + " · " + (classe(x.classeId)?.nom || ""), x => x.id)}</select></div>
-  <div class="seg" role="tablist"><button data-cmode="copie" aria-pressed="${S.corrMode !== "question"}">By student</button><button data-cmode="question" aria-pressed="${S.corrMode === "question"}">By question (whole class)</button></div>
-  ${S.corrMode === "question" ? vByQuestion(c, f, studs) : `<div class="split">
+  <div class="seg" role="tablist"><button data-cmode="copie" aria-pressed="${!["question", "verif"].includes(S.corrMode)}">By student</button><button data-cmode="question" aria-pressed="${S.corrMode === "question"}">By question (whole class)</button>${nVerif || S.corrMode === "verif" ? `<button data-cmode="verif" aria-pressed="${S.corrMode === "verif"}">To check (${nVerif})</button>` : ""}</div>
+  ${S.corrMode === "verif" ? vAVerifier(c, f, studs) : S.corrMode === "question" ? vByQuestion(c, f, studs) : `<div class="split">
     <aside class="panel" style="padding:8px">
       <div class="row between" style="padding:4px 8px 8px"><span class="label">Papers</span>
         ${nAlert ? `<button class="btn sm" id="valAll">Approve the ${nAlert} no alerts</button>` : ""}</div>
-      ${studs.map(x => { const k = f.copies[x.id]; const n = k ? Object.keys(k.answers || {}).length : 0; const done = copyDone(c, k); const warn = k && Object.values(k.answers || {}).some(a => a.lisible === false);
+      ${studs.map(x => { const k = f.copies[x.id]; const n = k ? Object.keys(k.answers || {}).length : 0; const done = copyDone(c, k); const warn = k && Object.values(k.answers || {}).some(a => FIAB.ouvert(a) >= 2);
         return `<button class="stu" data-cel="${x.id}" aria-current="${x.id === S.corrEleve}"><span>${esc(x.prenom)} ${esc(x.nom)}</span><span class="row" style="gap:6px">
         ${isAbs(c, x) ? `<span class="chip">absent</span>` : !n ? `<span class="chip">not scanned</span>` : done ? `<span class="num">${noteS(final20(c, k))}</span>${k.validee ? `<span class="chip ok">✓</span>` : `<span class="chip ${warn ? "bad" : "warn"}">${warn ? "to review" : "to approve"}</span>`}` : `<span class="chip warn">${n}/${c.questions.length} q.</span>`}</span></button>`; }).join("")}
-      <div style="padding:10px 8px 4px;border-top:1px solid var(--line);margin-top:6px" class="row"><button class="btn sm" id="csv">Export grades (CSV)</button><button class="btn sm" id="renduAll">Class's completed papers (PDF)</button></div>
+      <div style="padding:10px 8px 4px;border-top:1px solid var(--line);margin-top:6px" class="row"><button class="btn sm" id="csv">Export grades (CSV)</button><button class="btn sm" id="renduAll">Class's completed papers (PDF)</button>${journalOn() ? `<button class="btn sm" id="journal">Approval log (CSV)</button>` : ""}</div>
     </aside>
     ${e ? copyView(c, e, cp, studs) : `<div class="panel empty">No students.</div>`}
   </div>`}`;
+}
+/* ---------- Réponses à vérifier d'abord ----------
+   Le niveau de doute de chaque réponse est calculé à la correction (fiabilite.js). Dès que le professeur garde la note proposée
+   ou en pose une autre, le doute est levé : la réponse quitte la liste et la copie peut entrer dans la validation groupée. */
+const DOUTE_TXT = {lecture:"uncertain reading", illisible:"illegible passage", confiance:"AI is not confident", hesite:"borderline score", detail:"the point breakdown does not match the score", max_fautes:"full marks despite errors found", zero:"zero with no error noted", lectures:"two different readings", relu:"read a second time"};
+const journalOn = () => typeof SERVERSTORE !== "undefined" && !!SERVERSTORE;
+function aVerifier(c, f, studs){
+  const out = [];
+  studs.forEach((e, si) => { const cp = f.copies?.[e.id]; if (!cp || cp.validee || isAbs(c, e)) return;
+    (c.questions || []).forEach((q, k) => { const a = cp.answers?.[q.id], n = FIAB.ouvert(a); if (n) out.push({e, cp, q, k, a, n, si}); }); });
+  return out.sort((x, y) => y.n - x.n || x.k - y.k || x.si - y.si);
+}
+/* Sous une réponse : raisons du doute, hésitation de l'IA, autre lecture, points accordés par critère.
+   tout = false : la raison « lecture incertaine » est déjà affichée par la ligne « ⚠ Lecture incertaine » de la copie. */
+function douteHtml(a, qid, eid, tout){
+  if (!a) return "";
+  const n = FIAB.ouvert(a), E = eid ? ` data-eid="${esc(eid)}"` : "";
+  const rs = (a.doute?.r || (a.lisible === false ? ["lecture"] : [])).filter(k => tout || k !== "lecture").map(k => DOUTE_TXT[k]).filter(Boolean);
+  return `${n && rs.length ? `<div class="small" style="color:var(--${n >= 2 ? "bad" : "warn"})">⚠ ${n >= 2 ? "Check first:" : "Worth a look:"} ${rs.map(esc).join(" · ")}</div>` : ""}${a.hesite && n ? `<div class="small muted" dir="auto">AI is unsure: ${esc(a.hesite)}</div>` : ""}${a.alt && !a.valide ? `<div class="small" dir="auto" style="padding:8px 10px;border:1px dashed var(--line);border-radius:8px"><b>AI's other reading</b> · score ${fmt(a.alt.noteIA)} · ${esc(a.alt.transcription) || '<span class="muted">(empty frame)</span>'} <button class="btn sm" data-alt="${esc(qid)}"${E}>Use this reading</button></div>` : ""}${(a.detail || []).length ? `<div class="small muted" dir="auto">Points awarded: ${a.detail.map(d => esc(d.c) + " (" + fmt(d.p) + ")").join(" · ")}</div>` : ""}`;
+}
+function vAVerifier(c, f, studs){
+  const list = aVerifier(c, f, studs), forts = list.filter(x => x.n >= 2).length;
+  if (!list.length) return `<div class="panel empty">Nothing left to check first: you can approve the papers. <button class="btn sm" data-cmode="copie">Open papers</button></div>`;
+  return `<section class="qbq">
+    <p class="banner">${forts ? `${forts} answer(s) to check first` : "No answer to check first"}${list.length - forts ? ` · ${list.length - forts} worth a look` : ""}. Compare with the photo, then keep the suggested score or change it: the answer then leaves this list.</p>
+    ${list.map(({e, cp, q, k, a, n}) => { const v = vOf(q, cp.version?.[q.id] || versionFor(c, e));
+      return `<article class="qcard" id="vc-${e.id}-${q.id}">
+      <div class="row between" style="gap:8px"><div><b>${esc(e.prenom)} ${esc(e.nom)}</b> <span class="chip ${n >= 2 ? "bad" : "warn"}">${n >= 2 ? "to review" : "worth a look"}</span>
+        <div class="small muted">Question ${k + 1}${q.notion ? " · " + esc(q.notion) : ""}</div></div>
+        ${scoreCtl(q, a, e.id, k)}</div>
+      ${a.crop ? `<img class="crop" alt="Scanned box" src="${esc(blobSrc(a.crop))}" data-zoom="${esc(blobSrc(a.crop))}">` : ""}
+      <div class="answer" dir="auto">${renderAnnot(a.annot || a.transcription, q.id, e.id) || '<span class="muted">(empty frame)</span>'}</div>
+      ${douteHtml(a, q.id, e.id, true)}
+      ${a.commentaire ? `<div class="small note" dir="auto">${esc(a.commentaire)}</div>` : ""}
+      <details><summary class="small"><b>Question and model answer</b></summary>
+        <div dir="auto" style="margin-top:6px">${esc(v.enonce)}</div>${v.corrige ? `<div class="small muted" dir="auto" style="margin-top:6px;white-space:pre-wrap"><b>Model answer:</b> ${esc(v.corrige)}</div>` : ""}</details>
+      <div class="row" style="gap:6px"><button class="btn sm primary" data-qset="${a.noteIA}" data-q="${q.id}" data-eid="${e.id}">Keep ${fmt(a.noteIA)} / ${fmt(+q.points)}</button>
+        <button class="btn sm ghost" data-recrop="${q.id}" data-eid="${e.id}">Re-crop</button>${a.crop && q.type !== "qcm" ? `<button class="btn sm ghost" data-precise="${q.id}" data-eid="${e.id}">Re-read (AI)</button>` : ""}<span class="status" data-st="${e.id}|${q.id}"></span>
+        <button class="btn sm ghost" data-opencopy="${e.id}">Open paper</button></div>
+    </article>`; }).join("")}
+  </section>`;
 }
 /* Note : boutons rapides (0, moitié, tout) + saisie libre, faciles à toucher sur téléphone */
 function scoreCtl(q, a, eid, k){
@@ -1935,7 +2231,7 @@ function vByQuestion(c, f, studs){
         ${scoreCtl(q, a, e.id, qi)}</div>
       ${a ? `${a.crop ? `<img class="crop" alt="Scanned box" src="${esc(blobSrc(a.crop))}" data-zoom="${esc(blobSrc(a.crop))}">` : ""}
         <div class="answer" dir="auto">${renderAnnot(a.annot || a.transcription, q.id, e.id) || '<span class="muted">(empty frame)</span>'}</div>
-        ${a.lisible === false ? `<div class="small" style="color:var(--warn)">⚠ Uncertain reading: compare with the photo.</div>` : ""}
+        ${a.lisible === false ? `<div class="small" style="color:var(--warn)">⚠ Uncertain reading: compare with the photo.</div>` : ""}${douteHtml(a, q.id, e.id)}
         ${a.commentaire ? `<div class="small note" dir="auto">${esc(a.commentaire)}</div>` : ""}
         ${(a.erreurs || []).length ? `<div class="tags">${a.erreurs.map((t, j) => `<span class="chip bad">${esc(t)} <button class="btn sm ghost" style="padding:0 4px;min-height:0" data-unerr="${q.id}|${j}" data-eid="${e.id}" aria-label="Remove this error">×</button></span>`).join("")}</div>` : ""}`
         : `<div class="small muted">No answer read for this question yet.</div>`}
@@ -2074,7 +2370,7 @@ function copyView(c, e, cp, studs){
       ${a ? `${edT ? `<textarea id="tr-${q.id}" data-live dir="auto">${esc(a.transcription)}</textarea><div class="row"><button class="btn sm primary" data-retr="${q.id}">Regrade with this text (AI)</button><button class="btn sm ghost" data-trx="${q.id}">Cancel</button><span class="status" id="rs-${q.id}"></span></div>`
         : `<div class="answer" dir="auto">${renderAnnot(a.annot || a.transcription, q.id) || '<span class="muted">(empty frame)</span>'}</div>`}
       ${a.crop ? `<img class="crop" alt="Scanned box" src="${esc(blobSrc(a.crop))}" data-zoom="${esc(blobSrc(a.crop))}">` : ""}
-      ${a.lisible === false ? `<div class="small" style="color:var(--warn)">⚠ Uncertain reading: compare with the photo${a.crop ? ` ou <button class="btn sm" data-precise="${q.id}">Re-read in precise mode (AI)</button>` : "."}</div><span class="status" id="pr-${q.id}"></span>` : ""}
+      ${a.lisible === false ? `<div class="small" style="color:var(--warn)">⚠ Uncertain reading: compare with the photo${a.crop ? ` ou <button class="btn sm" data-precise="${q.id}">Re-read in precise mode (AI)</button>` : "."}</div><span class="status" id="pr-${q.id}"></span>` : ""}${douteHtml(a, q.id)}
       <div class="comment">${edC ? `<textarea id="cm-${q.id}" data-live>${esc(a.commentaire)}</textarea><div class="row"><button class="btn sm primary" data-savecm="${q.id}">Save</button><button class="btn sm ghost" data-cmx="${q.id}">Cancel</button></div>`
         : `<div class="note" dir="auto">${esc(a.commentaire)}</div>`}
         <div class="tags">${(a.acquis || []).map(t => `<span class="chip ok">${esc(t)}</span>`).join("")}${(a.erreurs || []).map((t, j) => `<span class="chip bad">${esc(t)} <button class="btn sm ghost" style="padding:0 4px;min-height:0" data-unerr="${q.id}|${j}" aria-label="Remove this error" title="Remove">×</button></span>`).join("")}</div>
@@ -2537,24 +2833,46 @@ document.addEventListener("click", async ev => {
     catch(er){ st.textContent = aiErr(er?.code); t.disabled = false; } return; }
   if (d.fold){ const f = foldGet(); f[d.fold] = !f[d.fold]; try { localStorage.setItem("mastery.fold", JSON.stringify(f)); } catch(e){} return render(); }
   if (t.id === "p-niv-cl"){ S.params.niveau = t.dataset.niv; return render(); }
-  if (t.id === "gen" || t.id === "genBlank"){
+  /* Plan du contrôle : proposé par l'IA, modifié et approuvé par le professeur avant la rédaction */
+  if (t.id === "planAsk"){
     if (!S.params.langue) S.params.langue = langueDef(store.cours.find(c => c.id === S.coursId)?.texte);
-    const p = S.params, co = store.cours.find(c => c.id === S.coursId), st = $("#gen-st");
+    const p = structuredClone(S.params), co = store.cours.find(c => c.id === S.coursId), cid = S.coursId; if (!co) return;
+    const nq = clamp(Math.max(+p.nbq || 5, sujetsOf(co, p.sujets).length), 1, 10);
+    S.planErr = ""; S.plan = {coursId:cid, loading:true, items:[]}; render();
+    try { const r = await ai(planPrompt(co, p, nq), {modelTier:"complex"}), items = FIAB.plan(r?.plan, {n:nq, total:20, types:p.types});
+      if (!items.length) throw {code:"invalid_json"};
+      if (S.plan?.loading && S.plan.coursId === cid) S.plan = {coursId:cid, items}; }
+    catch(e){ console.warn(e); if (S.plan?.loading) S.plan = null; S.planErr = aiErr(e?.code); }
+    return render(); }
+  if (t.id === "planAdd" && S.plan){ if (S.plan.items.length < 10) S.plan.items.push({sujet:"", notion:"", type:S.params.types?.[0] || "cours", comp:"", points:2}); return render(); }
+  if (d.plandel !== undefined && S.plan){ S.plan.items.splice(+d.plandel, 1); return render(); }
+  if (t.id === "plan20" && S.plan){ FIAB.repartir(S.plan.items.map(x => +x.points || 0.5), 20).forEach((v, i) => { S.plan.items[i].points = v; }); return render(); }
+  if (t.id === "planX"){ S.plan = null; S.planErr = ""; return render(); }
+
+  if (t.id === "gen" || t.id === "genBlank" || t.id === "planGo"){
+    if (!S.params.langue) S.params.langue = langueDef(store.cours.find(c => c.id === S.coursId)?.texte);
+    const p = S.params, co = store.cours.find(c => c.id === S.coursId), st = t.id === "planGo" ? $("#plan-st") : $("#gen-st");
+    const plan = t.id === "planGo" ? structuredClone(S.plan?.items || []).filter(x => String(x.notion || "").trim()).slice(0, 10) : null;
+    if (plan && (!plan.length || Math.abs(plan.reduce((a, x) => a + (+x.points || 0), 0) - 20) > 1e-9)) return toast("The plan must add up to 20 points.");
     const EXO = p.kind === "exercices" && canEx();
-    const id = uid(12); const base = {type:EXO ? "exercices" : "controle", titre:p.titre || (EXO ? "Practice · " : "") + (co?.titre || "Test"), gen:{types:p.types, difficulte:p.difficulte, consignes:p.consignes || "", sujets:sujetsOf(co, p.sujets)}, matiere:p.matiere, niveau:p.niveau, classeId:p.classeId, coursId:S.coursId, duree:+p.duree || 55,
+    const id = uid(12); const base = {type:EXO ? "exercices" : "controle", titre:p.titre || (EXO ? "Practice · " : "") + (co?.titre || "Test"), gen:{types:p.types, difficulte:p.difficulte, consignes:p.consignes || "", sujets:sujetsOf(co, p.sujets), ...(plan ? {plan} : {})}, matiere:p.matiere, niveau:p.niveau, classeId:p.classeId, coursId:S.coursId, duree:+p.duree || 55,
       differencie:!!p.differencie, langue:p.langue || "", statut:"brouillon", date:"", mise:miseDef(p.niveau, EXO ? {consignes:"Practice exercise sheet. Write only inside the boxes."} : null), questions:[], createdAt:new Date().toISOString()};
     if (t.id === "genBlank"){ base.questions = [mapQ({points:4, lignes:6})]; await write("controles/" + id, base); S.editId = id; S.wizStep = 1; S.step = "preparer"; return go("edit"); }
-    const P = structuredClone(p);
-    const nq = clamp(Math.max(+P.nbq || 5, sujetsOf(co, P.sujets).length), 1, 10);   // au moins une question par sujet du cours
-    if (await aiTask({key:"gen", label:EXO ? "New practice sheet" : "New test", btn:"#gen",
+    const P = structuredClone(p); if (plan) P.types = [...new Set(plan.map(x => x.type))];
+    const nq = plan ? plan.length : clamp(Math.max(+P.nbq || 5, sujetsOf(co, P.sujets).length), 1, 10);   // au moins une question par sujet du cours
+    const extra = (EXO ? EXO_TXT : "") + (plan ? planRule(plan) : ""), sujets = sujetsOf(co, P.sujets);
+    if (await aiTask({key:"gen", label:EXO ? "New practice sheet" : "New test", btn:plan ? "#planGo" : "#gen",
       spec:() => { S.params.titre = ""; S.params._pref = false; const {questions:_q, ...b0} = base;
-        return {check:true, prompt:genPrompt(co, P, nq, EXO ? EXO_TXT : ""), n:nq, path:"controles/" + id, mode:"create", base:b0, titre:{fixe:P.titre || "", prefixe:EXO ? "Practice · " : "", defaut:base.titre}, msgOk:EXO ? "Practice sheet ready" : "Test ready", feature:EXO ? "exercices" : ""}; },
+        return {check:true, prompt:genPrompt(co, P, nq, extra), n:nq, total:20, sujets, ...(plan ? {points:plan.map(x => +x.points)} : {}), path:"controles/" + id, mode:"create", base:b0, titre:{fixe:P.titre || "", prefixe:EXO ? "Practice · " : "", defaut:base.titre}, msgOk:EXO ? "Practice sheet ready" : "Test ready", feature:EXO ? "exercices" : ""}; },
       run:async () => {
-      const r = await genQuestions(co, P, nq, EXO ? EXO_TXT : "", EXO ? {feature:"exercices"} : {}), qs = r.questions;
-      base.titre = P.titre || (EXO && r.titre ? "Practice · " + r.titre : r.titre) || base.titre; base.questions = qs;
+      const r = await genQuestions(co, P, nq, extra, EXO ? {feature:"exercices"} : {}), qs = r.questions;
+      if (plan) qs.forEach((q, i) => { if (plan[i]) q.points = +plan[i].points; });
+      const V = FIAB.verifier(qs, {total:20, n:nq, sujets, differencie:!!P.differencie, pointsFixes:!!plan});   // même vérification que sur le serveur
+      base.titre = P.titre || (EXO && r.titre ? "Practice · " + r.titre : r.titre) || base.titre; base.questions = V.qs; base.verif = V.verif;
       await write("controles/" + id, base); S.params.titre = ""; S.params._pref = false; S.wizStep = 1;
-      return {open:`#/controle/${id}/preparer`, msg:`${EXO ? "Practice sheet ready" : "Test ready"} : « ${base.titre} ».`}; }}))
-      st.innerHTML = `<span class="thinking">${P.differencie ? `AI is writing ${EXO ? "the exercises" : "the test"} in 3 levels (1 to 2 minutes).` : `AI is writing ${EXO ? "the exercises" : "the test"} (1 to 2 minutes).`}</span> ${TASK_WAIT}`;
+      return {open:`#/controle/${id}/preparer`, msg:`${EXO ? "Practice sheet ready" : "Test ready"} : « ${base.titre} ».`}; }})){
+      if (plan) S.plan = null;
+      if (st) st.innerHTML = `<span class="thinking">${P.differencie ? `AI is writing ${EXO ? "the exercises" : "the test"} in 3 levels (1 to 2 minutes).` : `AI is writing ${EXO ? "the exercises" : "the test"} (1 to 2 minutes).`}</span> ${TASK_WAIT}`; }
     return;
   }
 
@@ -2573,7 +2891,7 @@ document.addEventListener("click", async ev => {
         const nid = await createVariante(c); return {open:`#/controle/${nid}/preparer`, msg:"Variant ready: check it before printing."}; }});
       return; }
     if (t.id === "rr-reset"){ const {regle:_r, ...rest} = c; await saveCtrl(rest); return render(); }
-    if (t.id === "remOk"){ c.remarques = []; await saveCtrl(c); return render(); }
+    if (t.id === "remOk"){ c.remarques = []; c.verif = []; await saveCtrl(c); return render(); }
     if (t.id === "regenCtrl"){ if (!confirm("Replace all questions with a new AI-generated test?")) return;
       aiTask({key:"regen:" + c.id, label:"Regenerating “ " + c.titre + " ”", btn:"#regenCtrl", spec:() => regenExercices(c, true), run:async () => {
         const nid = await regenExercices(c);
@@ -2640,6 +2958,10 @@ document.addEventListener("click", async ev => {
     if (d.unerr){ const [qid, j] = d.unerr.split("|"), a = feuille(C.id)?.copies?.[S.corrEleve]?.answers?.[qid]; if (!a) return;
       await write("feuilles/" + C.id, {copies:{[S.corrEleve]:{answers:{[qid]:{erreurs:(a.erreurs || []).filter((_, k) => k !== +j)}}}}}, "update"); return; }
     if (d.recrop) return recropOpen(C, S.corrEleve, d.recrop);
+    /* Deux lectures différentes : le professeur choisit l'autre ; elles échangent leur place */
+    if (d.alt){ const a = feuille(C.id)?.copies?.[S.corrEleve]?.answers?.[d.alt]; if (!a?.alt) return;
+      await write("feuilles/" + C.id, {copies:{[S.corrEleve]:{validee:false, answers:{[d.alt]:{transcription:a.alt.transcription, transcriptionIA:a.alt.transcription, annot:a.alt.transcription, noteIA:a.alt.noteIA, note:null, commentaire:a.alt.commentaire || "", detail:[], hesite:"", valide:false,
+        alt:{transcription:a.transcription || "", noteIA:a.noteIA || 0, commentaire:a.commentaire || ""}}}}}}, "update"); return; }
     if (d.savecm){ const v = $("#cm-" + d.savecm).value; delete S.editCom[d.savecm];
       await write("feuilles/" + C.id, {copies:{[S.corrEleve]:{answers:{[d.savecm]:{commentaire:v}}, validee:false}}}, "update"); return; }
     if (d.precise){
@@ -2649,9 +2971,10 @@ document.addEventListener("click", async ev => {
         const blob = await getBlob(a.crop);
         const i = C.questions.indexOf(q);
         const smp = await sampleImages(S.corrEleve, C.matiere);
-        const r = await ai(`Read this student's handwritten answer box very carefully (${C.matiere}, ${C.niveau || ""}), then grade it. Image 1 is the box to read.${smp.txt}${lectureTips()}\n${qBlockPrompt(C, q, cp.version?.[qid] || "standard", i)}${S.recropped?.[qid + "|" + S.corrEleve] ? "" : `\n\nA first reading gave: """${a.transcription}""" (deemed uncertain).`}\nTranscribe line by line, without correcting spelling. ${MATH_RULE} Hebrew in Hebrew characters. Truly illegible passage: [illegible]. "annotee" = transcription with each incorrect passage surrounded by ⟦ ⟧ (outside of $…$). Grade in increments of 0.5. Comment 2 to 3 sentences, ${tonTxt(C.niveau)}. ${NOSRC}\nRespond only in JSON, in English for a US school: {"transcription":"…","annotee":"…","lisible":true,"note":0,"commentaire":"…","erreurs":["…"],"acquis":["…"]}`, {images:[blob, ...smp.blobs], modelTier:"complex"});
-        await write("feuilles/" + C.id, {copies:{[S.corrEleve]:{validee:false, answers:{[qid]:{transcription:String(r.transcription || ""), transcriptionIA:String(r.transcription || ""), annot:String(r.annotee || r.transcription || ""), lisible:r.lisible !== false,
-          noteIA:clamp(half(+r.note || 0), 0, +q.points), note:null, commentaire:String(r.commentaire || ""), erreurs:(r.erreurs || []).map(String).slice(0, 4), acquis:(r.acquis || []).map(String).slice(0, 4), valide:false}}}}}, "update");
+        const r = await ai(relirePrompt(C, qBlockPrompt(C, q, cp.version?.[qid] || "standard", i), {smp:smp.txt, premiere:S.recropped?.[qid + "|" + S.corrEleve] ? null : a.transcription}), {images:[blob, ...smp.blobs], modelTier:"complex"});
+        const tr = String(r.transcription || "");
+        await write("feuilles/" + C.id, {copies:{[S.corrEleve]:{validee:false, answers:{[qid]:FIAB.completer({transcription:tr, transcriptionIA:tr, annot:String(r.annotee || r.transcription || ""), lisible:r.lisible !== false,
+          noteIA:clamp(half(+r.note || 0), 0, +q.points), note:null, commentaire:String(r.commentaire || ""), erreurs:(r.erreurs || []).map(String).slice(0, 4), acquis:(r.acquis || []).map(String).slice(0, 4), valide:false}, r, q, {vide:isNoAnswer(tr)})}}}}, "update");
       }catch(e){ st.textContent = e?.code ? aiErr(e.code) : "Box image not found."; t.disabled = false; }
       return;
     }
@@ -2662,7 +2985,7 @@ document.addEventListener("click", async ev => {
         const i = C.questions.indexOf(q);
         const r = await ai(`Grade a student's answer (${C.matiere}, ${C.niveau || ""}).\n${qBlockPrompt(C, q, cp.version?.[qid] || "standard", i)}\n\nStudent's answer (transcribed and verified by the teacher):\n"""${text}"""\n\nGrade in increments of 0.5. "annotee" = the answer with each incorrect passage surrounded by ⟦ ⟧ (outside of $…$). ${MATH_RULE} Comment 2 to 3 sentences, ${tonTxt(C.niveau)}. Choose "erreurs" from the common error types when possible. ${NOSRC}\nRespond only in JSON, in English for a US school: {"annotee":"…","note":0,"commentaire":"…","erreurs":["…"],"acquis":["…"]}`);
         await write("feuilles/" + C.id, {copies:{[S.corrEleve]:{validee:false, answers:{[qid]:{transcription:text, annot:String(r.annotee || text), lisible:true, noteIA:clamp(half(+r.note || 0), 0, +q.points), note:null,
-          commentaire:String(r.commentaire || ""), erreurs:(r.erreurs || []).map(String).slice(0, 4), acquis:(r.acquis || []).map(String).slice(0, 4), valide:false}}}}}, "update");
+          commentaire:String(r.commentaire || ""), erreurs:(r.erreurs || []).map(String).slice(0, 4), acquis:(r.acquis || []).map(String).slice(0, 4), valide:false, detail:[], hesite:"", alt:null, doute:{n:0, r:[]}}}}}}, "update");
         delete S.editTr[qid];
         const a0 = cp.answers?.[qid]; if (a0?.crop && q.type !== "qcm") bankPush([{asset:a0.crop, texteIA:a0.transcriptionIA ?? a0.transcription ?? "", texte:text, source:"correction", ...bankMeta(C)}]);
       }catch(e){ st.textContent = aiErr(e?.code); t.disabled = false; }
@@ -2679,7 +3002,7 @@ document.addEventListener("click", async ev => {
       await syncStatut(C);
       if (next){ S.corrEleve = next.id; S.editTr = {}; S.editCom = {}; } return render(); }
     if (t.id === "valAll"){ const f = feuille(C.id); const upd = {copies:{}};
-      presentsOf(C).forEach(e => { const k = f.copies[e.id]; if (k && !k.validee && copyDone(C, k) && !Object.values(k.answers || {}).some(a => a.lisible === false)) upd.copies[e.id] = {validee:true, answers:Object.fromEntries(C.questions.map(q => [q.id, {valide:true}]))}; });
+      presentsOf(C).forEach(e => { const k = f.copies[e.id]; if (k && !k.validee && copyDone(C, k) && !Object.values(k.answers || {}).some(a => FIAB.ouvert(a) >= 2)) upd.copies[e.id] = {validee:true, answers:Object.fromEntries(C.questions.map(q => [q.id, {valide:true}]))}; });
       await write("feuilles/" + C.id, upd, "update"); toast(Object.keys(upd.copies).length + " paper(s) approved."); await syncStatut(C, true); if (C.statut === "corrige") toast("All papers from students who were present are validated: test marked as graded."); return; }
     if (t.id === "csv"){ const f = feuille(C.id) || {copies:{}}, max = maxOf(C);
       const rows = [["Student", ...C.questions.map((q, k) => `Q${k + 1} (/${q.points})`), "Total", "Out of 20 (raw)", "Final grade /20", "Retake /20", "Final score /20", "Approved", "Final grade (my scale)"]];
@@ -2687,6 +3010,18 @@ document.addEventListener("click", async ev => {
       const csv = "﻿" + rows.map(r => r.map(x => { x = String(x); if (/^[=+\-@\t\r]/.test(x) && !/^-?[\d.,]+$/.test(x)) x = "'" + x; return `"${x.replace(/"/g, '""')}"`; }).join(";")).join("\n");
       if (!DL) return toast("Download unavailable in this view.");
       try { await DL.save({filename:`Grades - ${C.titre}.csv`.replace(/[\\/:*?"<>|]/g, "-"), data:csv}); } catch(e){ if (e?.code !== "declined") toast("Download failed."); } return; }
+    if (t.id === "journal"){
+      if (!DL) return toast("Download unavailable in this view.");
+      try { const ev = (await api("/api/journal?ctrl=" + encodeURIComponent(C.id))).events || [], nomE = id => { const e = eleveOf(C, id); return e ? e.prenom + " " + e.nom : id; };
+        if (!ev.length) return toast("Empty log: no grade approved or changed for this test.");
+        const ACT = {valide:"Grade approved", garde:"AI grade kept", note:"Grade changed", rouvre:"Approval removed"};
+        const rows = [["Date", "Time", "Teacher", "Student", "Question", "Action", "Grade suggested by AI", "Grade before", "Final score", "Changed by the teacher", "Bulk approval (number of papers)"]];
+        ev.forEach(x => { const dt = new Date(x.at), k = C.questions.findIndex(q => q.id === x.q);
+          rows.push([dt.toLocaleDateString(), dt.toLocaleTimeString(), x.nom || "", nomE(x.e), k >= 0 ? "Q" + (k + 1) : x.q, ACT[x.act] || x.act, x.ia == null ? "" : fmt(x.ia), x.avant == null ? "" : fmt(x.avant), x.note == null ? "" : fmt(x.note), x.ia != null && x.note != null && x.ia !== x.note ? "✓" : "", x.lot ? String(x.lot) : ""]); });
+        const csv = "﻿" + rows.map(r => r.map(x => { x = String(x); if (/^[=+\-@\t\r]/.test(x) && !/^-?[\d.,]+$/.test(x)) x = "'" + x; return `"${x.replace(/"/g, '""')}"`; }).join(";")).join("\n");
+        await DL.save({filename:`Approval log - ${C.titre}.csv`.replace(/[\\/:*?"<>|]/g, "-"), data:csv});
+      } catch(e){ if (e?.code !== "declined") toast(e?.message || "Download failed."); }
+      return; }
     if (t.id === "mkRatt"){ const e = eleveOf(C, S.corrEleve); rattTask(C, e, "#mkRatt"); return; }
   }
 
@@ -2736,6 +3071,7 @@ document.addEventListener("input", ev => {
   if (el.id === "dc-texte" || el.id === "dc-titre"){ S.dict = {...(S.dict || {}), [el.id === "dc-texte" ? "texte" : "titre"]:el.value}; }
   if (el.id === "c-texte" || el.id === "c-titre"){ S.coursDraft = {...(S.coursDraft || {}), texte:$("#c-texte")?.value, titre:$("#c-titre")?.value}; }
   if (d.p){ S.params[d.p] = el.value; }
+  if (d.plan && S.plan?.items?.[+d.i]) S.plan.items[+d.i][d.plan] = d.plan === "points" ? +el.value || 0 : el.value;
   if (d.sujets === "p") S.params.sujets = el.value.split("\n").map(x => x.trim()).filter(Boolean);
   if (d.live !== undefined && S.view === "edit" && (d.c || d.q !== undefined)){   // texte : enregistré pendant la frappe, sans attendre la sortie du champ
     const c = applyEdit(el); if (!c) return; editPending = c; SAVE.dirty = true; saveState(); clearTimeout(editTimer); editTimer = setTimeout(flushEdit, 700); }
@@ -2761,6 +3097,7 @@ document.addEventListener("change", async ev => {
     catch(e){ console.error(e); $("#dc-st").textContent = e?.code ? aiErr(e.code) : "Unable to read the file."; } return; }
   if (el.id === "c-mat" || el.id === "c-niv"){ S.coursDraft = {...(S.coursDraft || {}), matiere:$("#c-mat").value, niveau:$("#c-niv").value}; return; }
   if (d.p){ S.params[d.p] = el.value; if (d.p === "niveau") S.params.classeId = S.params.classeId || ""; if (d.p === "niveau" || d.p === "classeId") render(); return; }
+  if (d.plan){ const x = S.plan?.items?.[+d.i]; if (x) x[d.plan] = d.plan === "points" ? clamp(half(+el.value || 0.5), 0.5, 20) : el.value; return scheduleRender(); }
   if (d.pcomp){ const st = new Set(S.params.comps || []); el.checked ? st.add(d.pcomp) : st.delete(d.pcomp); S.params.comps = Object.keys(COMPS).filter(k => st.has(k)); return; }
   if (d.type){ const s = new Set(S.params.types); el.checked ? s.add(d.type) : s.delete(d.type); S.params.types = [...s]; return; }
   if (el.id === "p-diff"){ S.params.differencie = el.checked; return; }
@@ -4809,13 +5146,13 @@ S.lots = []; S.lotFixed = {}; S.lotGone = new Set();
 function buildKit(){
   const ids = S.scanCtrl ? [S.scanCtrl] : store.controles.filter(c => c.statut !== "brouillon" && Object.keys(feuille(c.id)?.copies || {}).length)
     .sort((a, b) => (b.date || b.createdAt || "").localeCompare(a.date || a.createdAt || "")).slice(0, 8).map(c => c.id);
-  const prompts = {};
-  for (const cid of ids){ const c = ctrl(cid), f = feuille(cid); if (!c || !f) continue; prompts[cid] = {};
+  const prompts = {}, relire = {};
+  for (const cid of ids){ const c = ctrl(cid), f = feuille(cid); if (!c || !f) continue; prompts[cid] = {}; relire[cid] = rereadTpl(c);
     for (const [eid, cp] of Object.entries(f.copies || {})){ prompts[cid][eid] = {};
       (cp.pages || []).forEach((pg, i) => { const qids = pageQ(pg).filter(id => c.questions.some(q => q.id === id)); if (!qids.length) return; const boxes = pg?.b || [];
         const cq = qids.filter(id => !boxes.some(b => b.q === id && b.type === "qcm"));
         prompts[cid][eid][i + 1] = {crops:cq.length ? {qids:cq, prompt:gradePrompt(c, cp, cq, "crops")} : null, halves:{qids, prompt:gradePrompt(c, cp, qids, "halves")}}; }); } }
-  return {prompts, footerPrompt:FOOTER_PROMPT, jsonOnly:JSON_ONLY, txt:{...jobTxt(), vide0:"No answer."}};
+  return {prompts, relire, footerPrompt:FOOTER_PROMPT, jsonOnly:JSON_ONLY, txt:{...jobTxt(), vide0:"No answer."}};
 }
 async function uploadLot(file){
   const it = {id:uid(), name:file.name, thumb:"", status:"envoi", pct:0, msg:"Uploading file…"}; S.queue.push(it); scheduleRender();
