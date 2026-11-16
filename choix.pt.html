@@ -6,47 +6,86 @@
 <title>Mastery · Entrar</title>
 <link rel="icon" type="image/png" href="/favicon-64.png">
 <link rel="apple-touch-icon" href="/icon-180.png">
-<meta name="theme-color" content="#F2F4F8">
+<meta name="theme-color" content="#F6F7FB">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600..800&family=Inter:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@1,500&display=swap">
 <style>
-:root{--bg:#F2F4F8;--surface:#fff;--ink:#15233F;--muted:#5E6B85;--line:#DCE1EC;--prof:#C8643B;--prof-soft:#FBEDE6;--eleve:#15233F;--eleve-soft:#E7EBF3;
-  --display:"Bricolage Grotesque",system-ui,sans-serif;--body:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif}
-@media (prefers-color-scheme:dark){:root{--bg:#0D1322;--surface:#151C2E;--ink:#EAEEF8;--muted:#9AA6BF;--line:#27314A;--prof:#E58B63;--prof-soft:#3A2219;--eleve:#C9D3EA;--eleve-soft:#1E2740}}
-*{box-sizing:border-box}html,body{margin:0}
-body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased;min-height:100dvh;display:flex;flex-direction:column}
-main{flex:1;width:100%;max-width:440px;margin:0 auto;padding:clamp(40px,10vh,96px) 20px 32px;display:grid;gap:30px;align-content:start}
-.brand{display:flex;flex-direction:column;align-items:center;gap:10px}
-.brand .mk{height:64px}.brand .wm{height:26px}
-@media (prefers-color-scheme:dark){.brand .wm{filter:brightness(0) invert(.92)}}
-h1{font-family:var(--display);font-weight:700;font-size:28px;letter-spacing:-.02em;line-height:1.15;margin:0;text-align:center}
-.choix{display:grid;gap:14px}
-.choix a{display:grid;grid-template-columns:52px minmax(0,1fr) auto;align-items:center;gap:16px;padding:18px 18px 18px 16px;background:var(--surface);border:1px solid var(--line);border-radius:18px;color:inherit;text-decoration:none;transition:border-color .15s,transform .15s}
-.choix a:hover{border-color:var(--ink);transform:translateY(-1px)}
-.choix a:focus-visible{outline:3px solid var(--prof);outline-offset:3px}
-.ic{width:52px;height:52px;border-radius:14px;display:grid;place-items:center}
-.ic svg{width:26px;height:26px}
-.prof .ic{background:var(--prof-soft);color:var(--prof)}.eleve .ic{background:var(--eleve-soft);color:var(--eleve)}
-.choix b{display:block;font-family:var(--display);font-size:20px;font-weight:700;letter-spacing:-.01em;line-height:1.2}
-.choix small{display:block;color:var(--muted);font-size:14px;margin-top:2px}
-.fl{color:var(--muted);font-size:22px}
-footer{padding:16px 20px 28px;text-align:center;font-size:13px;color:var(--muted)}
-footer a{color:inherit}
-@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+html,body{margin:0}*{box-sizing:border-box}
+/* as:début — même habillage pour l'accueil, la connexion professeur et la connexion élève (copié à l'identique dans choix.html, eleve.html et head.html) */
+.as{--as-bg:#F6F7FB;--as-ink:#101828;--as-muted:#667085;--as-line:#E4E7EE;--as-card:#FFFFFF;--as-acc:#C8643B;--as-acc-soft:#FBEDE6;--as-ease:cubic-bezier(.65,0,.35,1);
+  min-height:100dvh;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:max-content minmax(max-content,1fr);background:var(--as-bg);color:var(--as-ink);font-family:Inter,"Noto Sans Hebrew",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:16px;line-height:1.5;text-align:start}
+@media (prefers-color-scheme:dark){.as{--as-bg:#0F1420;--as-ink:#EEF1F7;--as-muted:#9AA4B8;--as-line:#262E40;--as-card:#161C2A;--as-acc:#E58B63;--as-acc-soft:#3A2219}.as .as-wm{filter:brightness(0) invert(.92)}}
+.as-brand{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:44px 20px 4px;min-height:0;transition:min-height .9s var(--as-ease)}
+.as-logo{display:flex;flex-direction:column;align-items:center;gap:10px;text-decoration:none}
+.as-mk{height:56px;width:auto;transition:height .9s var(--as-ease)}.as-wm{height:24px;width:auto;transition:height .9s var(--as-ease)}
+.as-by{display:grid;justify-items:center;gap:2px}
+.as-by span{font-size:10px;letter-spacing:.32em;text-transform:uppercase;color:var(--as-muted)}
+.as-by b{font-family:"Cormorant Garamond","Frank Ruhl Libre",Georgia,serif;font-style:italic;font-weight:500;font-size:21px;letter-spacing:.01em;color:var(--as-ink);transition:font-size .9s var(--as-ease)}
+.as-main{display:flex;flex-direction:column;min-width:0;padding:28px 20px 24px;transition:opacity .5s .55s}
+.as-in{width:100%;max-width:400px;margin:0 auto;display:grid;gap:20px;align-content:start;flex:1}
+.as-back{justify-self:start;display:inline-flex;align-items:center;gap:6px;color:var(--as-muted);font-family:inherit;font-size:14px;font-weight:500;line-height:1.4;text-decoration:none;background:none;border:0;padding:6px 0;margin:-6px 0 -8px;cursor:pointer}
+.as-back:hover{color:var(--as-ink)}
+.as-h1{font-family:inherit;font-size:28px;font-weight:700;letter-spacing:-.025em;line-height:1.15;margin:0;color:var(--as-ink)}
+.as-lead{color:var(--as-muted);margin:-8px 0 0;font-size:15px}
+.as-form{display:grid;gap:14px}
+.as label,.as .field label{display:grid;gap:6px;font-size:14px;font-weight:600;color:var(--as-ink)}
+.as .field{display:grid;gap:6px;margin:0}
+.as input:not([type=checkbox]):not([type=radio]){font:inherit;font-size:16px;color:var(--as-ink);background:var(--as-card);border:1px solid var(--as-line);border-radius:12px;padding:12px 14px;min-height:48px;width:100%;box-shadow:none}
+.as input:focus{outline:none;border-color:var(--as-acc);box-shadow:0 0 0 4px var(--as-acc-soft)}
+.as-go{display:flex;align-items:center;justify-content:center;width:100%;min-height:48px;padding:12px 18px;border-radius:12px;border:1px solid var(--as-acc);background:var(--as-acc);color:#fff;font-family:inherit;font-size:16px;font-weight:600;line-height:1.2;cursor:pointer}
+.as-go:hover{filter:brightness(.95)}.as-go[disabled]{opacity:.55;cursor:not-allowed}
+.as-link{justify-self:center;background:none;border:0;padding:8px;color:var(--as-muted);font-family:inherit;font-size:14px;font-weight:500;line-height:1.4;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.as-link:hover{color:var(--as-ink)}
+.as-alt{display:grid;gap:10px;justify-items:center;border-top:1px solid var(--as-line);padding-top:18px;font-size:14px;color:var(--as-muted)}
+.as-alt .as-sec{width:100%}
+.as-sec{display:flex;align-items:center;justify-content:center;min-height:48px;padding:12px 18px;border-radius:12px;border:1px solid var(--as-line);background:var(--as-card);color:var(--as-ink);font-family:inherit;font-size:16px;font-weight:600;line-height:1.2;cursor:pointer;text-decoration:none}
+.as-sec:hover{border-color:var(--as-ink)}
+.as-tabs{display:grid;grid-template-columns:1fr 1fr;background:var(--as-line);border-radius:12px;padding:4px;gap:4px}
+.as-tabs button{border:0;background:none;font-family:inherit;font-size:15px;font-weight:600;line-height:1.2;color:var(--as-muted);padding:10px 8px;border-radius:9px;cursor:pointer;min-height:44px}
+.as-tabs button[aria-selected="true"]{background:var(--as-card);color:var(--as-ink);box-shadow:0 1px 2px rgba(16,24,40,.12)}
+.as-foot{text-align:center;font-size:13px;color:var(--as-muted);margin:28px 0 0;line-height:1.9}.as .as-foot a{color:var(--as-muted)!important;text-decoration:underline;text-underline-offset:2px}
+.as .err:empty,.as .status:empty{display:none}
+.as :focus-visible{outline:3px solid var(--as-acc);outline-offset:2px}
+@media (min-width:880px){
+  .as{grid-template-columns:minmax(0,5fr) minmax(0,6fr);grid-template-rows:minmax(100dvh,auto);transition:grid-template-columns .9s var(--as-ease)}
+  .as-brand{gap:7vh;padding:40px;position:sticky;top:0;height:100dvh}
+  .as-logo{gap:14px}.as-mk{height:84px}.as-wm{height:36px}
+  .as-by span{font-size:11px}.as-by b{font-size:27px}
+  .as-main{background:var(--as-card);border-inline-start:1px solid var(--as-line);padding:48px 40px 28px;justify-content:center}
+  .as-in{flex:0 0 auto}
+  .as .as-in input:not([type=checkbox]):not([type=radio]){background:var(--as-bg)}
+  .as-tabs{background:var(--as-bg)}
+}
+/* Entrée sur le site : le logo occupe tout l'écran, puis se range à gauche (en haut sur téléphone) */
+.as-intro .as-brand{min-height:100dvh}
+.as-intro .as-mk{height:84px}.as-intro .as-wm{height:36px}.as-intro .as-by b{font-size:27px}
+.as-intro .as-main{opacity:0;transition:none}
+@media (min-width:880px){.as-intro .as{grid-template-columns:minmax(0,1fr) minmax(0,0fr)}.as-intro .as-main{overflow:hidden;padding-inline:0;border:0}}
+@media (prefers-reduced-motion:reduce){.as,.as *{transition:none!important}}
+/* as:fin */
+.as-choix{display:grid;gap:12px}
+.as-choix a{display:grid;grid-template-columns:48px minmax(0,1fr) auto;align-items:center;gap:16px;padding:14px 18px 14px 14px;background:var(--as-card);border:1px solid var(--as-line);border-radius:16px;color:inherit;text-decoration:none;font-size:18px;font-weight:600;letter-spacing:-.01em;transition:border-color .15s}
+.as-choix a:hover{border-color:var(--as-ink)}
+.as-choix .ic{width:48px;height:48px;border-radius:12px;display:grid;place-items:center;background:var(--as-acc-soft);color:var(--as-acc)}
+.as-choix .ic svg{width:24px;height:24px}
+.as-choix .fl{color:var(--as-muted);font-size:22px;line-height:1}
+@media (min-width:880px){.as-choix a{background:var(--as-bg)}}
 </style>
 </head>
 <body>
-<main>
-  <div class="brand"><img class="mk" src="/logo-mark.png" alt=""><img class="wm" src="/logo-word.png" alt="Mastery"></div>
-  <h1>Bem-vindo(a)</h1>
-  <nav class="choix" aria-label="Entrar">
-    <a class="prof" href="/app#/connexion"><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v8a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 13.5z"/><path d="M8 20h8M12 15v5"/><path d="m8 9 2.5 2.5L16 7"/></svg></span>
-      <span><b>Sou professor</b><small>Criar, imprimir e corrigir minhas provas</small></span><span class="fl" aria-hidden="true">›</span></a>
-    <a class="eleve" href="/eleve"><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4 2.5 8.5 12 13l9.5-4.5z"/><path d="M6.5 10.5v4.2c0 1.6 2.5 3.3 5.5 3.3s5.5-1.7 5.5-3.3v-4.2"/><path d="M21.5 8.5V14"/></svg></span>
-      <span><b>Sou aluno</b><small>Minhas notas, provas e exercícios</small></span><span class="fl" aria-hidden="true">›</span></a>
+<script>try { if (!sessionStorage.getItem("mastery.intro") && !matchMedia("(prefers-reduced-motion: reduce)").matches){ document.body.classList.add("as-intro"); setTimeout(() => document.body.classList.remove("as-intro"), 1800); } sessionStorage.setItem("mastery.intro", "1"); } catch(e){}</script>
+<div class="as">
+<div class="as-brand"><a class="as-logo" href="/" aria-label="Mastery"><img class="as-mk" src="/logo-mark.png" alt=""><img class="as-wm" src="/logo-word.png" alt="Mastery"></a><div class="as-by"><span>Made by</span><b>Les Institutions Sinaï</b></div></div>
+<main class="as-main"><div class="as-in">
+  <h1 class="as-h1">Bem-vindo(a)</h1>
+  <nav class="as-choix" aria-label="Entrar">
+    <a class="prof" href="/app#/connexion"><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v8a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 13.5z"/><path d="M8 20h8M12 15v5"/><path d="m8 9 2.5 2.5L16 7"/></svg></span><span>Sou professor</span><span class="fl" aria-hidden="true">›</span></a>
+    <a class="eleve" href="/eleve"><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4 2.5 8.5 12 13l9.5-4.5z"/><path d="M6.5 10.5v4.2c0 1.6 2.5 3.3 5.5 3.3s5.5-1.7 5.5-3.3v-4.2"/><path d="M21.5 8.5V14"/></svg></span><span>Sou aluno</span><span class="fl" aria-hidden="true">›</span></a>
   </nav>
+</div>
+<p class="as-foot"><a href="?lang=fr">Francês</a> · <a href="?lang=en">English</a> · <a href="?lang=pt">Português</a> · <a href="/confidentialite">Privacidade</a> · <a href="/mentions-legales">Aviso legal</a></p>
 </main>
-<footer><a href="?lang=fr">Francês</a> · <a href="?lang=en">English</a> · <a href="?lang=pt">Português</a> · <a href="/confidentialite">Privacidade</a> · <a href="/mentions-legales">Aviso legal</a></footer>
+</div>
 </body>
 </html>
