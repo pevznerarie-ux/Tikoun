@@ -6,7 +6,7 @@ NIV_BR = '["6º ano","7º ano","8º ano","9º ano","1º ano EM","2º ano EM","3�
 MAT_SUGG_BR = '["Guemará","Mishná","Chumash","Neviim","Halachá","Chassidut","Pensamento judaico"]'
 MAT_BR = '["Matemática","Língua Portuguesa","Ciências","Biologia","Química","Física","História","Geografia","Inglês","Espanhol","Hebraico","Filosofia","Sociologia","Artes","Educação Física"]'
 missing = set()
-for name in ["index", "landing", "eleve"]:
+for name in ["index", "landing", "eleve", "choix"]:
     src, out = f"{OUT}{name}.html", f"{OUT}{name}.pt.html"
     subprocess.run(["node", I18N + "i18n.js", "apply", src, I18N + "pt.json", out], check=True, env={**os.environ, "ACORN": ACORN}, stdout=subprocess.DEVNULL)
     if os.path.exists(out + ".missing.json"):

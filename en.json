@@ -2363,5 +2363,10 @@
  "Ton code est écrit sur la carte donnée par ton professeur. Tu en as besoin une seule fois : ensuite, tu te connectes avec ton e-mail et ton mot de passe.": "Your code is on the card your teacher gave you. You need it only once: after that, you sign in with your email and password.",
  "avec son code personnel, son nom de famille, son e-mail et un mot de passe. Ensuite, il se connecte avec son e-mail.": "with their personal code, last name, email and a password. After that, they sign in with their email.",
  "Avec ce code et ton nom de famille, crée ton compte (e-mail et mot de passe).": "With this code and your last name, create your account (email and password).",
- "Espace élève (résultats publiés, rattrapages, exercices en ligne) : chaque élève crée son compte sur": "Student space (published results, retakes, online practice): each student creates their account at"
+ "Espace élève (résultats publiés, rattrapages, exercices en ligne) : chaque élève crée son compte sur": "Student space (published results, retakes, online practice): each student creates their account at",
+ "Mastery · Connexion": "Mastery · Sign in",
+ "Je suis professeur": "I'm a teacher",
+ "Créer, imprimer et corriger mes contrôles": "Create, print and grade my tests",
+ "Je suis élève": "I'm a student",
+ "Mes notes, mes copies et mes exercices": "My scores, papers and practice"
 }

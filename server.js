@@ -1678,7 +1678,9 @@ const SERVER = http.createServer(async (req, res) => {
     if (p === "/config.js")
       return send(res, 200, "window.TIKOUN_CONFIG = " + JSON.stringify({aiEndpoint:env("ANTHROPIC_API_KEY") ? "/api/ai" : "", jobs:!!env("ANTHROPIC_API_KEY"), lots:!!(ENGINE && env("ANTHROPIC_API_KEY")), storage:"server", accounts:true, signup:signupOpen(), persistent:PERSISTENT, billing:BILLING(), mail:MAIL(), trialDays:TRIAL_DAYS(), trialCtrl:TRIAL_CTRL(), copiesCtrl:COPIES_CTRL(),
         prix:prixLabels(res._lang), contact:CONTACT()}) + ";\n", TYPES[".js"], {"Cache-Control":"no-store"});
-    if (p === "/" || p === "") p = u ? "/index.html" : "/landing.html";
+    /* Accueil : le choix professeur / élève ; la page de présentation reste en ligne sur /presentation */
+    if (p === "/" || p === "") p = u ? "/index.html" : "/choix.html";
+    if (p === "/presentation" || p === "/presentation/") p = "/landing.html";
     if (p === "/app" || p === "/app/") p = "/index.html";
     const LEGAL = {"/cgu":"cgu", "/terms":"cgu", "/confidentialite":"confidentialite", "/privacy":"confidentialite", "/mentions-legales":"mentions-legales", "/legal":"mentions-legales"}[p.replace(/\/$/, "").replace(/(\.(en|pt))?\.html$/, "")];
     if (LEGAL){ const lg = (p.match(/\.(en|pt)\.html$/) || [])[1] || res._lang; const f = path.join(ROOT, LEGAL + (lg === "en" ? ".en" : lg === "pt" ? ".pt" : "") + ".html"); const en = lg === "en";
