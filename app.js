@@ -390,7 +390,7 @@ function fixHebrewText(t){
 /* Logo à l'ouverture de l'application, retiré dès que la première vue est prête (au moins 0,7 s, au plus 6 s) */
 const SPLASH_T0 = Date.now();
 function hideSplash(){ const sp = document.getElementById("splash"); if (!sp || sp.dataset.out) return; sp.dataset.out = 1;
-  setTimeout(() => { sp.classList.add("out"); setTimeout(() => sp.remove(), 500); }, Math.max(0, 700 - (Date.now() - SPLASH_T0))); }
+  setTimeout(() => { sp.classList.add("out"); setTimeout(() => sp.remove(), 500); }, Math.max(0, 1800 - (Date.now() - SPLASH_T0))); }
 setTimeout(hideSplash, 6000);
 /* ================= Render loop (keeps focus while data arrives) ================= */
 let rq = false, skipped = false;
@@ -430,7 +430,7 @@ const foldSec = (k, titre, n, body) => { const f = !!foldGet()[k];
   return `<section class="panel"><button class="foldh" data-fold="${k}" aria-expanded="${!f}"><h3>${titre} <span class="muted small">${n}</span></h3><span class="chev" aria-hidden="true">${f ? "▸" : "▾"}</span></button>${f ? "" : `<div style="margin-top:4px">${body}</div>`}</section>`; };
 function vHome(){
   if (!store.classes.length) return `
-  <div class="head"><div><h2>Bienvenue sur Mastery</h2><p>Du cours au rattrapage : l'IA prépare et corrige, le professeur décide.</p><p class="madeby">Made by Les Institutions Sinaï</p></div></div>
+  <div class="head"><div><h2>Bienvenue sur Mastery</h2><p>Du cours au rattrapage : l'IA prépare et corrige, le professeur décide.</p></div></div>
   <section class="panel grid">
     <div class="grid g3">
       <div><div class="label">1 · Classe</div><p>Crée ta classe et colle la liste des élèves.</p></div>
@@ -450,7 +450,6 @@ function vHome(){
     <div class="hc-main"><div class="hc-kicker">${esc(new Date().toLocaleDateString("fr-FR", {weekday:"long", day:"numeric", month:"long"}))}</div>
       <h2>${hello}${S.me?.nom ? " " + esc(S.me.nom) : ""}</h2>
       <p>${aValider ? `<b>${aValider} ${aValider > 1 ? "copies à valider" : "copie à valider"}</b>` : "Tout est à jour. Prépare ton prochain contrôle ou un quiz d'exercices."}</p>
-      <p class="madeby">Made by Les Institutions Sinaï</p>
       <div class="row" style="margin-top:18px"><button class="btn gold" data-newctrl="1">+ Nouveau contrôle</button><button class="btn on-dark" data-newex="1">${canEx() ? "" : "🔒 "}+ Quiz d'exercices</button><button class="btn on-dark" data-go="scan">Scanner des copies</button></div></div>
     <div class="hc-stats">
       <div><b class="num">${store.classes.length}</b><span>Classes</span></div>

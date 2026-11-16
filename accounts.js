@@ -45,12 +45,12 @@ function vAuth(){
     ${S.forgot ? `<p class="banner">${S.forgot.mail ? "Si un compte existe avec cet e-mail, tu vas recevoir un lien pour choisir un nouveau mot de passe. Pense à regarder dans les indésirables." : "Ta demande est transmise à l'équipe Mastery, qui va réinitialiser ton mot de passe et te répondre par e-mail."}${S.forgot.contact ? ` Une question : <a href="mailto:${esc(S.forgot.contact)}">${esc(S.forgot.contact)}</a>` : ""}</p>`
       : `<div class="field"><label for="fg-mail">E-mail</label><input id="fg-mail" type="email" autocomplete="username" value="${esc(S.fgMail || "")}"></div><button class="btn primary auth-go" id="fg-go">Recevoir un lien</button>`}
     <div class="status" id="au-st"></div>
-    <p class="small auth-note"><button class="btn ghost sm" id="fg-back">← Retour à la connexion</button></p></section>${MADEBY}</div>`;
+    <p class="small auth-note"><button class="btn ghost sm" id="fg-back">← Retour à la connexion</button></p></section></div>`;
   if (S.auth === "reset") return `<div class="auth"><section class="auth-card">
     <div class="auth-h"><h2>Nouveau mot de passe</h2><p>Choisis ton nouveau mot de passe Mastery.</p></div>
     <div class="field"><label for="npw-pw">Nouveau mot de passe (8 caractères minimum)</label><input id="npw-pw" type="password" autocomplete="new-password"></div>
     <div class="field"><label for="npw-pw2">Confirmer</label><input id="npw-pw2" type="password" autocomplete="new-password"></div>
-    <button class="btn primary auth-go" id="npw-go">Enregistrer et me connecter</button><div class="status" id="au-st"></div></section>${MADEBY}</div>`;
+    <button class="btn primary auth-go" id="npw-go">Enregistrer et me connecter</button><div class="status" id="au-st"></div></section></div>`;
   if (S.auth === "change") return `<div class="head"><div><h2>Choisis ton mot de passe</h2><p>Bienvenue ${esc(S.me?.nom || "")} : remplace le mot de passe provisoire.</p></div></div>
   <section class="panel grid" style="max-width:440px">
     <div class="field"><label for="ch-pw">Nouveau mot de passe (8 caractères minimum)</label><input id="ch-pw" type="password" autocomplete="new-password"></div>
@@ -82,7 +82,7 @@ function vAuth(){
     <p class="small auth-note"><button class="btn ghost sm" id="pw-forgot">Mot de passe oublié ?</button></p>
     ${window.TIKOUN_CONFIG?.signup ? `<div class="auth-alt"><span class="small muted">Pas encore de compte ?</span><button class="btn" id="rg-open">Créer mon compte professeur</button></div>` : ""}
   </section>
-  <p class="small muted auth-foot"><a href="/">← Retour au site</a> · <a href="?lang=fr">Français</a> · <a href="?lang=en">English</a> · <a href="?lang=pt">Português</a></p>${MADEBY}</div>`;
+  <p class="small muted auth-foot"><a href="/">← Retour au site</a> · <a href="?lang=fr">Français</a> · <a href="?lang=en">English</a> · <a href="?lang=pt">Português</a></p></div>`;
 }
 const KEEP = ["rg-nom","rg-mail","rg-pw","me-nom","ec-nom","ec-ville"]; let kept = {}; S.form = {};
 document.addEventListener("change", async ev => { if (ev.target.id === "rg-cgu") S.regCgu = ev.target.checked;
@@ -310,7 +310,6 @@ const essaiCtrl = () => { const n = CFG().trialCtrl || 1; return n > 1 ? `${n} c
 const copiesCtrl = () => S.me?.quota?.par || CFG().copiesCtrl || 35;
 const tailleTxt = () => `Un contrôle couvre jusqu'à ${copiesCtrl()} élèves : au-delà, il compte pour un de plus par tranche de ${copiesCtrl()}.`;
 /* Signature : Mastery est conçu par Les Institutions Sinaï */
-const MADEBY = `<p class="madeby">Made by Les Institutions Sinaï</p>`;
 const TIER_TXT = {decouverte:"1 classe · 2 contrôles par mois", essentiel:"Jusqu'à 3 classes · 6 contrôles par mois · exercices en ligne", complet:"Jusqu'à 6 classes · 12 contrôles par mois · exercices en ligne"};
 function abonnementPanel(){
   const a = S.me?.acces || {}, P = CFG().prix || {};

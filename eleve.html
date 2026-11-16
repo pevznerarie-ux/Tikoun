@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#15233F">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Cormorant+Garamond:ital,wght@1,500&family=Inter:wght@400;500;600;700&family=Noto+Sans+Hebrew:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Inter:wght@400;500;600;700&family=Noto+Sans+Hebrew:wght@400;500;600;700&display=swap">
 <style>
 :root{--bg:#F2F4F8;--surface:#fff;--surface-2:#E9EDF4;--ink:#15233F;--muted:#5E6B85;--line:#DCE1EC;--accent:#C8643B;--accent-soft:#FBEDE6;--ok:#14804A;--ok-soft:#E1F4E9;--bad:#C5321F;--bad-soft:#FCE9E6;--navy:#15233F;--on-navy:#F2F4F8;
   --display:"Bricolage Grotesque","Noto Sans Hebrew",system-ui,sans-serif;--body:"Inter","Noto Sans Hebrew",system-ui,-apple-system,"Segoe UI",sans-serif}
@@ -71,7 +71,6 @@ body.auth .top{display:none}
 .tabs button{border:0;background:none;font:inherit;font-weight:600;color:var(--muted);padding:10px 8px;border-radius:9px;cursor:pointer;min-height:44px}
 .tabs button[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(21,35,63,.12)}
 .auth-foot{display:grid;gap:14px;justify-items:center;margin-top:8px}
-.madeby{font-family:"Cormorant Garamond",Georgia,serif;font-style:italic;font-weight:500;font-size:17px;color:var(--muted);margin:0;text-align:center}
 .legal{font-size:12px;color:var(--muted);text-align:center}
 @media (min-width:900px){
   .auth-page{grid-template-columns:minmax(0,5fr) minmax(0,6fr);align-content:stretch}
@@ -140,7 +139,7 @@ body.auth .foot{display:none}
 <body>
 <header class="top"><a class="brand" href="/eleve" aria-label="Mastery"><img class="mk" src="/logo-mark.png" alt=""><img class="wm" src="/logo-word.png" alt="Mastery"></a><div class="top-r"><span id="who"></span></div></header>
 <main id="app" aria-live="polite"></main>
-<footer class="foot"><p class="madeby">Made by Les Institutions Sinaï</p><p class="legal"><a href="/confidentialite">Confidentialité</a></p></footer>
+<footer class="foot"><p class="legal"><a href="/confidentialite">Confidentialité</a></p></footer>
 <script>
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -154,7 +153,6 @@ async function api(p, body){
   return j;
 }
 const LANGS = `<span class="langs"><a href="?lang=fr">FR</a> · <a href="?lang=en">EN</a> · <a href="?lang=pt">PT</a></span>`;
-const MADEBY = `<p class="madeby">Made by Les Institutions Sinaï</p>`;
 const jour = (d, o) => new Date(d + "T12:00").toLocaleDateString("fr-FR", o || {day:"numeric", month:"long"});
 const pwField = (id, label, auto) => `<label>${label}<span class="pw"><input id="${id}" type="password" autocomplete="${auto}" minlength="8"><button type="button" class="btn ghost" data-voir="${id}">Afficher</button></span></label>`;
 function lierVoir(){ app.querySelectorAll("[data-voir]").forEach(b => b.onclick = () => { const i = $("#" + b.dataset.voir), on = i.type === "password"; i.type = on ? "text" : "password"; b.textContent = on ? "Masquer" : "Afficher"; }); }
@@ -184,7 +182,7 @@ function vAuth(mode, o){
       <button class="btn primary" id="go">Enregistrer et me connecter</button><div class="err" id="err" role="alert"></div></div>`};
   page(`<section class="auth-band"><a class="brand" href="/eleve" aria-label="Mastery"><img class="mk" src="/logo-mark.png" alt="" style="height:34px"><img class="wm" src="/logo-word.png" alt="Mastery" style="height:20px"></a>
       <h1>Ton espace élève</h1><p>Tes copies corrigées, tes rattrapages et tes exercices, au même endroit.</p><div class="regle" style="--v:.8" aria-hidden="true"><i></i></div></section>
-    <section class="auth-main">${tabs}${F[mode]}<div class="auth-foot">${MADEBY}<p class="legal">${LANGS} · <a href="/confidentialite">Confidentialité</a></p></div></section>`, true);
+    <section class="auth-main">${tabs}${F[mode]}<div class="auth-foot"><p class="legal">${LANGS} · <a href="/confidentialite">Confidentialité</a></p></div></section>`, true);
   app.querySelectorAll("[data-mode]").forEach(b => b.onclick = () => vAuth(b.dataset.mode, {code:$("#code")?.value || o.code}));
   const err = t => { $("#err").textContent = t; }, v = id => ($("#" + id)?.value || "").trim();
   const first = mode === "creer" ? (o.code ? "#nom" : "#code") : mode === "reset" ? "#pw" : "#email"; if (ORDI || o.code) $(first)?.focus();
@@ -201,7 +199,7 @@ function vAuth(mode, o){
       if (mode === "creer") await api("/api/eleve/compte", {code:v("code"), nom:v("nom"), email:v("email"), password:$("#pw").value}).catch(e => { if (e.status === 403) return api("/api/eleve/login", {code:v("code"), nom:v("nom")}); throw e; });
       if (mode === "reset") await api("/api/eleve/reset", {token:o.token, password:$("#pw").value});
       if (mode === "oubli"){ const r = await api("/api/eleve/oubli", {email:v("email")});
-        page(`<section class="auth-band"><h1>Regarde tes e-mails</h1></section><section class="auth-main"><p>${r.mail ? "Si un compte existe avec cet e-mail, un lien vient de partir. Il est valable une heure. Pense à regarder dans les courriers indésirables." : "L'envoi d'e-mails n'est pas encore activé ici. Demande à ton professeur de remettre ton compte à zéro : tu pourras le recréer avec ton code."}</p><button class="btn" id="back">Revenir à la connexion</button><div class="auth-foot">${MADEBY}</div></section>`, true); $("#back").onclick = () => vAuth("compte"); return; }
+        page(`<section class="auth-band"><h1>Regarde tes e-mails</h1></section><section class="auth-main"><p>${r.mail ? "Si un compte existe avec cet e-mail, un lien vient de partir. Il est valable une heure. Pense à regarder dans les courriers indésirables." : "L'envoi d'e-mails n'est pas encore activé ici. Demande à ton professeur de remettre ton compte à zéro : tu pourras le recréer avec ton code."}</p><button class="btn" id="back">Revenir à la connexion</button><div class="auth-foot"></div></section>`, true); $("#back").onclick = () => vAuth("compte"); return; }
       try { localStorage.setItem("mastery.eleve.mode", "compte"); } catch(e){}
       history.replaceState(null, "", "/eleve"); home();
     } catch(e){ err(e.message); $("#go").disabled = false; }
