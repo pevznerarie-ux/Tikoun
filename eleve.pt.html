@@ -50,7 +50,7 @@ label{display:grid;gap:6px;font-size:14px;font-weight:600}
 input,textarea{font:inherit;color:inherit;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:13px 14px;width:100%;text-align:start}
 input:focus,textarea:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-soft)}
 textarea{min-height:160px;resize:vertical}
-.code{font-size:26px;letter-spacing:.18em;text-transform:uppercase;text-align:center;font-weight:700;font-family:var(--display)}
+.code{text-transform:uppercase;letter-spacing:.08em}
 .err{color:var(--bad);font-size:14px;min-height:1.3em}
 .okmsg{color:var(--ok);font-size:14px}
 .form{display:grid;gap:14px}
@@ -163,24 +163,18 @@ function page(html, auth){ document.body.classList.toggle("auth", !!auth); app.c
 /* ---------- Connexion : compte (e-mail) ou code de la carte ; création du compte avec le code ; mot de passe oublié ---------- */
 function vAuth(mode, o){
   o = o || {}; $("#who").innerHTML = "";
-  const tabs = mode === "compte" || mode === "code" ? `<div class="tabs" role="tablist"><button role="tab" aria-selected="${mode === "compte"}" data-mode="compte">Tenho uma conta</button><button role="tab" aria-selected="${mode === "code"}" data-mode="code">Tenho um código</button></div>` : "";
+  const tabs = mode === "compte" || mode === "creer" ? `<div class="tabs" role="tablist"><button role="tab" aria-selected="${mode === "compte"}" data-mode="compte">Tenho uma conta</button><button role="tab" aria-selected="${mode === "creer"}" data-mode="creer">Criar minha conta</button></div>` : "";
   const F = {
     compte:`<div class="form"><label>E-mail<input id="email" type="email" autocomplete="username" inputmode="email" autocapitalize="off" spellcheck="false"></label>
       ${pwField("pw", "Senha", "current-password")}
       <button class="btn primary" id="go">Entrar</button><div class="err" id="err" role="alert">${esc(o.err || "")}</div>
-      <div class="row between"><button class="btn ghost sm" data-mode="oubli">Esqueceu a senha?</button><button class="btn ghost sm" data-mode="creer">Criar minha conta</button></div></div>`,
-    code:`<div class="form"><p class="muted">Seu código está no cartão que o professor entregou.</p>
-      <label>Seu código<input id="code" class="code" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false" value="${esc(o.code || "")}"></label>
-      <label>Seu sobrenome<input id="nom" autocomplete="family-name" spellcheck="false" dir="auto"></label>
-      <button class="btn primary" id="go">Entrar</button><div class="err" id="err" role="alert">${esc(o.err || "")}</div>
-      <p class="small muted">Com seu código, você também pode <button class="btn ghost sm" data-mode="creer" style="display:inline;padding:0;min-height:0;text-decoration:underline;color:inherit">criar sua conta</button> para entrar depois com seu e-mail.</p></div>`,
-    creer:`<div class="form"><h2>Criar minha conta</h2><p class="muted">Você precisa do cartão só uma vez. Depois, entra com seu e-mail e sua senha.</p>
+      <div class="row between"><button class="btn ghost sm" data-mode="oubli">Esqueceu a senha?</button></div></div>`,
+    creer:`<div class="form"><p class="muted">Seu código está no cartão que o professor entregou. Você precisa dele só uma vez: depois, entra com seu e-mail e sua senha.</p>
       <label>Seu código<input id="code" class="code" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false" value="${esc(o.code || "")}"></label>
       <label>Seu sobrenome<input id="nom" autocomplete="family-name" spellcheck="false" dir="auto"></label>
       <label>Seu e-mail<input id="email" type="email" autocomplete="email" inputmode="email" autocapitalize="off" spellcheck="false"></label>
       ${pwField("pw", "Escolha uma senha (8 caracteres ou mais)", "new-password")}
-      <button class="btn primary" id="go">Criar minha conta</button><div class="err" id="err" role="alert"></div>
-      <button class="btn ghost sm" data-mode="compte">Já tenho uma conta</button></div>`,
+      <button class="btn primary" id="go">Criar minha conta</button><div class="err" id="err" role="alert"></div></div>`,
     oubli:`<div class="form"><h2>Esqueci a senha</h2><p class="muted">Escreva o e-mail da sua conta: você receberá um link para escolher uma nova senha.</p>
       <label>E-mail<input id="email" type="email" autocomplete="username" inputmode="email" autocapitalize="off" spellcheck="false"></label>
       <button class="btn primary" id="go">Receber o link</button><div class="err" id="err" role="alert"></div>
@@ -193,23 +187,22 @@ function vAuth(mode, o){
     <section class="auth-main">${tabs}${F[mode]}<div class="auth-foot">${MADEBY}<p class="legal">${LANGS} · <a href="/confidentialite">Privacidade</a></p></div></section>`, true);
   app.querySelectorAll("[data-mode]").forEach(b => b.onclick = () => vAuth(b.dataset.mode, {code:$("#code")?.value || o.code}));
   const err = t => { $("#err").textContent = t; }, v = id => ($("#" + id)?.value || "").trim();
-  const first = mode === "code" || mode === "creer" ? (o.code ? "#nom" : "#code") : mode === "reset" ? "#pw" : "#email"; if (ORDI || o.code) $(first)?.focus();
+  const first = mode === "creer" ? (o.code ? "#nom" : "#code") : mode === "reset" ? "#pw" : "#email"; if (ORDI || o.code) $(first)?.focus();
   const go = async () => {
     const need = (ids, msg) => ids.every(v) || (err(msg), false);
     if (mode === "compte" && !need(["email", "pw"], "Escreva seu e-mail e sua senha.")) return;
-    if (mode === "code" && !need(["code", "nom"], "Escreva seu código e seu sobrenome.")) return;
     if (mode === "creer" && !need(["code", "nom", "email", "pw"], "Preencha os quatro campos.")) return;
     if (mode === "oubli" && !need(["email"], "Escreva seu e-mail.")) return;
     if ((mode === "creer" || mode === "reset") && v("pw").length < 8) return err("Senha: 8 caracteres ou mais.");
     $("#go").disabled = true;
     try {
       if (mode === "compte") await api("/api/eleve/login", {email:v("email"), password:$("#pw").value});
-      if (mode === "code") await api("/api/eleve/login", {code:v("code"), nom:v("nom")});
-      if (mode === "creer") await api("/api/eleve/compte", {code:v("code"), nom:v("nom"), email:v("email"), password:$("#pw").value});
+      /* Classe où le professeur a désactivé les comptes : l'élève entre avec son code et son nom */
+      if (mode === "creer") await api("/api/eleve/compte", {code:v("code"), nom:v("nom"), email:v("email"), password:$("#pw").value}).catch(e => { if (e.status === 403) return api("/api/eleve/login", {code:v("code"), nom:v("nom")}); throw e; });
       if (mode === "reset") await api("/api/eleve/reset", {token:o.token, password:$("#pw").value});
       if (mode === "oubli"){ const r = await api("/api/eleve/oubli", {email:v("email")});
         page(`<section class="auth-band"><h1>Confira seu e-mail</h1></section><section class="auth-main"><p>${r.mail ? "Se existir uma conta com este e-mail, um link acabou de ser enviado. Ele vale por uma hora. Confira também a caixa de spam." : "O envio de e-mails ainda não está ativado aqui. Peça ao professor para reiniciar sua conta: você poderá recriá-la com o código."}</p><button class="btn" id="back">Voltar ao acesso</button><div class="auth-foot">${MADEBY}</div></section>`, true); $("#back").onclick = () => vAuth("compte"); return; }
-      try { localStorage.setItem("mastery.eleve.mode", mode === "code" ? "code" : "compte"); } catch(e){}
+      try { localStorage.setItem("mastery.eleve.mode", "compte"); } catch(e){}
       history.replaceState(null, "", "/eleve"); home();
     } catch(e){ err(e.message); $("#go").disabled = false; }
   };
@@ -218,7 +211,7 @@ function vAuth(mode, o){
 
 /* Onglet ouvert par défaut : celui qui a servi la dernière fois sur cet appareil (le code, la première fois) */
 const retenirCompte = () => { try { localStorage.setItem("mastery.eleve.mode", "compte"); } catch(e){} };
-function modeDef(){ try { return localStorage.getItem("mastery.eleve.mode") === "compte" ? "compte" : "code"; } catch(e){ return "code"; } }
+function modeDef(){ try { return localStorage.getItem("mastery.eleve.mode") === "compte" ? "compte" : "creer"; } catch(e){ return "creer"; } }
 
 /* ---------- Tableau de bord ---------- */
 const regle = v => v == null ? "" : `<div class="regle" style="--v:${Math.max(0, Math.min(1, v / 20)).toFixed(3)}" aria-hidden="true"><i></i></div>`;
@@ -281,7 +274,7 @@ function vCompte(){
   if ($("#l-go")) $("#l-go").onclick = () => { if (!$("#l-code").value.trim() || !$("#l-nom").value.trim()){ $("#l-err").textContent = "Escreva o código e seu sobrenome."; return; }
     run("#l-go", "#l-err", async () => { await api("/api/eleve/lier", {code:$("#l-code").value, nom:$("#l-nom").value}); ME = await api("/api/eleve/me"); vCompte(); }); };
   if ($("#del")) $("#del").onclick = () => { $("#del-box").hidden = false; $("#d-pw").focus(); };
-  if ($("#d-go")) $("#d-go").onclick = () => run("#d-go", "#d-err", async () => { await api("/api/eleve/compte/supprimer", {password:$("#d-pw").value}); ME = null; vAuth("code"); });
+  if ($("#d-go")) $("#d-go").onclick = () => run("#d-go", "#d-err", async () => { await api("/api/eleve/compte/supprimer", {password:$("#d-pw").value}); ME = null; vAuth("creer"); });
 }
 
 /* ---------- Copie corrigée (ou feuille de rattrapage à faire) ---------- */
@@ -361,7 +354,7 @@ async function finish(){
 const pre = new URLSearchParams(location.search).get("c"), rst = /^#reset\/([a-f0-9]{48})$/.exec(location.hash);
 /* Carte scannée ou lien de mot de passe oublié : on repart toujours de la connexion, même si un autre élève était resté connecté sur cet appareil */
 if (rst){ history.replaceState(null, "", "/eleve"); (async () => { try { await api("/api/eleve/logout", {}); } catch(e){} vAuth("reset", {token:rst[1]}); })(); }
-else if (pre){ history.replaceState(null, "", "/eleve"); (async () => { try { await api("/api/eleve/logout", {}); } catch(e){} vAuth("code", {code:pre}); })(); }
+else if (pre){ history.replaceState(null, "", "/eleve"); (async () => { try { await api("/api/eleve/logout", {}); } catch(e){} vAuth("creer", {code:pre}); })(); }
 else home();
 </script>
 </body>
