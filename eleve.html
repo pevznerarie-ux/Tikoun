@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#15233F">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Inter:wght@400;500;600;700&family=Noto+Sans+Hebrew:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Cormorant+Garamond:ital,wght@1,500&family=Inter:wght@400;500;600;700&family=Noto+Sans+Hebrew:wght@400;500;600;700&display=swap">
 <style>
 :root{--bg:#F2F4F8;--surface:#fff;--surface-2:#E9EDF4;--ink:#15233F;--muted:#5E6B85;--line:#DCE1EC;--accent:#C8643B;--accent-soft:#FBEDE6;--ok:#14804A;--ok-soft:#E1F4E9;--bad:#C5321F;--bad-soft:#FCE9E6;--navy:#15233F;--on-navy:#F2F4F8;
   --display:"Bricolage Grotesque","Noto Sans Hebrew",system-ui,sans-serif;--body:"Inter","Noto Sans Hebrew",system-ui,-apple-system,"Segoe UI",sans-serif}
@@ -58,25 +58,64 @@ textarea{min-height:160px;resize:vertical}
 .between{justify-content:space-between}
 .pw{position:relative}.pw input{padding-inline-end:92px}.pw button{position:absolute;inset-inline-end:6px;top:50%;transform:translateY(-50%);min-height:36px;padding:4px 10px;font-size:13px}
 
-/* Connexion : un bandeau marine avec la règle graduée, puis le formulaire */
+/* Connexion : même habillage que l'accueil et la connexion professeur */
 body.auth .top{display:none}
-.auth-page{flex:1;display:grid;grid-template-columns:minmax(0,1fr);align-content:start}
-.auth-band{background:var(--navy);color:var(--on-navy);padding:28px 20px 30px;display:grid;gap:18px}
-.auth-band .brand .wm{filter:brightness(0) invert(.95)}
-.auth-band h1{font-size:clamp(32px,8vw,52px);max-width:12ch}
-.auth-band p{color:color-mix(in srgb,var(--on-navy) 72%,transparent);max-width:34ch}
-.auth-band .regle{--track:color-mix(in srgb,var(--on-navy) 16%,transparent);--tick:var(--navy);max-width:340px}
-.auth-main{padding:24px 20px 28px;display:grid;gap:22px;align-content:start;width:100%;max-width:460px;margin:0 auto}
-.tabs{display:grid;grid-template-columns:1fr 1fr;background:var(--surface-2);border-radius:12px;padding:4px;gap:4px}
-.tabs button{border:0;background:none;font:inherit;font-weight:600;color:var(--muted);padding:10px 8px;border-radius:9px;cursor:pointer;min-height:44px}
-.tabs button[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(21,35,63,.12)}
-.auth-foot{display:grid;gap:14px;justify-items:center;margin-top:8px}
+.auth-page{flex:1;display:block}
 .legal{font-size:12px;color:var(--muted);text-align:center}
-@media (min-width:900px){
-  .auth-page{grid-template-columns:minmax(0,5fr) minmax(0,6fr);align-content:stretch}
-  .auth-band{padding:56px 48px;align-content:center;gap:26px}
-  .auth-main{align-content:center;padding:48px 32px}
+.as .pw button{color:var(--as-muted)}
+.as .err{min-height:0}
+/* as:début — même habillage pour l'accueil, la connexion professeur et la connexion élève (copié à l'identique dans choix.html, eleve.html et head.html) */
+.as{--as-bg:#F6F7FB;--as-ink:#101828;--as-muted:#667085;--as-line:#E4E7EE;--as-card:#FFFFFF;--as-acc:#C8643B;--as-acc-soft:#FBEDE6;--as-ease:cubic-bezier(.65,0,.35,1);
+  min-height:100dvh;display:grid;grid-template-columns:minmax(0,1fr);grid-template-rows:max-content minmax(max-content,1fr);background:var(--as-bg);color:var(--as-ink);font-family:Inter,"Noto Sans Hebrew",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:16px;line-height:1.5;text-align:start}
+@media (prefers-color-scheme:dark){.as{--as-bg:#0F1420;--as-ink:#EEF1F7;--as-muted:#9AA4B8;--as-line:#262E40;--as-card:#161C2A;--as-acc:#E58B63;--as-acc-soft:#3A2219}.as .as-wm{filter:brightness(0) invert(.92)}}
+.as-brand{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:44px 20px 4px;min-height:0;transition:min-height .9s var(--as-ease)}
+.as-logo{display:flex;flex-direction:column;align-items:center;gap:10px;text-decoration:none}
+.as-mk{height:56px;width:auto;transition:height .9s var(--as-ease)}.as-wm{height:24px;width:auto;transition:height .9s var(--as-ease)}
+.as-by{display:grid;justify-items:center;gap:2px}
+.as-by span{font-size:10px;letter-spacing:.32em;text-transform:uppercase;color:var(--as-muted)}
+.as-by b{font-family:"Cormorant Garamond","Frank Ruhl Libre",Georgia,serif;font-style:italic;font-weight:500;font-size:21px;letter-spacing:.01em;color:var(--as-ink);transition:font-size .9s var(--as-ease)}
+.as-main{display:flex;flex-direction:column;min-width:0;padding:28px 20px 24px;transition:opacity .5s .55s}
+.as-in{width:100%;max-width:400px;margin:0 auto;display:grid;gap:20px;align-content:start;flex:1}
+.as-back{justify-self:start;display:inline-flex;align-items:center;gap:6px;color:var(--as-muted);font-family:inherit;font-size:14px;font-weight:500;line-height:1.4;text-decoration:none;background:none;border:0;padding:6px 0;margin:-6px 0 -8px;cursor:pointer}
+.as-back:hover{color:var(--as-ink)}
+.as-h1{font-family:inherit;font-size:28px;font-weight:700;letter-spacing:-.025em;line-height:1.15;margin:0;color:var(--as-ink)}
+.as-lead{color:var(--as-muted);margin:-8px 0 0;font-size:15px}
+.as-form{display:grid;gap:14px}
+.as label,.as .field label{display:grid;gap:6px;font-size:14px;font-weight:600;color:var(--as-ink)}
+.as .field{display:grid;gap:6px;margin:0}
+.as input:not([type=checkbox]):not([type=radio]){font:inherit;font-size:16px;color:var(--as-ink);background:var(--as-card);border:1px solid var(--as-line);border-radius:12px;padding:12px 14px;min-height:48px;width:100%;box-shadow:none}
+.as input:focus{outline:none;border-color:var(--as-acc);box-shadow:0 0 0 4px var(--as-acc-soft)}
+.as-go{display:flex;align-items:center;justify-content:center;width:100%;min-height:48px;padding:12px 18px;border-radius:12px;border:1px solid var(--as-acc);background:var(--as-acc);color:#fff;font-family:inherit;font-size:16px;font-weight:600;line-height:1.2;cursor:pointer}
+.as-go:hover{filter:brightness(.95)}.as-go[disabled]{opacity:.55;cursor:not-allowed}
+.as-link{justify-self:center;background:none;border:0;padding:8px;color:var(--as-muted);font-family:inherit;font-size:14px;font-weight:500;line-height:1.4;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.as-link:hover{color:var(--as-ink)}
+.as-alt{display:grid;gap:10px;justify-items:center;border-top:1px solid var(--as-line);padding-top:18px;font-size:14px;color:var(--as-muted)}
+.as-alt .as-sec{width:100%}
+.as-sec{display:flex;align-items:center;justify-content:center;min-height:48px;padding:12px 18px;border-radius:12px;border:1px solid var(--as-line);background:var(--as-card);color:var(--as-ink);font-family:inherit;font-size:16px;font-weight:600;line-height:1.2;cursor:pointer;text-decoration:none}
+.as-sec:hover{border-color:var(--as-ink)}
+.as-tabs{display:grid;grid-template-columns:1fr 1fr;background:var(--as-line);border-radius:12px;padding:4px;gap:4px}
+.as-tabs button{border:0;background:none;font-family:inherit;font-size:15px;font-weight:600;line-height:1.2;color:var(--as-muted);padding:10px 8px;border-radius:9px;cursor:pointer;min-height:44px}
+.as-tabs button[aria-selected="true"]{background:var(--as-card);color:var(--as-ink);box-shadow:0 1px 2px rgba(16,24,40,.12)}
+.as-foot{text-align:center;font-size:13px;color:var(--as-muted);margin:28px 0 0;line-height:1.9}.as .as-foot a{color:var(--as-muted)!important;text-decoration:underline;text-underline-offset:2px}
+.as .err:empty,.as .status:empty{display:none}
+.as :focus-visible{outline:3px solid var(--as-acc);outline-offset:2px}
+@media (min-width:880px){
+  .as{grid-template-columns:minmax(0,5fr) minmax(0,6fr);grid-template-rows:minmax(100dvh,auto);transition:grid-template-columns .9s var(--as-ease)}
+  .as-brand{gap:7vh;padding:40px;position:sticky;top:0;height:100dvh}
+  .as-logo{gap:14px}.as-mk{height:84px}.as-wm{height:36px}
+  .as-by span{font-size:11px}.as-by b{font-size:27px}
+  .as-main{background:var(--as-card);border-inline-start:1px solid var(--as-line);padding:48px 40px 28px;justify-content:center}
+  .as-in{flex:0 0 auto}
+  .as .as-in input:not([type=checkbox]):not([type=radio]){background:var(--as-bg)}
+  .as-tabs{background:var(--as-bg)}
 }
+/* Entrée sur le site : le logo occupe tout l'écran, puis se range à gauche (en haut sur téléphone) */
+.as-intro .as-brand{min-height:100dvh}
+.as-intro .as-mk{height:84px}.as-intro .as-wm{height:36px}.as-intro .as-by b{font-size:27px}
+.as-intro .as-main{opacity:0;transition:none}
+@media (min-width:880px){.as-intro .as{grid-template-columns:minmax(0,1fr) minmax(0,0fr)}.as-intro .as-main{overflow:hidden;padding-inline:0;border:0}}
+@media (prefers-reduced-motion:reduce){.as,.as *{transition:none!important}}
+/* as:fin */
 
 /* La règle graduée sur 20 : la note se lit d'un coup d'œil */
 .regle{--track:var(--surface-2);--tick:var(--surface);position:relative;height:10px;border-radius:3px;background:var(--track);overflow:hidden}
@@ -156,33 +195,35 @@ const LANGS = `<span class="langs"><a href="?lang=fr">FR</a> · <a href="?lang=e
 const jour = (d, o) => new Date(d + "T12:00").toLocaleDateString("fr-FR", o || {day:"numeric", month:"long"});
 const pwField = (id, label, auto) => `<label>${label}<span class="pw"><input id="${id}" type="password" autocomplete="${auto}" minlength="8"><button type="button" class="btn ghost" data-voir="${id}">Afficher</button></span></label>`;
 function lierVoir(){ app.querySelectorAll("[data-voir]").forEach(b => b.onclick = () => { const i = $("#" + b.dataset.voir), on = i.type === "password"; i.type = on ? "text" : "password"; b.textContent = on ? "Masquer" : "Afficher"; }); }
+const BRAND = `<div class="as-brand"><a class="as-logo" href="/" aria-label="Mastery"><img class="as-mk" src="/logo-mark.png" alt=""><img class="as-wm" src="/logo-word.png" alt="Mastery"></a><div class="as-by"><span>Made by</span><b>Les Institutions Sinaï</b></div></div>`;
+const FOOT = `<p class="as-foot">Tu es professeur ? <a href="/app#/connexion">Espace professeur</a><br><a href="?lang=fr">Français</a> · <a href="?lang=en">English</a> · <a href="?lang=pt">Português</a> · <a href="/confidentialite">Confidentialité</a></p>`;
+const shell = inner => `<div class="as">${BRAND}<main class="as-main"><div class="as-in">${inner}</div>${FOOT}</main></div>`;
 function page(html, auth){ document.body.classList.toggle("auth", !!auth); app.className = auth ? "auth-page" : "wrap"; app.innerHTML = html; lierVoir(); scrollTo(0, 0); }
 
 /* ---------- Connexion : compte (e-mail) ou code de la carte ; création du compte avec le code ; mot de passe oublié ---------- */
 function vAuth(mode, o){
   o = o || {}; $("#who").innerHTML = "";
-  const tabs = mode === "compte" || mode === "creer" ? `<div class="tabs" role="tablist"><button role="tab" aria-selected="${mode === "compte"}" data-mode="compte">J'ai un compte</button><button role="tab" aria-selected="${mode === "creer"}" data-mode="creer">Créer mon compte</button></div>` : "";
+  const tabs = mode === "compte" || mode === "creer" ? `<div class="as-tabs" role="tablist"><button role="tab" aria-selected="${mode === "compte"}" data-mode="compte">J'ai un compte</button><button role="tab" aria-selected="${mode === "creer"}" data-mode="creer">Créer mon compte</button></div>` : "";
   const F = {
     compte:`<div class="form"><label>E-mail<input id="email" type="email" autocomplete="username" inputmode="email" autocapitalize="off" spellcheck="false"></label>
       ${pwField("pw", "Mot de passe", "current-password")}
-      <button class="btn primary" id="go">Me connecter</button><div class="err" id="err" role="alert">${esc(o.err || "")}</div>
-      <div class="row between"><button class="btn ghost sm" data-mode="oubli">Mot de passe oublié ?</button></div></div>`,
+      <button class="as-go" id="go">Me connecter</button><div class="err" id="err" role="alert">${esc(o.err || "")}</div>
+      <button class="as-link" data-mode="oubli">Mot de passe oublié ?</button></div>`,
     creer:`<div class="form"><p class="muted">Ton code est écrit sur la carte donnée par ton professeur. Tu en as besoin une seule fois : ensuite, tu te connectes avec ton e-mail et ton mot de passe.</p>
       <label>Ton code<input id="code" class="code" maxlength="8" autocomplete="off" autocapitalize="characters" spellcheck="false" value="${esc(o.code || "")}"></label>
       <label>Ton nom de famille<input id="nom" autocomplete="family-name" spellcheck="false" dir="auto"></label>
       <label>Ton e-mail<input id="email" type="email" autocomplete="email" inputmode="email" autocapitalize="off" spellcheck="false"></label>
       ${pwField("pw", "Choisis un mot de passe (8 caractères ou plus)", "new-password")}
-      <button class="btn primary" id="go">Créer mon compte</button><div class="err" id="err" role="alert"></div></div>`,
-    oubli:`<div class="form"><h2>Mot de passe oublié</h2><p class="muted">Écris l'e-mail de ton compte : tu recevras un lien pour choisir un nouveau mot de passe.</p>
+      <button class="as-go" id="go">Créer mon compte</button><div class="err" id="err" role="alert"></div></div>`,
+    oubli:`<div class="form"><p class="muted">Écris l'e-mail de ton compte : tu recevras un lien pour choisir un nouveau mot de passe.</p>
       <label>E-mail<input id="email" type="email" autocomplete="username" inputmode="email" autocapitalize="off" spellcheck="false"></label>
-      <button class="btn primary" id="go">Recevoir le lien</button><div class="err" id="err" role="alert"></div>
-      <button class="btn ghost sm" data-mode="compte">Revenir à la connexion</button></div>`,
-    reset:`<div class="form"><h2>Nouveau mot de passe</h2>
+      <button class="as-go" id="go">Recevoir le lien</button><div class="err" id="err" role="alert"></div></div>`,
+    reset:`<div class="form">
       ${pwField("pw", "Choisis un mot de passe (8 caractères ou plus)", "new-password")}
-      <button class="btn primary" id="go">Enregistrer et me connecter</button><div class="err" id="err" role="alert"></div></div>`};
-  page(`<section class="auth-band"><a class="brand" href="/eleve" aria-label="Mastery"><img class="mk" src="/logo-mark.png" alt="" style="height:34px"><img class="wm" src="/logo-word.png" alt="Mastery" style="height:20px"></a>
-      <h1>Ton espace élève</h1><p>Tes copies corrigées, tes rattrapages et tes exercices, au même endroit.</p><div class="regle" style="--v:.8" aria-hidden="true"><i></i></div></section>
-    <section class="auth-main">${tabs}${F[mode]}<div class="auth-foot"><p class="legal">${LANGS} · <a href="/confidentialite">Confidentialité</a></p></div></section>`, true);
+      <button class="as-go" id="go">Enregistrer et me connecter</button><div class="err" id="err" role="alert"></div></div>`};
+  const back = mode === "oubli" ? `<button class="as-back" data-mode="compte">← Retour</button>` : mode === "reset" ? "" : `<a class="as-back" href="/">← Retour</a>`;
+  const titre = {oubli:"Mot de passe oublié", reset:"Nouveau mot de passe"}[mode] || "Espace élève";
+  page(shell(`${back}<h1 class="as-h1">${titre}</h1>${tabs}${F[mode]}`), true);
   app.querySelectorAll("[data-mode]").forEach(b => b.onclick = () => vAuth(b.dataset.mode, {code:$("#code")?.value || o.code}));
   const err = t => { $("#err").textContent = t; }, v = id => ($("#" + id)?.value || "").trim();
   const first = mode === "creer" ? (o.code ? "#nom" : "#code") : mode === "reset" ? "#pw" : "#email"; if (ORDI || o.code) $(first)?.focus();
@@ -199,7 +240,7 @@ function vAuth(mode, o){
       if (mode === "creer") await api("/api/eleve/compte", {code:v("code"), nom:v("nom"), email:v("email"), password:$("#pw").value}).catch(e => { if (e.status === 403) return api("/api/eleve/login", {code:v("code"), nom:v("nom")}); throw e; });
       if (mode === "reset") await api("/api/eleve/reset", {token:o.token, password:$("#pw").value});
       if (mode === "oubli"){ const r = await api("/api/eleve/oubli", {email:v("email")});
-        page(`<section class="auth-band"><h1>Regarde tes e-mails</h1></section><section class="auth-main"><p>${r.mail ? "Si un compte existe avec cet e-mail, un lien vient de partir. Il est valable une heure. Pense à regarder dans les courriers indésirables." : "L'envoi d'e-mails n'est pas encore activé ici. Demande à ton professeur de remettre ton compte à zéro : tu pourras le recréer avec ton code."}</p><button class="btn" id="back">Revenir à la connexion</button><div class="auth-foot"></div></section>`, true); $("#back").onclick = () => vAuth("compte"); return; }
+        page(shell(`<h1 class="as-h1">Regarde tes e-mails</h1><p>${r.mail ? "Si un compte existe avec cet e-mail, un lien vient de partir. Il est valable une heure. Pense à regarder dans les courriers indésirables." : "L'envoi d'e-mails n'est pas encore activé ici. Demande à ton professeur de remettre ton compte à zéro : tu pourras le recréer avec ton code."}</p><button class="as-sec" id="back">Revenir à la connexion</button>`), true); $("#back").onclick = () => vAuth("compte"); return; }
       try { localStorage.setItem("mastery.eleve.mode", "compte"); } catch(e){}
       history.replaceState(null, "", "/eleve"); home();
     } catch(e){ err(e.message); $("#go").disabled = false; }
@@ -207,9 +248,9 @@ function vAuth(mode, o){
   $("#go").onclick = go; app.querySelectorAll("input").forEach(i => i.onkeydown = e => { if (e.key === "Enter") go(); });
 }
 
-/* Onglet ouvert par défaut : celui qui a servi la dernière fois sur cet appareil (le code, la première fois) */
+/* Onglet ouvert par défaut : « J'ai un compte » (une carte scannée ouvre la création, code rempli) */
 const retenirCompte = () => { try { localStorage.setItem("mastery.eleve.mode", "compte"); } catch(e){} };
-function modeDef(){ try { return localStorage.getItem("mastery.eleve.mode") === "compte" ? "compte" : "creer"; } catch(e){ return "creer"; } }
+function modeDef(){ return "compte"; }
 
 /* ---------- Tableau de bord ---------- */
 const regle = v => v == null ? "" : `<div class="regle" style="--v:${Math.max(0, Math.min(1, v / 20)).toFixed(3)}" aria-hidden="true"><i></i></div>`;

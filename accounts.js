@@ -40,17 +40,14 @@ function vAuth(){
     <div class="field"><label for="su-mail">E-mail</label><input id="su-mail" type="email" autocomplete="username"></div>
     <div class="field"><label for="su-pw">Mot de passe (8 caractères minimum)</label><input id="su-pw" type="password" autocomplete="new-password"></div>
     <div class="row"><button class="btn primary" id="su-go">Créer le compte</button></div><div class="status" id="au-st"></div></section>`;
-  if (S.auth === "forgot") return `<div class="auth"><section class="auth-card">
-    <div class="auth-h"><h2>Mot de passe oublié</h2><p>Indique l'e-mail de ton compte.</p></div>
+  if (S.auth === "forgot") return asShell(`<button class="as-back" id="fg-back">← Retour</button><h1 class="as-h1">Mot de passe oublié</h1>
     ${S.forgot ? `<p class="banner">${S.forgot.mail ? "Si un compte existe avec cet e-mail, tu vas recevoir un lien pour choisir un nouveau mot de passe. Pense à regarder dans les indésirables." : "Ta demande est transmise à l'équipe Mastery, qui va réinitialiser ton mot de passe et te répondre par e-mail."}${S.forgot.contact ? ` Une question : <a href="mailto:${esc(S.forgot.contact)}">${esc(S.forgot.contact)}</a>` : ""}</p>`
-      : `<div class="field"><label for="fg-mail">E-mail</label><input id="fg-mail" type="email" autocomplete="username" value="${esc(S.fgMail || "")}"></div><button class="btn primary auth-go" id="fg-go">Recevoir un lien</button>`}
-    <div class="status" id="au-st"></div>
-    <p class="small auth-note"><button class="btn ghost sm" id="fg-back">← Retour à la connexion</button></p></section></div>`;
-  if (S.auth === "reset") return `<div class="auth"><section class="auth-card">
-    <div class="auth-h"><h2>Nouveau mot de passe</h2><p>Choisis ton nouveau mot de passe Mastery.</p></div>
-    <div class="field"><label for="npw-pw">Nouveau mot de passe (8 caractères minimum)</label><input id="npw-pw" type="password" autocomplete="new-password"></div>
+      : `<div class="as-form"><p class="as-lead" style="margin:0">Indique l'e-mail de ton compte.</p><div class="field"><label for="fg-mail">E-mail</label><input id="fg-mail" type="email" autocomplete="username" value="${esc(S.fgMail || "")}"></div><button class="as-go" id="fg-go">Recevoir un lien</button></div>`}
+    <div class="status" id="au-st"></div>`);
+  if (S.auth === "reset") return asShell(`<h1 class="as-h1">Nouveau mot de passe</h1>
+    <div class="as-form"><div class="field"><label for="npw-pw">Nouveau mot de passe (8 caractères minimum)</label><input id="npw-pw" type="password" autocomplete="new-password"></div>
     <div class="field"><label for="npw-pw2">Confirmer</label><input id="npw-pw2" type="password" autocomplete="new-password"></div>
-    <button class="btn primary auth-go" id="npw-go">Enregistrer et me connecter</button><div class="status" id="au-st"></div></section></div>`;
+    <button class="as-go" id="npw-go">Enregistrer et me connecter</button><div class="status" id="au-st"></div></div>`);
   if (S.auth === "change") return `<div class="head"><div><h2>Choisis ton mot de passe</h2><p>Bienvenue ${esc(S.me?.nom || "")} : remplace le mot de passe provisoire.</p></div></div>
   <section class="panel grid" style="max-width:440px">
     <div class="field"><label for="ch-pw">Nouveau mot de passe (8 caractères minimum)</label><input id="ch-pw" type="password" autocomplete="new-password"></div>
@@ -74,16 +71,16 @@ function vAuth(){
     <p class="small muted" style="margin:0">${CFG().billing ? `Tu commences par un mois d'essai gratuit, sans carte bancaire : toutes les fonctions sont ouvertes, avec ${essaiCtrl()}. Tu choisiras ton forfait à la fin de l'essai. Ton inscription sera validée par l'équipe Mastery.` : "Pendant la bêta, tous les forfaits sont gratuits : aucun paiement n'est demandé. Ton inscription sera validée par l'équipe Mastery."}</p>
     <label class="small" style="display:flex;gap:8px;align-items:flex-start;cursor:pointer"><input type="checkbox" id="rg-cgu" style="width:auto;margin-top:3px" ${S.regCgu ? "checked" : ""}><span>J'accepte les <a href="/cgu" target="_blank" rel="noopener" style="color:var(--gold)">conditions d'utilisation</a> et la <a href="/confidentialite" target="_blank" rel="noopener" style="color:var(--gold)">politique de confidentialité</a>. Je m'engage à informer les familles de l'utilisation de Mastery pour mes classes.</span></label>
     <div class="row"><button class="btn primary" id="rg-go">Envoyer ma demande d'inscription</button><button class="btn ghost" id="rg-back">J'ai déjà un compte</button></div><div class="status" id="au-st"></div></section>`;
-  return `<div class="auth"><section class="auth-card">
-    <div class="auth-h"><h2>Connexion</h2><p>Crée, imprime et corrige tes contrôles avec l'IA.</p></div>
-    <div class="field"><label for="lg-mail2">E-mail</label><input id="lg-mail2" type="email" autocomplete="username" placeholder="prenom.nom@ecole.fr"></div>
+  return asShell(`<a class="as-back" href="/">← Retour</a><h1 class="as-h1">Espace professeur</h1>
+    <div class="as-form"><div class="field"><label for="lg-mail2">E-mail</label><input id="lg-mail2" type="email" autocomplete="username" placeholder="prenom.nom@ecole.fr"></div>
     <div class="field"><label for="lg-pw2">Mot de passe</label><input id="lg-pw2" type="password" autocomplete="current-password"></div>
-    <button class="btn primary auth-go" id="lg-go2">Se connecter</button><div class="status" id="au-st"></div>
-    <p class="small auth-note"><button class="btn ghost sm" id="pw-forgot">Mot de passe oublié ?</button></p>
-    ${window.TIKOUN_CONFIG?.signup ? `<div class="auth-alt"><span class="small muted">Pas encore de compte ?</span><button class="btn" id="rg-open">Créer mon compte professeur</button></div>` : ""}
-  </section>
-  <p class="small muted auth-foot"><a href="/">← Retour au site</a> · <a href="?lang=fr">Français</a> · <a href="?lang=en">English</a> · <a href="?lang=pt">Português</a></p></div>`;
+    <button class="as-go" id="lg-go2">Se connecter</button><div class="status" id="au-st"></div>
+    <button class="as-link" id="pw-forgot">Mot de passe oublié ?</button></div>
+    ${window.TIKOUN_CONFIG?.signup ? `<div class="as-alt"><span>Pas encore de compte ?</span><button class="as-sec" id="rg-open">Créer mon compte professeur</button></div>` : ""}`);
 }
+/* Même habillage que l'accueil et la connexion élève : logo et signature à gauche (en haut sur téléphone) */
+const asShell = inner => `<div class="as as-fixed"><div class="as-brand"><a class="as-logo" href="/" aria-label="Mastery"><img class="as-mk" src="/logo-mark.png" alt=""><img class="as-wm" src="/logo-word.png" alt="Mastery"></a><div class="as-by"><span>Made by</span><b>Les Institutions Sinaï</b></div></div><main class="as-main"><div class="as-in">${inner}</div>
+  <p class="as-foot">Tu es élève ? <a href="/eleve">Espace élève</a><br><a href="?lang=fr">Français</a> · <a href="?lang=en">English</a> · <a href="?lang=pt">Português</a> · <a href="/confidentialite">Confidentialité</a></p></main></div>`;
 const KEEP = ["rg-nom","rg-mail","rg-pw","me-nom","ec-nom","ec-ville"]; let kept = {}; S.form = {};
 document.addEventListener("change", async ev => { if (ev.target.id === "rg-cgu") S.regCgu = ev.target.checked;
   if (ev.target.id === "et-collecte"){ try { await api("/api/etab/reglages", {method:"POST", body:JSON.stringify({collecte:ev.target.checked})}); toast("Enregistré"); refreshMe(); } catch(e){ toast(e.message || "Impossible"); } return; }
