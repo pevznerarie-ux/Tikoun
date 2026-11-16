@@ -6,7 +6,7 @@ NIV_US = '["6th grade","7th grade","8th grade","9th grade","10th grade","11th gr
 MAT_SUGG_US = '["Talmud","Mishnah","Chumash","Navi","Halacha","Chassidus","Jewish Thought"]'
 MAT_US = '["Math","English Language Arts","Science","Biology","Chemistry","Physics","History","Social Studies","Spanish","French","Hebrew","Computer Science","Economics","Art","Music"]'
 missing = set()
-for name in ["index", "landing", "eleve"]:
+for name in ["index", "landing", "eleve", "choix"]:
     src, out = f"{OUT}{name}.html", f"{OUT}{name}.en.html"
     subprocess.run(["node", I18N + "i18n.js", "apply", src, I18N + "en.json", out], check=True, env={**os.environ, "ACORN": ACORN})
     if os.path.exists(out + ".missing.json"):

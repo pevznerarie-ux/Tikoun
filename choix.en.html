@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mastery · Sign in</title>
+<link rel="icon" type="image/png" href="/favicon-64.png">
+<link rel="apple-touch-icon" href="/icon-180.png">
+<meta name="theme-color" content="#F2F4F8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600..800&family=Inter:wght@400;500;600&display=swap">
+<style>
+:root{--bg:#F2F4F8;--surface:#fff;--ink:#15233F;--muted:#5E6B85;--line:#DCE1EC;--prof:#C8643B;--prof-soft:#FBEDE6;--eleve:#15233F;--eleve-soft:#E7EBF3;
+  --display:"Bricolage Grotesque",system-ui,sans-serif;--body:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif}
+@media (prefers-color-scheme:dark){:root{--bg:#0D1322;--surface:#151C2E;--ink:#EAEEF8;--muted:#9AA6BF;--line:#27314A;--prof:#E58B63;--prof-soft:#3A2219;--eleve:#C9D3EA;--eleve-soft:#1E2740}}
+*{box-sizing:border-box}html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased;min-height:100dvh;display:flex;flex-direction:column}
+main{flex:1;width:100%;max-width:440px;margin:0 auto;padding:clamp(40px,10vh,96px) 20px 32px;display:grid;gap:30px;align-content:start}
+.brand{display:flex;flex-direction:column;align-items:center;gap:10px}
+.brand .mk{height:64px}.brand .wm{height:26px}
+@media (prefers-color-scheme:dark){.brand .wm{filter:brightness(0) invert(.92)}}
+h1{font-family:var(--display);font-weight:700;font-size:28px;letter-spacing:-.02em;line-height:1.15;margin:0;text-align:center}
+.choix{display:grid;gap:14px}
+.choix a{display:grid;grid-template-columns:52px minmax(0,1fr) auto;align-items:center;gap:16px;padding:18px 18px 18px 16px;background:var(--surface);border:1px solid var(--line);border-radius:18px;color:inherit;text-decoration:none;transition:border-color .15s,transform .15s}
+.choix a:hover{border-color:var(--ink);transform:translateY(-1px)}
+.choix a:focus-visible{outline:3px solid var(--prof);outline-offset:3px}
+.ic{width:52px;height:52px;border-radius:14px;display:grid;place-items:center}
+.ic svg{width:26px;height:26px}
+.prof .ic{background:var(--prof-soft);color:var(--prof)}.eleve .ic{background:var(--eleve-soft);color:var(--eleve)}
+.choix b{display:block;font-family:var(--display);font-size:20px;font-weight:700;letter-spacing:-.01em;line-height:1.2}
+.choix small{display:block;color:var(--muted);font-size:14px;margin-top:2px}
+.fl{color:var(--muted);font-size:22px}
+footer{padding:16px 20px 28px;text-align:center;font-size:13px;color:var(--muted)}
+footer a{color:inherit}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<main>
+  <div class="brand"><img class="mk" src="/logo-mark.png" alt=""><img class="wm" src="/logo-word.png" alt="Mastery"></div>
+  <h1>Welcome</h1>
+  <nav class="choix" aria-label="Sign in">
+    <a class="prof" href="/app#/connexion"><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v8a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 13.5z"/><path d="M8 20h8M12 15v5"/><path d="m8 9 2.5 2.5L16 7"/></svg></span>
+      <span><b>I'm a teacher</b><small>Create, print and grade my tests</small></span><span class="fl" aria-hidden="true">›</span></a>
+    <a class="eleve" href="/eleve"><span class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4 2.5 8.5 12 13l9.5-4.5z"/><path d="M6.5 10.5v4.2c0 1.6 2.5 3.3 5.5 3.3s5.5-1.7 5.5-3.3v-4.2"/><path d="M21.5 8.5V14"/></svg></span>
+      <span><b>I'm a student</b><small>My scores, papers and practice</small></span><span class="fl" aria-hidden="true">›</span></a>
+  </nav>
+</main>
+<footer><a href="?lang=fr">French</a> · <a href="?lang=en">English</a> · <a href="?lang=pt">Português</a> · <a href="/confidentialite">Privacy</a> · <a href="/mentions-legales">Legal notice</a></footer>
+</body>
+</html>
