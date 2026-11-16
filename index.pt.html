@@ -472,9 +472,9 @@ input[type=checkbox],input[type=radio]{accent-color:var(--blue)}
 .auth-h{text-align:center;display:grid;gap:6px;margin-bottom:4px}.auth-h h2{font-size:26px;font-weight:700;letter-spacing:-.03em}.auth-h p{color:var(--muted);font-size:14.5px}
 .auth-go{width:100%;padding:12px 16px;font-size:15px}
 .auth-note{text-align:center;margin:0}
-.madeby{display:flex;align-items:center;justify-content:center;gap:10px;font-size:13px;color:var(--muted);margin-top:4px}.madeby img{height:34px;width:auto;display:block}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .madeby img{background:#F2F4F8;border-radius:8px;padding:5px 8px;height:44px}}
-:root[data-theme="dark"] .madeby img{background:#F2F4F8;border-radius:8px;padding:5px 8px;height:44px}
+.madeby{font-family:"Cormorant Garamond","Frank Ruhl Libre",Georgia,serif;font-style:italic;font-weight:500;font-size:17px;letter-spacing:.01em;color:var(--muted);text-align:center;margin:0}
+.hero-card .madeby{text-align:start;margin-top:14px;font-size:19px;opacity:.8}
+.head .madeby{text-align:start;margin-top:8px;font-size:19px}
 .auth-alt{display:grid;gap:8px;justify-items:center;border-top:1px solid var(--line);padding-top:16px}.auth-alt .btn{width:100%}
 .auth-foot{text-align:center}.view .auth-foot a{color:var(--muted);text-decoration:none}.view .auth-foot a:hover{color:var(--ink)}
 .auth-card>.status:empty{display:none}
@@ -1221,7 +1221,7 @@ const foldSec = (k, titre, n, body) => { const f = !!foldGet()[k];
   return `<section class="panel"><button class="foldh" data-fold="${k}" aria-expanded="${!f}"><h3>${titre} <span class="muted small">${n}</span></h3><span class="chev" aria-hidden="true">${f ? "▸" : "▾"}</span></button>${f ? "" : `<div style="margin-top:4px">${body}</div>`}</section>`; };
 function vHome(){
   if (!store.classes.length) return `
-  <div class="head"><div><h2>Boas-vindas ao Mastery</h2><p>Da aula à recuperação: a IA prepara e corrige, o professor decide.</p></div></div>
+  <div class="head"><div><h2>Boas-vindas ao Mastery</h2><p>Da aula à recuperação: a IA prepara e corrige, o professor decide.</p><p class="madeby">Made by Les Institutions Sinaï</p></div></div>
   <section class="panel grid">
     <div class="grid g3">
       <div><div class="label">1 · Turma</div><p>Crie sua turma e cole a lista de alunos.</p></div>
@@ -1241,6 +1241,7 @@ function vHome(){
     <div class="hc-main"><div class="hc-kicker">${esc(new Date().toLocaleDateString("pt-BR", {weekday:"long", day:"numeric", month:"long"}))}</div>
       <h2>${hello}${S.me?.nom ? " " + esc(S.me.nom) : ""}</h2>
       <p>${aValider ? `<b>${aValider} ${aValider > 1 ? "provas a validar" : "prova a validar"}</b>` : "Tudo em dia. Prepare sua próxima prova ou um quiz de exercícios."}</p>
+      <p class="madeby">Made by Les Institutions Sinaï</p>
       <div class="row" style="margin-top:18px"><button class="btn gold" data-newctrl="1">+ Nova prova</button><button class="btn on-dark" data-newex="1">${canEx() ? "" : "🔒 "}+ Quiz de exercícios</button><button class="btn on-dark" data-go="scan">Escanear provas</button></div></div>
     <div class="hc-stats">
       <div><b class="num">${store.classes.length}</b><span>Turmas</span></div>
@@ -3988,7 +3989,7 @@ const essaiCtrl = () => { const n = CFG().trialCtrl || 1; return n > 1 ? `${n} p
 const copiesCtrl = () => S.me?.quota?.par || CFG().copiesCtrl || 35;
 const tailleTxt = () => `Uma prova cobre até ${copiesCtrl()} alunos: acima disso, conta como mais uma a cada grupo de ${copiesCtrl()}.`;
 /* Signature : Mastery est conçu par Les Institutions Sinaï */
-const MADEBY = `<div class="madeby"><span>Made by</span><img src="/logo-sinai.png" alt="Les Institutions Sinaï" width="119" height="34"></div>`;
+const MADEBY = `<p class="madeby">Made by Les Institutions Sinaï</p>`;
 const TIER_TXT = {decouverte:"1 turma · 2 provas por mês", essentiel:"Até 3 turmas · 6 provas por mês · exercícios online", complet:"Até 6 turmas · 12 provas por mês · exercícios online"};
 function abonnementPanel(){
   const a = S.me?.acces || {}, P = CFG().prix || {};
